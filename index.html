@@ -18,8 +18,7 @@
         const SYSTEM_PASSWORD = "0909"; 
 
         // 【云端同步配置】将你在 JSONBin 获取的凭证填在这里，实现两口子数据同步
-        const JSONBIN_API_KEY = "$2a$10$SCPfUWFz0t.fUqeNkRXirO/yDDP09//NlOnz.ZT6pTcjCuTwfa8pC
-"; 
+        const JSONBIN_API_KEY = "$2a$10$SCPfUWFz0t.fUqeNkRXirO/yDDP09//NlOnz.ZT6pTcjCuTwfa8pC"; 
         const JSONBIN_BIN_ID = "6a29ea9bf5f4af5e29db6eed";
 
         tailwind.config = {
@@ -343,7 +342,7 @@
                 </div>
                 
                 <!-- ================= 空间 B：光影画廊 ================= -->
-                <div v-else-key="gallery" class="pt-28 pb-20 min-h-screen">
+                <div v-else key="gallery" class="pt-28 pb-20 min-h-screen">
                     <header class="px-4 text-center mb-12">
                         <h1 class="text-3xl md:text-5xl font-semibold tracking-tight text-apple-text mb-4">捕捉时光的切片</h1>
                         <p class="text-gray-500 text-sm md:text-base max-w-2xl mx-auto font-light leading-relaxed">
