@@ -13,7 +13,12 @@
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
     <script>
+        // 【必看！安全配置】请在这里修改你们的专属固定密码
         const SYSTEM_PASSWORD = "0909"; 
+
+        // 【新增！云端同步配置】将你在第一步获取的凭证填在这里
+        const JSONBIN_API_KEY = "$2a$10$SCPfUWFz0t.fUqeNkRXirO/yDDP09//NlOnz.ZT6pTcjCuTwfa8pC"; 
+        const JSONBIN_BIN_ID = "6a29ea9bf5f4af5e29db6eed";
 
         tailwind.config = {
             theme: {
@@ -71,6 +76,11 @@
                     <div class="flex items-center justify-between h-14">
                         <div class="flex items-center space-x-2 text-apple-text font-medium text-sm"><i class="ph-fill ph-heart text-xl text-rose-500"></i><span>Aosen & 小悦</span></div>
                         <div class="flex items-center space-x-3 md:space-x-6 text-xs font-medium text-apple-text">
+                            <!-- 新增：顶部导航云同步状态灯 -->
+                            <span v-if="syncStatus" class="hidden md:flex items-center text-[10px] text-apple-blue bg-blue-50 px-2 py-1 rounded-full border border-blue-100 transition-all">
+                                <i class="ph ph-cloud-arrows mr-1" :class="{'animate-pulse': isSyncing}"></i> {{ syncStatus }}
+                            </span>
+                            
                             <button @click="isMasked = !isMasked" class="flex items-center text-gray-600 hover:text-apple-blue bg-white/50 px-2 py-1.5 rounded-full border border-white"><i class="ph text-lg md:mr-1" :class="isMasked ? 'ph-eye-closed' : 'ph-eye'"></i><span class="hidden md:inline">{{ isMasked ? '显示金额' : '隐藏数字' }}</span></button>
                             <button @click="openConfig" class="flex items-center bg-gray-800 text-white hover:bg-gray-700 px-3 py-1.5 rounded-full shadow-sm"><i class="ph ph-gear md:mr-1"></i> <span class="hidden md:inline">控制中心</span></button>
                         </div>
@@ -80,6 +90,12 @@
 
             <!-- 头部播报台 -->
             <header class="pt-28 pb-8 px-4 text-center">
+                <!-- 新增：移动端云同步状态灯 -->
+                <div v-if="syncStatus" class="md:hidden flex justify-center mb-3">
+                    <span class="flex items-center text-[10px] text-apple-blue bg-blue-50 px-2 py-1 rounded-full border border-blue-100 shadow-sm transition-all">
+                        <i class="ph ph-cloud-arrows mr-1" :class="{'animate-pulse': isSyncing}"></i> {{ syncStatus }}
+                    </span>
+                </div>
                 <h1 class="text-3xl md:text-5xl font-semibold tracking-tight text-apple-text mb-4">记录爱与财富的生长。</h1>
                 <div class="flex items-center justify-center space-x-3 text-sm text-gray-600 mb-2 font-medium">
                     <span class="bg-white/50 px-3 py-1 rounded-full border border-white/60"><i class="ph ph-calendar-blank mr-1"></i>{{ currentDateStr }}</span>
@@ -377,9 +393,11 @@
 
                     <div class="px-6 py-4 border-t border-gray-100 flex justify-between items-center bg-white shrink-0">
                         <button @click="logout" class="text-sm text-red-500 hover:text-red-700"><i class="ph ph-lock mr-1"></i>锁定</button>
-                        <div class="space-x-3">
-                            <button @click="showConfig = false" class="px-4 py-2 text-sm text-gray-600">取消</button>
-                            <button @click="saveAndCloseConfig" class="px-6 py-2 text-sm bg-gray-800 text-white rounded-full hover:bg-gray-700 shadow-md">保存刷新</button>
+                        <div class="space-x-3 flex items-center">
+                            <!-- 新增：保存时的云端提示 -->
+                            <span v-if="syncStatus && isSyncing" class="text-[10px] text-apple-blue mr-2 hidden md:inline"><i class="ph ph-cloud-arrows animate-pulse mr-1"></i>{{syncStatus}}</span>
+                            <button @click="showConfig = false" class="px-4 py-2 text-sm text-gray-600" :disabled="isSyncing">取消</button>
+                            <button @click="saveAndCloseConfig" class="px-6 py-2 text-sm bg-gray-800 text-white rounded-full hover:bg-gray-700 shadow-md disabled:bg-gray-400" :disabled="isSyncing">保存刷新</button>
                         </div>
                     </div>
                 </div>
@@ -474,12 +492,15 @@
                     loans: [], transfers: [], assets: [], equity: {}, goals: [], dates: [],
                     
                     // 头部动态内容
-                    currentDateStr: '', weather: '⛅ 晴朗无云', dailyQuote: ''
+                    currentDateStr: '', weather: '⛅ 晴朗无云', dailyQuote: '',
+                    
+                    // 新增：云同步状态标志
+                    isSyncing: false, syncStatus: ''
                 }
             },
-            created() {
+            async created() {
                 this.checkAuthStatus();
-                this.loadConfig();
+                await this.loadConfig();
                 
                 // 初始化日期与每日格言
                 const now = new Date();
@@ -566,31 +587,88 @@
                 formatCurrency(value) { return this.isMasked ? '¥ ***' : new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value); },
                 formatCurrencyInt(value) { return this.isMasked ? '¥ ***' : new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(value); },
                 
-                loadConfig() {
-                    const saved = localStorage.getItem('cashflow_family_v6');
-                    const data = saved ? JSON.parse(saved) : defaultData;
-                    this.salaryBank = data.salaryBank; this.salaryDay = data.salaryDay;
+                // 拆分出应用数据的逻辑
+                applyData(data) {
+                    this.salaryBank = data.salaryBank || '工商银行'; this.salaryDay = data.salaryDay || 15;
                     this.loans = data.loans || []; this.transfers = data.transfers || [];
                     this.goals = data.goals || defaultData.goals; this.dates = data.dates || defaultData.dates;
                     
-                    // 兼容旧数据的资产（如果是对象，转成数组）
-                    if (data.assets && !Array.isArray(data.assets)) {
-                        this.assets = defaultData.assets; // 强制升级
-                    } else { this.assets = data.assets || defaultData.assets; }
+                    if (data.assets && !Array.isArray(data.assets)) { this.assets = defaultData.assets; } 
+                    else { this.assets = data.assets || defaultData.assets; }
                     
-                    // 兼容旧数据的股权（如果有shares字段说明是旧版）
-                    if (data.equity && data.equity.members && data.equity.members[0].shares) {
-                        this.equity = defaultData.equity; // 强制升级为本金版本
-                    } else { this.equity = data.equity || defaultData.equity; }
+                    if (data.equity && data.equity.members && data.equity.members[0].shares) { this.equity = defaultData.equity; } 
+                    else { this.equity = data.equity || defaultData.equity; }
                 },
-                saveConfig() {
-                    localStorage.setItem('cashflow_family_v6', JSON.stringify({
+
+                async loadConfig() {
+                    // 1. 先用本地数据打底，确保瞬间渲染出界面
+                    const saved = localStorage.getItem('cashflow_family_v6');
+                    this.applyData(saved ? JSON.parse(saved) : defaultData);
+                    
+                    // 2. 如果配置了云端，尝试拉取云端覆盖本地
+                    if (JSONBIN_API_KEY && JSONBIN_BIN_ID) {
+                        this.isSyncing = true;
+                        this.syncStatus = '云端同步中...';
+                        try {
+                            const res = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
+                                headers: { 'X-Master-Key': JSONBIN_API_KEY }
+                            });
+                            if (res.ok) {
+                                const json = await res.json();
+                                // 如果云端是刚建的空盒子(没有 salaryBank)，就把本地现有的推上去初始化
+                                if (json.record && json.record.salaryBank) {
+                                    this.applyData(json.record);
+                                    localStorage.setItem('cashflow_family_v6', JSON.stringify(json.record)); // 覆盖本地缓存
+                                    this.syncStatus = '已与云端对齐';
+                                } else {
+                                    this.syncStatus = '初始化云盒子...';
+                                    await this.saveConfig();
+                                }
+                            }
+                        } catch (err) {
+                            console.error("云端加载失败:", err);
+                            this.syncStatus = '云端脱机，使用本机数据';
+                        } finally {
+                            setTimeout(() => this.syncStatus = '', 3000);
+                            this.isSyncing = false;
+                        }
+                    }
+                },
+                
+                async saveConfig() {
+                    const dataToSave = {
                         salaryBank: this.salaryBank, salaryDay: this.salaryDay, loans: this.loans, transfers: this.transfers,
                         assets: this.assets, equity: this.equity, goals: this.goals, dates: this.dates
-                    }));
+                    };
+                    
+                    // 1. 保存本地
+                    localStorage.setItem('cashflow_family_v6', JSON.stringify(dataToSave));
+                    
+                    // 2. 推送至云端
+                    if (JSONBIN_API_KEY && JSONBIN_BIN_ID) {
+                        this.isSyncing = true;
+                        this.syncStatus = '正在同步至云端...';
+                        try {
+                            await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`, {
+                                method: 'PUT',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-Master-Key': JSONBIN_API_KEY
+                                },
+                                body: JSON.stringify(dataToSave)
+                            });
+                            this.syncStatus = '云端保存成功！';
+                        } catch(e) {
+                            console.error("云端保存失败:", e);
+                            this.syncStatus = '网络异常，仅存本地';
+                        } finally {
+                            setTimeout(() => this.syncStatus = '', 3000);
+                            this.isSyncing = false;
+                        }
+                    }
                 },
                 openConfig() { this.showConfig = true; this.configTab = 'assets'; },
-                saveAndCloseConfig() { this.saveConfig(); this.showConfig = false; },
+                async saveAndCloseConfig() { await this.saveConfig(); this.showConfig = false; },
                 resetData() { if(confirm('警告：确定清除您修改过的数据并恢复初始模板吗？')) { localStorage.removeItem('cashflow_family_v6'); window.location.reload(); } },
                 
                 addAsset() { this.assets.push({ id: Date.now(), name: '', value: 0 }); },
