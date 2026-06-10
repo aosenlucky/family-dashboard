@@ -18,7 +18,8 @@
         const SYSTEM_PASSWORD = "0909"; 
 
         // 【云端同步配置】将你在 JSONBin 获取的凭证填在这里，实现两口子数据同步
-        const JSONBIN_API_KEY = "$2a$10$SCPfUWFz0t.fUqeNkRXirO/yDDP09//NlOnz.ZT6pTcjCuTwfa8pC"; 
+        const JSONBIN_API_KEY = "$2a$10$SCPfUWFz0t.fUqeNkRXirO/yDDP09//NlOnz.ZT6pTcjCuTwfa8pC
+"; 
         const JSONBIN_BIN_ID = "6a29ea9bf5f4af5e29db6eed";
 
         tailwind.config = {
@@ -50,6 +51,10 @@
         .modal-scroll::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
         .photo-card { transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); }
         .photo-card:hover { transform: translateY(-5px) scale(1.02) rotate(1deg); box-shadow: 0 15px 30px rgba(0,0,0,0.1); z-index: 10; }
+        
+        /* 页面切换动画 */
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.4s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
     </style>
 </head>
 <body class="font-sans selection:bg-apple-blue selection:text-white">
@@ -73,274 +78,299 @@
         <div v-if="auth.isLoggedIn">
             <!-- 导航栏 -->
             <nav class="fixed top-0 w-full z-50 glass-nav border-b border-white/50 shadow-sm">
-                <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div class="flex items-center justify-between h-14">
-                        <div class="flex items-center space-x-2 text-apple-text font-medium text-sm"><i class="ph-fill ph-heart text-xl text-rose-500"></i><span>Aosen & 小悦</span></div>
-                        <div class="flex items-center space-x-3 md:space-x-6 text-xs font-medium text-apple-text">
-                            <span v-if="syncStatus" class="hidden md:flex items-center text-[10px] text-apple-blue bg-blue-50 px-2 py-1 rounded-full border border-blue-100 transition-all">
-                                <i class="ph ph-cloud-arrows mr-1" :class="{'animate-pulse': isSyncing}"></i> {{ syncStatus }}
-                            </span>
-                            <button @click="isMasked = !isMasked" class="flex items-center text-gray-600 hover:text-apple-blue bg-white/50 px-2 py-1.5 rounded-full border border-white shadow-sm transition-colors"><i class="ph text-lg md:mr-1" :class="isMasked ? 'ph-eye-closed' : 'ph-eye'"></i><span class="hidden md:inline">{{ isMasked ? '显示金额' : '脱敏模式' }}</span></button>
-                            <button @click="openConfig" class="flex items-center bg-gray-800 text-white hover:bg-gray-700 px-3 py-1.5 rounded-full shadow-sm transition-colors"><i class="ph ph-gear md:mr-1"></i> <span class="hidden md:inline">控制中心</span></button>
-                        </div>
+                <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative flex items-center justify-between h-14">
+                    
+                    <div class="flex items-center space-x-2 text-apple-text font-medium text-sm z-10">
+                        <i class="ph-fill ph-heart text-xl text-rose-500"></i><span class="hidden sm:inline">Aosen & 小悦</span>
+                    </div>
+                    
+                    <!-- 空间切换器 (Apple 风格居中 Toggle) -->
+                    <div class="absolute left-1/2 transform -translate-x-1/2 flex items-center bg-white/40 p-1 rounded-full border border-white/60 shadow-sm z-10">
+                        <button @click="currentSpace = 'wealth'" :class="currentSpace === 'wealth' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-800'" class="px-3 sm:px-5 py-1 rounded-full text-[10px] sm:text-xs font-medium transition-all">财富看板</button>
+                        <button @click="currentSpace = 'gallery'" :class="currentSpace === 'gallery' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-800'" class="px-3 sm:px-5 py-1 rounded-full text-[10px] sm:text-xs font-medium transition-all">光影画廊</button>
+                    </div>
+
+                    <div class="flex items-center justify-end space-x-2 sm:space-x-4 text-xs font-medium text-apple-text z-10">
+                        <span v-if="syncStatus" class="hidden lg:flex items-center text-[10px] text-apple-blue bg-blue-50 px-2 py-1 rounded-full border border-blue-100 transition-all">
+                            <i class="ph ph-cloud-arrows mr-1" :class="{'animate-pulse': isSyncing}"></i> {{ syncStatus }}
+                        </span>
+                        <!-- 仅在财富看板显示脱敏按钮 -->
+                        <button v-if="currentSpace === 'wealth'" @click="isMasked = !isMasked" class="flex items-center text-gray-600 hover:text-apple-blue bg-white/50 px-2 py-1.5 rounded-full border border-white shadow-sm transition-colors"><i class="ph text-lg md:mr-1" :class="isMasked ? 'ph-eye-closed' : 'ph-eye'"></i><span class="hidden md:inline">{{ isMasked ? '显示金额' : '脱敏模式' }}</span></button>
+                        <button @click="openConfig" class="flex items-center bg-gray-800 text-white hover:bg-gray-700 px-2 sm:px-3 py-1.5 rounded-full shadow-sm transition-colors"><i class="ph ph-gear md:mr-1"></i> <span class="hidden md:inline">配置</span></button>
                     </div>
                 </div>
             </nav>
 
-            <!-- 头部播报台 -->
-            <header class="pt-28 pb-8 px-4 text-center">
-                <div v-if="syncStatus" class="md:hidden flex justify-center mb-3">
-                    <span class="flex items-center text-[10px] text-apple-blue bg-blue-50 px-2 py-1 rounded-full border border-blue-100 shadow-sm transition-all"><i class="ph ph-cloud-arrows mr-1" :class="{'animate-pulse': isSyncing}"></i> {{ syncStatus }}</span>
-                </div>
-                <h1 class="text-3xl md:text-5xl font-semibold tracking-tight text-apple-text mb-4">记录爱与财富的生长</h1>
-                <div class="flex items-center justify-center space-x-3 text-sm text-gray-600 mb-2 font-medium">
-                    <span class="bg-white/60 px-3 py-1 rounded-full border border-white shadow-sm"><i class="ph ph-calendar-blank mr-1"></i>{{ currentDateStr }}</span>
-                    <span class="bg-white/60 px-3 py-1 rounded-full border border-white shadow-sm">{{ weather }}</span>
-                </div>
-                <p class="text-gray-500 text-xs md:text-sm max-w-2xl mx-auto font-light leading-relaxed">"{{ dailyQuote }}"</p>
-            </header>
+            <!-- 动态空间切换 -->
+            <transition name="fade" mode="out-in">
+                <!-- ================= 空间 A：财富看板 ================= -->
+                <div v-if="currentSpace === 'wealth'" key="wealth">
+                    <!-- 头部播报台 -->
+                    <header class="pt-28 pb-8 px-4 text-center">
+                        <div v-if="syncStatus" class="md:hidden flex justify-center mb-3">
+                            <span class="flex items-center text-[10px] text-apple-blue bg-blue-50 px-2 py-1 rounded-full border border-blue-100 shadow-sm transition-all"><i class="ph ph-cloud-arrows mr-1" :class="{'animate-pulse': isSyncing}"></i> {{ syncStatus }}</span>
+                        </div>
+                        <h1 class="text-3xl md:text-5xl font-semibold tracking-tight text-apple-text mb-4">记录爱与财富的生长</h1>
+                        <div class="flex items-center justify-center space-x-3 text-sm text-gray-600 mb-2 font-medium">
+                            <span class="bg-white/60 px-3 py-1 rounded-full border border-white shadow-sm"><i class="ph ph-calendar-blank mr-1"></i>{{ currentDateStr }}</span>
+                            <span class="bg-white/60 px-3 py-1 rounded-full border border-white shadow-sm">{{ weather }}</span>
+                        </div>
+                        <p class="text-gray-500 text-xs md:text-sm max-w-2xl mx-auto font-light leading-relaxed">"{{ dailyQuote }}"</p>
+                    </header>
 
-            <!-- 模块 1: 核心净资产雷达 -->
-            <section class="max-w-6xl mx-auto px-4 mb-12">
-                <div class="glass-card rounded-3xl p-6 md:p-8 flex flex-col items-center justify-center text-center shadow-lg border-2 border-white/80 relative overflow-hidden">
-                    <div class="absolute -top-10 -right-10 w-32 h-32 bg-rose-100 rounded-full blur-3xl opacity-50"></div>
-                    <div class="absolute -bottom-10 -left-10 w-32 h-32 bg-blue-100 rounded-full blur-3xl opacity-50"></div>
-                    
-                    <p class="text-sm text-gray-500 mb-2 font-medium flex items-center z-10"><i class="ph-fill ph-chart-line-up mr-2 text-rose-500"></i> 家庭实时净资产</p>
-                    <p class="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight text-gray-800 z-10 mb-6 px-2 drop-shadow-sm">{{ formatCurrency(netWorth) }}</p>
-                    
-                    <div class="flex flex-col sm:flex-row w-full max-w-2xl justify-between items-center text-sm bg-white/60 p-4 rounded-2xl z-10 border border-white shadow-sm gap-4 sm:gap-0">
-                        <div class="text-center w-full sm:w-1/3">
-                            <p class="text-xs text-gray-500 mb-1">总资产</p>
-                            <p class="font-semibold text-gray-800">{{ formatCurrency(totalAssets) }}</p>
-                        </div>
-                        <div class="hidden sm:block w-px h-8 bg-gray-300/50"></div>
-                        <div class="text-center w-full sm:w-1/3 border-t border-b sm:border-t-0 sm:border-b-0 border-gray-200/50 py-2 sm:py-0">
-                            <p class="text-xs text-gray-500 mb-1">总负债</p>
-                            <p class="font-semibold text-rose-500">{{ formatCurrency(totalDebt) }}</p>
-                        </div>
-                        <div class="hidden sm:block w-px h-8 bg-gray-300/50"></div>
-                        <div class="text-center w-full sm:w-1/3">
-                            <p class="text-xs text-gray-500 mb-1">资产负债率</p>
-                            <p class="font-semibold text-gray-700">{{ isMasked ? '***' : debtRatio }}%</p>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 模块 2: 动态股市与盈亏 -->
-            <section class="max-w-6xl mx-auto px-4 mb-12">
-                <div class="glass-card rounded-3xl p-6 shadow-sm border border-white/60">
-                    <div class="flex justify-between items-center mb-4">
-                        <h3 class="text-lg font-semibold flex items-center text-gray-800"><i class="ph-fill ph-trend-up mr-2 text-rose-500"></i> 投资与股市雷达</h3>
-                        <div class="flex items-center space-x-3">
-                            <span class="text-[10px] text-gray-500">美元汇率: {{ usdRate }}</span>
-                            <button @click="fetchStocks" :disabled="isFetchingStocks" class="text-xs bg-white border border-gray-200 shadow-sm px-3 py-1.5 rounded-full hover:bg-gray-50 transition flex items-center">
-                                <i class="ph ph-arrows-clockwise mr-1" :class="{'animate-spin text-apple-blue': isFetchingStocks}"></i> {{ isFetchingStocks ? '同步中' : '行情同步' }}
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        <div v-for="stock in stocks" :key="stock.symbol" class="bg-white/60 backdrop-blur-sm p-4 rounded-2xl border border-white shadow-sm relative overflow-hidden">
-                            <div class="absolute right-0 top-0 bottom-0 w-1/2 bg-gradient-to-l opacity-10 pointer-events-none" :class="getStockProfit(stock) >= 0 ? 'from-rose-500' : 'from-green-500'"></div>
-                            <div class="flex justify-between items-start mb-3 relative z-10">
-                                <div>
-                                    <h4 class="font-semibold text-gray-800 flex items-center">{{ stock.name }} <span class="ml-2 text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{{stock.market}}</span></h4>
-                                    <p class="text-[10px] text-gray-500 mt-1 flex items-center"><span class="mr-2">{{ stock.symbol }}</span> <span class="text-[9px] border px-1.5 py-0.5 rounded" :class="getOwnerTagClass(stock.owner)">{{ stock.owner }}</span></p>
+                    <!-- 模块 1: 核心净资产雷达 -->
+                    <section class="max-w-6xl mx-auto px-4 mb-12">
+                        <div class="glass-card rounded-3xl p-6 md:p-8 flex flex-col items-center justify-center text-center shadow-lg border-2 border-white/80 relative overflow-hidden">
+                            <div class="absolute -top-10 -right-10 w-32 h-32 bg-rose-100 rounded-full blur-3xl opacity-50"></div>
+                            <div class="absolute -bottom-10 -left-10 w-32 h-32 bg-blue-100 rounded-full blur-3xl opacity-50"></div>
+                            
+                            <p class="text-sm text-gray-500 mb-2 font-medium flex items-center z-10"><i class="ph-fill ph-chart-line-up mr-2 text-rose-500"></i> 家庭实时净资产</p>
+                            <p class="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight text-gray-800 z-10 mb-6 px-2 drop-shadow-sm">{{ formatCurrency(netWorth) }}</p>
+                            
+                            <div class="flex flex-col sm:flex-row w-full max-w-2xl justify-between items-center text-sm bg-white/60 p-4 rounded-2xl z-10 border border-white shadow-sm gap-4 sm:gap-0">
+                                <div class="text-center w-full sm:w-1/3">
+                                    <p class="text-xs text-gray-500 mb-1">总资产</p>
+                                    <p class="font-semibold text-gray-800">{{ formatCurrency(totalAssets) }}</p>
                                 </div>
-                                <div class="text-right">
-                                    <p class="text-sm font-bold text-gray-800">{{ isMasked ? '***' : stock.currentPrice }} <span class="text-[10px] font-normal">{{ stock.market==='US'?'USD':'CNY' }}</span></p>
-                                    <p class="text-[10px] text-gray-500 mt-0.5">持仓: {{ isMasked ? '***' : stock.shares }} 股</p>
+                                <div class="hidden sm:block w-px h-8 bg-gray-300/50"></div>
+                                <div class="text-center w-full sm:w-1/3 border-t border-b sm:border-t-0 sm:border-b-0 border-gray-200/50 py-2 sm:py-0">
+                                    <p class="text-xs text-gray-500 mb-1">总负债</p>
+                                    <p class="font-semibold text-rose-500">{{ formatCurrency(totalDebt) }}</p>
+                                </div>
+                                <div class="hidden sm:block w-px h-8 bg-gray-300/50"></div>
+                                <div class="text-center w-full sm:w-1/3">
+                                    <p class="text-xs text-gray-500 mb-1">资产负债率</p>
+                                    <p class="font-semibold text-gray-700">{{ isMasked ? '***' : debtRatio }}%</p>
                                 </div>
                             </div>
-                            <div class="flex justify-between items-center text-xs border-t border-gray-200/50 pt-2 relative z-10">
-                                <span class="text-gray-500">持仓盈亏</span>
-                                <div class="font-semibold" :class="getStockProfit(stock) >= 0 ? 'text-rose-500' : 'text-green-500'">
-                                    {{ getStockProfit(stock) >= 0 ? '+' : '' }}{{ formatCurrency(getStockProfit(stock)) }}
-                                    <span class="text-[10px] ml-1">({{ isMasked ? '***' : getStockProfitPercent(stock) }}%)</span>
+                        </div>
+                    </section>
+
+                    <!-- 模块 2: 动态股市与盈亏 -->
+                    <section class="max-w-6xl mx-auto px-4 mb-12">
+                        <div class="glass-card rounded-3xl p-6 shadow-sm border border-white/60">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="text-lg font-semibold flex items-center text-gray-800"><i class="ph-fill ph-trend-up mr-2 text-rose-500"></i> 投资与股市雷达</h3>
+                                <div class="flex items-center space-x-3">
+                                    <span class="text-[10px] text-gray-500">美元汇率: {{ usdRate }}</span>
+                                    <button @click="fetchStocks" :disabled="isFetchingStocks" class="text-xs bg-white border border-gray-200 shadow-sm px-3 py-1.5 rounded-full hover:bg-gray-50 transition flex items-center">
+                                        <i class="ph ph-arrows-clockwise mr-1" :class="{'animate-spin text-apple-blue': isFetchingStocks}"></i> {{ isFetchingStocks ? '同步中' : '行情同步' }}
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div v-for="stock in stocks" :key="stock.symbol" class="bg-white/60 backdrop-blur-sm p-4 rounded-2xl border border-white shadow-sm relative overflow-hidden">
+                                    <div class="absolute right-0 top-0 bottom-0 w-1/2 bg-gradient-to-l opacity-10 pointer-events-none" :class="getStockProfit(stock) >= 0 ? 'from-rose-500' : 'from-green-500'"></div>
+                                    <div class="flex justify-between items-start mb-3 relative z-10">
+                                        <div>
+                                            <h4 class="font-semibold text-gray-800 flex items-center">{{ stock.name }} <span class="ml-2 text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{{stock.market}}</span></h4>
+                                            <p class="text-[10px] text-gray-500 mt-1 flex items-center"><span class="mr-2">{{ stock.symbol }}</span> <span class="text-[9px] border px-1.5 py-0.5 rounded" :class="getOwnerTagClass(stock.owner)">{{ stock.owner }}</span></p>
+                                        </div>
+                                        <div class="text-right">
+                                            <p class="text-sm font-bold text-gray-800">{{ isMasked ? '***' : stock.currentPrice }} <span class="text-[10px] font-normal">{{ stock.market==='US'?'USD':'CNY' }}</span></p>
+                                            <p class="text-[10px] text-gray-500 mt-0.5">持仓: {{ isMasked ? '***' : stock.shares }} 股</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex justify-between items-center text-xs border-t border-gray-200/50 pt-2 relative z-10">
+                                        <span class="text-gray-500">持仓盈亏</span>
+                                        <div class="font-semibold" :class="getStockProfit(stock) >= 0 ? 'text-rose-500' : 'text-green-500'">
+                                            {{ getStockProfit(stock) >= 0 ? '+' : '' }}{{ formatCurrency(getStockProfit(stock)) }}
+                                            <span class="text-[10px] ml-1">({{ isMasked ? '***' : getStockProfitPercent(stock) }}%)</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div v-for="fund in funds" :key="fund.name" class="bg-white/60 backdrop-blur-sm p-4 rounded-2xl border border-white shadow-sm flex flex-col justify-between">
+                                    <div>
+                                        <h4 class="font-semibold text-gray-800 flex items-center">{{ fund.name }}</h4>
+                                        <p class="text-[10px] text-gray-500 mt-1"><span class="text-[9px] border px-1.5 py-0.5 rounded" :class="getOwnerTagClass(fund.owner)">{{ fund.owner }}</span></p>
+                                    </div>
+                                    <div class="text-right mt-3 border-t border-gray-200/50 pt-2">
+                                        <span class="text-sm font-bold text-gray-800">{{ formatCurrency(fund.value) }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- 模块 3: 资产基石 & 家族股权 -->
+                    <section class="max-w-6xl mx-auto px-4 mb-12 grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- 资产大盘 -->
+                        <div class="glass-card rounded-3xl p-6">
+                            <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800"><i class="ph-fill ph-house mr-2 text-blue-500"></i> 固定与流动资产</h3>
+                            <div class="space-y-3 max-h-[300px] overflow-y-auto pr-2 modal-scroll">
+                                <div v-for="asset in regularAssets" :key="asset.id" class="flex justify-between items-center text-sm border-b border-gray-200/30 pb-2">
+                                    <span class="text-gray-600 flex items-center">
+                                        <span class="text-[9px] border px-1.5 py-0.5 rounded mr-2" :class="getOwnerTagClass(asset.owner)">{{ asset.owner }}</span>
+                                        {{ asset.name }}
+                                    </span>
+                                    <span class="font-medium text-gray-800">{{ formatCurrency(asset.value) }}</span>
+                                </div>
+                                <div class="flex justify-between items-center text-sm pt-2">
+                                    <span class="text-gray-600 font-medium flex items-center"><i class="ph-fill ph-aperture text-red-500 mr-2"></i> HW 股权总本金</span>
+                                    <span class="font-medium text-gray-800">{{ formatCurrency(totalEquityPrincipal) }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 家族股权分红 -->
+                        <div class="glass-card rounded-3xl p-6 relative overflow-hidden">
+                            <div class="absolute top-0 right-0 w-24 h-24 bg-red-500/10 rounded-full blur-2xl transform translate-x-4 -translate-y-4"></div>
+                            <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800">
+                                <i class="ph-fill ph-aperture mr-2 text-red-500"></i> HW 家族股权大盘
+                            </h3>
+                            
+                            <div class="flex flex-wrap gap-x-4 gap-y-2 text-xs text-gray-600 mb-4 bg-white/50 p-3 rounded-xl border border-white shadow-sm">
+                                <div class="w-full sm:w-auto"><span class="text-gray-400">每股价格:</span> <span class="font-medium text-gray-800">{{ isMasked ? '***' : equity.pricePerShare }} 元</span></div>
+                                <div class="w-full sm:w-auto"><span class="text-gray-400">预测分红:</span> <span class="font-bold text-rose-500">{{ isMasked ? '***' : equity.dividendRate }} 元/股</span></div>
+                                <div class="w-full sm:w-auto"><span class="text-gray-400">年收益率:</span> <span class="font-bold text-green-600">{{ isMasked ? '***' : equityYieldRate }}%</span></div>
+                                <div class="w-full h-px bg-gray-200/50 my-0.5"></div>
+                                <div class="w-full sm:w-auto"><span class="text-gray-400">总股本:</span> <span class="font-medium text-gray-800">{{ formatCurrencyInt(totalEquityPrincipal) }}</span></div>
+                                <div class="w-full sm:w-auto"><span class="text-gray-400">总股数:</span> <span class="font-medium text-gray-800">{{ isMasked ? '***' : formatCurrencyIntNoSymbol(totalEquityShares) }} 股</span></div>
+                            </div>
+                            
+                            <div class="space-y-2 max-h-[200px] overflow-y-auto modal-scroll pr-2">
+                                <div v-for="member in equity.members" :key="member.name" class="flex justify-between items-center bg-white/40 px-3 py-2.5 rounded-xl text-sm border border-white/50 shadow-sm transition hover:shadow-md">
+                                    <div class="flex flex-col w-1/3">
+                                        <span class="text-gray-800 font-medium text-sm">{{ member.name }}</span>
+                                        <span class="text-[10px] text-gray-500 mt-0.5">本金: {{ formatCurrencyInt(member.principal) }}</span>
+                                    </div>
+                                    <div class="w-1/4 text-center">
+                                        <span class="text-gray-500 text-[10px] bg-gray-100/50 px-2 py-1 rounded">{{ isMasked ? '***' : formatCurrencyIntNoSymbol(member.principal / equity.pricePerShare) }} 股</span>
+                                    </div>
+                                    <div class="flex flex-col items-end w-5/12">
+                                        <span class="font-bold text-green-600 text-sm" title="扣除20%税率">+{{ formatCurrencyInt((member.principal / equity.pricePerShare) * equity.dividendRate * 0.8) }} <span class="text-[9px] font-normal text-green-600 border border-green-200 bg-green-50 px-1 rounded ml-1">税后</span></span>
+                                        <span class="text-[9px] text-gray-400 mt-0.5">税前: {{ formatCurrencyInt((member.principal / equity.pricePerShare) * equity.dividendRate) }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mt-4 pt-3 border-t border-gray-300/50 flex justify-between items-center">
+                                <span class="text-sm font-semibold text-gray-800">家族年预期 <span class="text-green-600">税后</span> 总分红</span>
+                                <span class="text-xl font-bold text-green-600">{{ formatCurrencyInt(totalDividendsPostTax) }}</span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- 模块 4: 贷款分解 -->
+                    <section class="max-w-6xl mx-auto px-4 mb-16">
+                        <h2 class="text-xl font-semibold mb-6 flex items-center"><i class="ph ph-notebook mr-2 text-apple-subtext"></i> 贷款月供分解</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div v-for="loan in processedLoans" :key="loan.id" class="glass-card rounded-2xl p-5 hover:shadow-lg transition-shadow relative overflow-hidden">
+                                <div v-if="loan.isAutoCalc" class="absolute -right-6 top-4 bg-blue-500/10 text-blue-600 text-[10px] py-0.5 px-8 transform rotate-45 flex items-center font-medium backdrop-blur-sm shadow-sm"><i class="ph-fill ph-magic-wand mr-1"></i> 精准引擎</div>
+                                <div class="flex items-center space-x-3 mb-4">
+                                    <div class="w-8 h-8 rounded-full flex items-center justify-center text-white shadow-sm" :class="loan.type === '房贷' ? 'bg-blue-500/90' : 'bg-orange-500/90'">
+                                        <i :class="loan.type === '房贷' ? 'ph ph-house' : 'ph ph-credit-card'"></i>
+                                    </div>
+                                    <div>
+                                        <p class="text-sm font-semibold text-gray-800 flex items-center">
+                                            <span class="text-[9px] border px-1.5 py-0.5 rounded mr-2" :class="getOwnerTagClass(loan.owner)">{{ loan.owner }}</span>
+                                            {{ loan.bank }} <span class="text-[10px] text-gray-500 font-normal ml-1">({{ loan.type }})</span>
+                                        </p>
+                                        <p class="text-[10px] text-gray-500 mt-1">每月 {{ loan.day || '未定' }} 日 · 利率 {{ loan.rate }}%</p>
+                                    </div>
+                                </div>
+                                <div class="bg-white/50 p-4 rounded-xl border border-white space-y-3 shadow-sm">
+                                    <div class="flex justify-between items-center text-sm border-b border-gray-200/50 pb-2">
+                                        <span class="text-gray-600 font-medium">剩余本金</span><span class="font-bold text-gray-800">{{ formatCurrency(loan.left) }}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center text-sm">
+                                        <span class="text-gray-600 font-medium">本月需还总额</span><span class="font-bold text-rose-500">{{ formatCurrency(loan.monthly) }}</span>
+                                    </div>
+                                    <div class="bg-white/60 rounded-lg p-2 flex justify-between text-xs text-gray-500 mt-2 border border-gray-100">
+                                        <span>还本金: {{ formatCurrency(loan.nextPrincipal) }}</span>
+                                        <span class="text-orange-500">还利息: {{ formatCurrency(loan.nextInterest) }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- 模块 5: 资金拓扑图 -->
+                    <section id="flow" class="max-w-6xl mx-auto px-4 mb-20">
+                        <div class="flex justify-between items-end mb-4"><h2 class="text-xl font-semibold flex items-center"><i class="ph ph-git-branch mr-2 text-apple-subtext"></i> 资金自动化航线</h2></div>
+                        <div class="text-center text-[11px] text-gray-500 mb-3 md:hidden flex items-center justify-center bg-white/60 py-1.5 rounded-full border border-white shadow-sm"><i class="ph ph-arrows-out-line-horizontal mr-1 animate-pulse"></i> 左右滑动或双指缩放查看全貌</div>
+                        <div class="glass-card rounded-3xl p-6 md:p-10 overflow-x-auto border-white/60 flow-scroll relative shadow-inner">
+                            <div class="min-w-[800px] flex flex-col items-center justify-start pb-4">
+                                <flow-node :node="flowTree" :root-salary-day="rootSalaryDay" :is-masked="isMasked"></flow-node>
+                            </div>
+                        </div>
+                    </section>
+                    
+                    <!-- 模块 6: 梦想与日历 -->
+                    <section class="max-w-6xl mx-auto px-4 mb-20 grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- 心愿单 -->
+                        <div class="glass-card rounded-3xl p-6">
+                            <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800"><i class="ph-fill ph-star mr-2 text-yellow-500"></i> 梦想小金库</h3>
+                            <div class="space-y-5">
+                                <div v-for="goal in goals" :key="goal.name" class="bg-white/60 p-4 rounded-2xl border border-white shadow-sm">
+                                    <div class="flex justify-between items-end mb-2">
+                                        <div>
+                                            <h4 class="font-medium text-gray-800">{{ goal.name }}</h4>
+                                            <p class="text-[10px] text-gray-500 mt-0.5">目标: {{ formatCurrencyInt(goal.target) }}</p>
+                                        </div>
+                                        <div class="text-right">
+                                            <p class="text-sm font-bold text-apple-blue">{{ formatCurrencyInt(goal.current) }}</p>
+                                            <p class="text-[10px] text-gray-500 mt-0.5">{{ isMasked ? '***' : Math.round((goal.current/goal.target)*100) }}% 已完成</p>
+                                        </div>
+                                    </div>
+                                    <div class="w-full bg-gray-200/60 rounded-full h-2 overflow-hidden backdrop-blur-sm">
+                                        <div class="bg-gradient-to-r from-blue-400 to-blue-600 h-2 rounded-full transition-all duration-1000" :style="{ width: Math.min(100, (goal.current/goal.target)*100) + '%' }"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- 纪念日 -->
+                        <div class="glass-card rounded-3xl p-6">
+                            <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800"><i class="ph-fill ph-calendar-heart mr-2 text-rose-400"></i> 家庭温馨日历</h3>
+                            <div class="space-y-3 max-h-[250px] overflow-y-auto modal-scroll pr-2">
+                                <div v-for="date in processedDates" :key="date.name" class="flex items-center justify-between bg-white/60 px-4 py-3 rounded-2xl border border-white shadow-sm hover:shadow-md transition">
+                                    <div class="flex items-center space-x-3">
+                                        <div class="w-10 h-10 rounded-full flex items-center justify-center shadow-sm" :class="date.daysLeft === 0 ? 'bg-rose-500 text-white' : 'bg-rose-100 text-rose-500'"><i class="ph-fill" :class="date.type === 'birthday' ? 'ph-cake' : 'ph-confetti'"></i></div>
+                                        <div>
+                                            <p class="text-sm font-medium text-gray-800">{{ date.name }}</p>
+                                            <p class="text-[10px] text-gray-500">{{ date.nextDateStr }} {{ date.isMarriage ? `· ${date.yearsPassed}周年` : `· ${date.yearsPassed}岁` }}</p>
+                                        </div>
+                                    </div>
+                                    <div class="text-right">
+                                        <span v-if="date.daysLeft === 0" class="text-sm font-bold text-rose-500 animate-pulse">就是今天!</span>
+                                        <span v-else class="text-sm font-bold text-gray-700">{{ date.daysLeft }} <span class="text-xs font-normal text-gray-500">天后</span></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+                
+                <!-- ================= 空间 B：光影画廊 ================= -->
+                <div v-else-key="gallery" class="pt-28 pb-20 min-h-screen">
+                    <header class="px-4 text-center mb-12">
+                        <h1 class="text-3xl md:text-5xl font-semibold tracking-tight text-apple-text mb-4">捕捉时光的切片</h1>
+                        <p class="text-gray-500 text-sm md:text-base max-w-2xl mx-auto font-light leading-relaxed">
+                            按下快门的瞬间，光影便成了永恒。欢迎来到我们的专属画廊。
+                        </p>
+                    </header>
+                    
+                    <section class="max-w-6xl mx-auto px-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8">
+                            <div v-for="(photo, idx) in photos" :key="idx" class="photo-card glass-card p-3 rounded-2xl relative group cursor-pointer" :style="{'transform': `rotate(${idx%2===0?-1.5:1.5}deg)`}">
+                                <div class="aspect-square md:aspect-[4/5] bg-gray-200/50 rounded-xl overflow-hidden relative shadow-inner border border-white/50">
+                                    <img :src="photo.url" alt="家庭回忆" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" onerror="this.src='https://images.unsplash.com/photo-1511895426328-dc8714191300?w=500&q=80'">
+                                </div>
+                                <div class="text-center mt-4 mb-2">
+                                    <p class="text-sm font-medium text-gray-800 truncate px-2">{{ photo.desc || '美好的瞬间' }}</p>
                                 </div>
                             </div>
                         </div>
                         
-                        <!-- 固收/基金简易卡片 -->
-                        <div v-for="fund in funds" :key="fund.name" class="bg-white/60 backdrop-blur-sm p-4 rounded-2xl border border-white shadow-sm flex flex-col justify-between">
-                            <div>
-                                <h4 class="font-semibold text-gray-800 flex items-center">{{ fund.name }}</h4>
-                                <p class="text-[10px] text-gray-500 mt-1"><span class="text-[9px] border px-1.5 py-0.5 rounded" :class="getOwnerTagClass(fund.owner)">{{ fund.owner }}</span></p>
-                            </div>
-                            <div class="text-right mt-3 border-t border-gray-200/50 pt-2">
-                                <span class="text-sm font-bold text-gray-800">{{ formatCurrency(fund.value) }}</span>
-                            </div>
+                        <!-- 画廊为空时的提示 -->
+                        <div v-if="photos.length === 0" class="text-center py-20 text-gray-500">
+                            <i class="ph-fill ph-camera text-4xl text-gray-300 mb-3"></i>
+                            <p>相册里还是空的呢，去【配置 - 心愿日历与相册】贴上第一张照片吧</p>
                         </div>
-                    </div>
+                    </section>
                 </div>
-            </section>
-
-            <!-- 模块 3: 资产基石 & 家族股权 -->
-            <section class="max-w-6xl mx-auto px-4 mb-12 grid grid-cols-1 md:grid-cols-2 gap-6">
-                <!-- 资产大盘 -->
-                <div class="glass-card rounded-3xl p-6">
-                    <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800"><i class="ph-fill ph-house mr-2 text-blue-500"></i> 固定与流动资产</h3>
-                    <div class="space-y-3 max-h-[300px] overflow-y-auto pr-2 modal-scroll">
-                        <div v-for="asset in regularAssets" :key="asset.id" class="flex justify-between items-center text-sm border-b border-gray-200/30 pb-2">
-                            <span class="text-gray-600 flex items-center">
-                                <span class="text-[9px] border px-1.5 py-0.5 rounded mr-2" :class="getOwnerTagClass(asset.owner)">{{ asset.owner }}</span>
-                                {{ asset.name }}
-                            </span>
-                            <span class="font-medium text-gray-800">{{ formatCurrency(asset.value) }}</span>
-                        </div>
-                        <div class="flex justify-between items-center text-sm pt-2">
-                            <span class="text-gray-600 font-medium flex items-center"><i class="ph-fill ph-aperture text-red-500 mr-2"></i> HW 股权总本金</span>
-                            <span class="font-medium text-gray-800">{{ formatCurrency(totalEquityPrincipal) }}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 家族股权分红 -->
-                <div class="glass-card rounded-3xl p-6 relative overflow-hidden">
-                    <div class="absolute top-0 right-0 w-24 h-24 bg-red-500/10 rounded-full blur-2xl transform translate-x-4 -translate-y-4"></div>
-                    <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800">
-                        <i class="ph-fill ph-aperture mr-2 text-red-500"></i> HW 家族股权大盘
-                    </h3>
-                    
-                    <div class="flex flex-wrap gap-x-4 gap-y-2 text-xs text-gray-600 mb-4 bg-white/50 p-3 rounded-xl border border-white shadow-sm">
-                        <div class="w-full sm:w-auto"><span class="text-gray-400">每股价格:</span> <span class="font-medium text-gray-800">{{ isMasked ? '***' : equity.pricePerShare }} 元</span></div>
-                        <div class="w-full sm:w-auto"><span class="text-gray-400">预测分红:</span> <span class="font-bold text-rose-500">{{ isMasked ? '***' : equity.dividendRate }} 元/股</span></div>
-                        <div class="w-full sm:w-auto"><span class="text-gray-400">年收益率:</span> <span class="font-bold text-green-600">{{ isMasked ? '***' : equityYieldRate }}%</span></div>
-                        <div class="w-full h-px bg-gray-200/50 my-0.5"></div>
-                        <div class="w-full sm:w-auto"><span class="text-gray-400">总股本:</span> <span class="font-medium text-gray-800">{{ formatCurrencyInt(totalEquityPrincipal) }}</span></div>
-                        <div class="w-full sm:w-auto"><span class="text-gray-400">总股数:</span> <span class="font-medium text-gray-800">{{ isMasked ? '***' : formatCurrencyIntNoSymbol(totalEquityShares) }} 股</span></div>
-                    </div>
-                    
-                    <div class="space-y-2 max-h-[200px] overflow-y-auto modal-scroll pr-2">
-                        <div v-for="member in equity.members" :key="member.name" class="flex justify-between items-center bg-white/40 px-3 py-2.5 rounded-xl text-sm border border-white/50 shadow-sm transition hover:shadow-md">
-                            <div class="flex flex-col w-1/3">
-                                <span class="text-gray-800 font-medium text-sm">{{ member.name }}</span>
-                                <span class="text-[10px] text-gray-500 mt-0.5">本金: {{ formatCurrencyInt(member.principal) }}</span>
-                            </div>
-                            <div class="w-1/4 text-center">
-                                <span class="text-gray-500 text-[10px] bg-gray-100/50 px-2 py-1 rounded">{{ isMasked ? '***' : formatCurrencyIntNoSymbol(member.principal / equity.pricePerShare) }} 股</span>
-                            </div>
-                            <div class="flex flex-col items-end w-5/12">
-                                <span class="font-bold text-green-600 text-sm" title="扣除20%税率">+{{ formatCurrencyInt((member.principal / equity.pricePerShare) * equity.dividendRate * 0.8) }} <span class="text-[9px] font-normal text-green-600 border border-green-200 bg-green-50 px-1 rounded ml-1">税后</span></span>
-                                <span class="text-[9px] text-gray-400 mt-0.5">税前: {{ formatCurrencyInt((member.principal / equity.pricePerShare) * equity.dividendRate) }}</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="mt-4 pt-3 border-t border-gray-300/50 flex justify-between items-center">
-                        <span class="text-sm font-semibold text-gray-800">家族年预期 <span class="text-green-600">税后</span> 总分红</span>
-                        <span class="text-xl font-bold text-green-600">{{ formatCurrencyInt(totalDividendsPostTax) }}</span>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 模块 4: 贷款分解 -->
-            <section class="max-w-6xl mx-auto px-4 mb-16">
-                <h2 class="text-xl font-semibold mb-6 flex items-center"><i class="ph ph-notebook mr-2 text-apple-subtext"></i> 贷款月供分解</h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div v-for="loan in processedLoans" :key="loan.id" class="glass-card rounded-2xl p-5 hover:shadow-lg transition-shadow relative overflow-hidden">
-                        <div v-if="loan.isAutoCalc" class="absolute -right-6 top-4 bg-blue-500/10 text-blue-600 text-[10px] py-0.5 px-8 transform rotate-45 flex items-center font-medium backdrop-blur-sm shadow-sm"><i class="ph-fill ph-magic-wand mr-1"></i> 精准引擎</div>
-                        <div class="flex items-center space-x-3 mb-4">
-                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white shadow-sm" :class="loan.type === '房贷' ? 'bg-blue-500/90' : 'bg-orange-500/90'">
-                                <i :class="loan.type === '房贷' ? 'ph ph-house' : 'ph ph-credit-card'"></i>
-                            </div>
-                            <div>
-                                <p class="text-sm font-semibold text-gray-800 flex items-center">
-                                    <span class="text-[9px] border px-1.5 py-0.5 rounded mr-2" :class="getOwnerTagClass(loan.owner)">{{ loan.owner }}</span>
-                                    {{ loan.bank }} <span class="text-[10px] text-gray-500 font-normal ml-1">({{ loan.type }})</span>
-                                </p>
-                                <p class="text-[10px] text-gray-500 mt-1">每月 {{ loan.day || '未定' }} 日 · 利率 {{ loan.rate }}%</p>
-                            </div>
-                        </div>
-                        <div class="bg-white/50 p-4 rounded-xl border border-white space-y-3 shadow-sm">
-                            <div class="flex justify-between items-center text-sm border-b border-gray-200/50 pb-2">
-                                <span class="text-gray-600 font-medium">剩余本金</span><span class="font-bold text-gray-800">{{ formatCurrency(loan.left) }}</span>
-                            </div>
-                            <div class="flex justify-between items-center text-sm">
-                                <span class="text-gray-600 font-medium">本月需还总额</span><span class="font-bold text-rose-500">{{ formatCurrency(loan.monthly) }}</span>
-                            </div>
-                            <div class="bg-white/60 rounded-lg p-2 flex justify-between text-xs text-gray-500 mt-2 border border-gray-100">
-                                <span>还本金: {{ formatCurrency(loan.nextPrincipal) }}</span>
-                                <span class="text-orange-500">还利息: {{ formatCurrency(loan.nextInterest) }}</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 模块 5: 资金拓扑图 -->
-            <section id="flow" class="max-w-6xl mx-auto px-4 mb-20">
-                <div class="flex justify-between items-end mb-4"><h2 class="text-xl font-semibold flex items-center"><i class="ph ph-git-branch mr-2 text-apple-subtext"></i> 资金自动化航线</h2></div>
-                <div class="text-center text-[11px] text-gray-500 mb-3 md:hidden flex items-center justify-center bg-white/60 py-1.5 rounded-full border border-white shadow-sm"><i class="ph ph-arrows-out-line-horizontal mr-1 animate-pulse"></i> 左右滑动或双指缩放查看全貌</div>
-                <div class="glass-card rounded-3xl p-6 md:p-10 overflow-x-auto border-white/60 flow-scroll relative shadow-inner">
-                    <div class="min-w-[800px] flex flex-col items-center justify-start pb-4">
-                        <flow-node :node="flowTree" :root-salary-day="rootSalaryDay" :is-masked="isMasked"></flow-node>
-                    </div>
-                </div>
-            </section>
-            
-            <!-- 模块 6: 梦想与日历 -->
-            <section class="max-w-6xl mx-auto px-4 mb-16 grid grid-cols-1 md:grid-cols-2 gap-6">
-                <!-- 心愿单 -->
-                <div class="glass-card rounded-3xl p-6">
-                    <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800"><i class="ph-fill ph-star mr-2 text-yellow-500"></i> 梦想小金库</h3>
-                    <div class="space-y-5">
-                        <div v-for="goal in goals" :key="goal.name" class="bg-white/60 p-4 rounded-2xl border border-white shadow-sm">
-                            <div class="flex justify-between items-end mb-2">
-                                <div>
-                                    <h4 class="font-medium text-gray-800">{{ goal.name }}</h4>
-                                    <p class="text-[10px] text-gray-500 mt-0.5">目标: {{ formatCurrencyInt(goal.target) }}</p>
-                                </div>
-                                <div class="text-right">
-                                    <p class="text-sm font-bold text-apple-blue">{{ formatCurrencyInt(goal.current) }}</p>
-                                    <p class="text-[10px] text-gray-500 mt-0.5">{{ isMasked ? '***' : Math.round((goal.current/goal.target)*100) }}% 已完成</p>
-                                </div>
-                            </div>
-                            <div class="w-full bg-gray-200/60 rounded-full h-2 overflow-hidden backdrop-blur-sm">
-                                <div class="bg-gradient-to-r from-blue-400 to-blue-600 h-2 rounded-full transition-all duration-1000" :style="{ width: Math.min(100, (goal.current/goal.target)*100) + '%' }"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <!-- 纪念日 -->
-                <div class="glass-card rounded-3xl p-6">
-                    <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800"><i class="ph-fill ph-calendar-heart mr-2 text-rose-400"></i> 家庭温馨日历</h3>
-                    <div class="space-y-3 max-h-[250px] overflow-y-auto modal-scroll pr-2">
-                        <div v-for="date in processedDates" :key="date.name" class="flex items-center justify-between bg-white/60 px-4 py-3 rounded-2xl border border-white shadow-sm hover:shadow-md transition">
-                            <div class="flex items-center space-x-3">
-                                <div class="w-10 h-10 rounded-full flex items-center justify-center shadow-sm" :class="date.daysLeft === 0 ? 'bg-rose-500 text-white' : 'bg-rose-100 text-rose-500'"><i class="ph-fill" :class="date.type === 'birthday' ? 'ph-cake' : 'ph-confetti'"></i></div>
-                                <div>
-                                    <p class="text-sm font-medium text-gray-800">{{ date.name }}</p>
-                                    <p class="text-[10px] text-gray-500">{{ date.nextDateStr }} {{ date.isMarriage ? `· ${date.yearsPassed}周年` : `· ${date.yearsPassed}岁` }}</p>
-                                </div>
-                            </div>
-                            <div class="text-right">
-                                <span v-if="date.daysLeft === 0" class="text-sm font-bold text-rose-500 animate-pulse">就是今天!</span>
-                                <span v-else class="text-sm font-bold text-gray-700">{{ date.daysLeft }} <span class="text-xs font-normal text-gray-500">天后</span></span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 模块 7: 摄影墙 -->
-            <section class="max-w-6xl mx-auto px-4 mb-20">
-                <div class="flex justify-between items-center mb-6">
-                    <h2 class="text-xl font-semibold flex items-center"><i class="ph-fill ph-camera mr-2 text-purple-500"></i> Aosen 的光影志</h2>
-                    <span class="text-xs text-gray-500 bg-white/50 px-3 py-1 rounded-full border border-white">捕捉时光的切片</span>
-                </div>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-                    <div v-for="(photo, idx) in photos" :key="idx" class="photo-card bg-white p-2 md:p-3 rounded-xl shadow-sm border border-gray-100 relative group cursor-pointer" :style="{'transform': `rotate(${idx%2===0?-2:2}deg)`}">
-                        <div class="aspect-square md:aspect-[4/5] bg-gray-100 rounded-lg overflow-hidden relative">
-                            <img :src="photo.url" alt="家庭回忆" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" onerror="this.src='https://images.unsplash.com/photo-1511895426328-dc8714191300?w=500&q=80'">
-                        </div>
-                        <div class="text-center mt-2 md:mt-3 mb-1">
-                            <p class="text-[10px] md:text-xs font-medium text-gray-600 truncate px-1">{{ photo.desc || '美好的瞬间' }}</p>
-                        </div>
-                    </div>
-                </div>
-            </section>
+            </transition>
 
             <!-- 页脚 -->
             <footer class="border-t border-white/40 backdrop-blur-sm pb-12 pt-8">
@@ -480,7 +510,7 @@
                                         <input v-model="photo.desc" type="text" placeholder="照片描述文字" class="w-[80%] md:w-32 border rounded px-2 py-1 text-xs">
                                         <button @click="photos.splice(idx,1)" class="text-red-500 absolute right-0"><i class="ph ph-x"></i></button>
                                     </div>
-                                    <p class="text-[10px] text-gray-400 mt-1">支持本地图片名称，或网络图片的公开链接。</p>
+                                    <p class="text-[10px] text-gray-400 mt-1">支持本地图片名称，或网络图片的公开链接。在未来接入自动化脚本后，这里的内容会自动更新！</p>
                                 </div>
                             </div>
 
@@ -593,7 +623,8 @@
             photos: [
                 { url: '合影.jpg', desc: '初见的那天' },
                 { url: 'https://images.unsplash.com/photo-1506869640319-ce1a56065328?w=500&q=80', desc: '旅行记录' },
-                { url: 'https://images.unsplash.com/photo-1473496169904-658ba7c44d8a?w=500&q=80', desc: '光影瞬间' }
+                { url: 'https://images.unsplash.com/photo-1473496169904-658ba7c44d8a?w=500&q=80', desc: '光影瞬间' },
+                { url: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=500&q=80', desc: '山川湖海' }
             ],
             goals: [ { name: '欧洲10周年纪念游', target: 100000, current: 0 } ],
             dates: [
@@ -609,6 +640,7 @@
                 return {
                     auth: { isLoggedIn: false, inputPin: '', errorMsg: '' },
                     isMasked: false, showConfig: false, configTab: 'assets',
+                    currentSpace: 'wealth', // wealth 或 gallery
                     
                     salaryBank: '', salaryDay: 15, usdRate: 7.25,
                     loans: [], transfers: [], assets: [], stocks: [], equity: {}, goals: [], dates: [], photos: [],
