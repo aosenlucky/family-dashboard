@@ -2,7 +2,8 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 解除了 maximum-scale 限制，现在手机上可以双指放大缩小了 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>Aosen & 小悦的家庭小金库</title>
     
     <!-- Tailwind CSS -->
@@ -18,6 +19,9 @@
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
     <script>
+        // 【必看！安全配置】请在这里修改你们的专属固定密码，修改后只能用这个密码登录
+        const SYSTEM_PASSWORD = "0909"; 
+
         tailwind.config = {
             theme: {
                 extend: {
@@ -37,7 +41,6 @@
         .bg-image-layer { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-image: url('合影.jpg'); background-size: cover; background-position: center; filter: blur(12px) brightness(1.1); z-index: -2; transform: scale(1.05); }
         .bg-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(245, 245, 247, 0.65); z-index: -1; }
 
-        /* 磨砂玻璃卡片材质 */
         .glass-card { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.6); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04); }
         .glass-nav { background-color: rgba(255, 255, 255, 0.6); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); }
         
@@ -47,8 +50,12 @@
         input[type=number] { -moz-appearance: textfield; }
         [v-cloak] { display: none; }
         
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        /* 优雅的横向滚动条，方便手机端滑动查看拓扑图 */
+        .flow-scroll::-webkit-scrollbar { height: 6px; }
+        .flow-scroll::-webkit-scrollbar-track { background: rgba(255,255,255,0.3); border-radius: 10px; }
+        .flow-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 10px; }
+        .flow-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.4); }
+
         .modal-scroll::-webkit-scrollbar { width: 6px; }
         .modal-scroll::-webkit-scrollbar-track { background: transparent; }
         .modal-scroll::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
@@ -60,25 +67,23 @@
 
     <div id="app" v-cloak>
         
-        <!-- ================= 登录解锁界面 ================= -->
+        <!-- ================= 登录解锁界面 (硬编码密码验证) ================= -->
         <div v-if="!auth.isLoggedIn" class="fixed inset-0 z-[200] flex items-center justify-center backdrop-blur-xl bg-white/30">
             <div class="glass-card rounded-3xl p-8 w-80 text-center flex flex-col items-center shadow-2xl">
                 <div class="w-16 h-16 rounded-full bg-rose-500/90 text-white flex items-center justify-center mb-6 shadow-md">
-                    <i class="ph-fill ph-heart text-3xl"></i>
+                    <i class="ph-fill ph-lock-key text-3xl"></i>
                 </div>
-                <h2 class="text-xl font-semibold text-gray-800 mb-2">{{ auth.hasPinSet ? '欢迎回家' : '初始化安全锁' }}</h2>
-                <p class="text-xs text-gray-500 mb-6">
-                    {{ auth.hasPinSet ? '请输入您的专属财务密码' : '为了隐私安全，请为您的家庭账本设置一个访问密码（存于本机）。' }}
-                </p>
+                <h2 class="text-xl font-semibold text-gray-800 mb-2">欢迎回家</h2>
+                <p class="text-xs text-gray-500 mb-6">请输入你们的专属家庭密码以解锁大盘</p>
                 
-                <input v-model="auth.inputPin" type="password" placeholder="••••••" maxlength="6"
+                <input v-model="auth.inputPin" type="password" placeholder="••••" maxlength="8"
                        class="w-full text-center text-2xl tracking-widest bg-white/50 border border-white rounded-xl py-3 mb-4 focus:outline-none focus:ring-2 focus:ring-rose-400 text-gray-800"
                        @keyup.enter="handleLogin">
                 
                 <p v-if="auth.errorMsg" class="text-rose-500 text-xs mb-4">{{ auth.errorMsg }}</p>
 
                 <button @click="handleLogin" class="w-full bg-gray-800 text-white font-medium py-3 rounded-xl hover:bg-gray-700 transition-colors shadow-md">
-                    {{ auth.hasPinSet ? '解锁账本' : '设置密码并进入' }}
+                    解锁账本
                 </button>
             </div>
         </div>
@@ -91,15 +96,15 @@
                     <div class="flex items-center justify-between h-14">
                         <div class="flex items-center space-x-2 text-apple-text font-medium text-sm">
                             <i class="ph-fill ph-heart text-xl text-rose-500"></i>
-                            <span>Aosen & 小悦的账本</span>
+                            <span>Aosen & 小悦</span>
                         </div>
-                        <div class="flex items-center space-x-4 md:space-x-6 text-xs font-medium text-apple-text">
-                            <button @click="isMasked = !isMasked" class="flex items-center text-gray-600 hover:text-apple-blue transition-colors bg-white/50 px-3 py-1.5 rounded-full border border-white">
-                                <i class="ph text-lg mr-1" :class="isMasked ? 'ph-eye-closed' : 'ph-eye'"></i>
+                        <div class="flex items-center space-x-3 md:space-x-6 text-xs font-medium text-apple-text">
+                            <button @click="isMasked = !isMasked" class="flex items-center text-gray-600 hover:text-apple-blue transition-colors bg-white/50 px-2 py-1.5 rounded-full border border-white">
+                                <i class="ph text-lg md:mr-1" :class="isMasked ? 'ph-eye-closed' : 'ph-eye'"></i>
                                 <span class="hidden md:inline">{{ isMasked ? '显示金额' : '隐藏数字' }}</span>
                             </button>
                             <button @click="openConfig" class="flex items-center bg-gray-800 text-white hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors shadow-sm">
-                                <i class="ph ph-gear md:mr-1"></i> <span class="hidden md:inline">调整配置</span>
+                                <i class="ph ph-gear md:mr-1"></i> <span class="hidden md:inline">控制中心</span>
                             </button>
                         </div>
                     </div>
@@ -113,29 +118,36 @@
                 </h1>
                 <p class="text-gray-600 text-sm md:text-base max-w-2xl mx-auto font-light mb-4 leading-relaxed">
                     今天是 {{ currentYearMonth }}，生活不仅有眼前的房贷，更有未来的底气。<br>
-                    家庭大盘数据已全部同步。
+                    引擎已根据真实月供重新推演。
                 </p>
             </header>
 
-            <!-- 模块 1: 核心净资产看板 -->
+            <!-- 模块 1: 核心净资产看板 (修复响应式重叠问题) -->
             <section class="max-w-6xl mx-auto px-4 mb-12">
-                <div class="glass-card rounded-3xl p-8 flex flex-col items-center justify-center text-center shadow-lg border-2 border-white/80 relative overflow-hidden">
+                <div class="glass-card rounded-3xl p-6 md:p-8 flex flex-col items-center justify-center text-center shadow-lg border-2 border-white/80 relative overflow-hidden">
                     <div class="absolute -top-10 -right-10 w-32 h-32 bg-rose-100 rounded-full blur-3xl opacity-50"></div>
                     <div class="absolute -bottom-10 -left-10 w-32 h-32 bg-blue-100 rounded-full blur-3xl opacity-50"></div>
                     
                     <p class="text-sm text-gray-500 mb-2 font-medium flex items-center z-10"><i class="ph-fill ph-chart-line-up mr-1 text-rose-500"></i> 家庭实时净资产 (Net Worth)</p>
-                    <p class="text-4xl md:text-5xl font-bold tracking-tight text-gray-800 z-10 mb-6">{{ formatCurrency(netWorth) }}</p>
                     
-                    <div class="flex w-full max-w-2xl justify-between items-center text-sm bg-white/40 p-4 rounded-2xl z-10 border border-white/60 backdrop-blur-md">
-                        <div class="text-center w-1/3">
+                    <!-- 动态字体大小，防止屏幕过小导致重叠 -->
+                    <p class="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-gray-800 z-10 mb-6 px-2 break-all sm:break-normal">
+                        {{ formatCurrency(netWorth) }}
+                    </p>
+                    
+                    <!-- 极窄屏幕下会自动变为上下堆叠的布局 -->
+                    <div class="flex flex-col sm:flex-row w-full max-w-2xl justify-between items-center text-sm bg-white/40 p-4 rounded-2xl z-10 border border-white/60 backdrop-blur-md gap-4 sm:gap-0">
+                        <div class="text-center w-full sm:w-1/3">
                             <p class="text-xs text-gray-500 mb-1">总资产</p>
                             <p class="font-semibold text-green-600">{{ formatCurrency(totalAssets) }}</p>
                         </div>
-                        <div class="text-center w-1/3 border-l border-r border-gray-200/50">
+                        <div class="hidden sm:block w-px h-8 bg-gray-300/50"></div>
+                        <div class="text-center w-full sm:w-1/3 border-t border-b sm:border-t-0 sm:border-b-0 border-gray-200/50 py-2 sm:py-0">
                             <p class="text-xs text-gray-500 mb-1">总负债</p>
                             <p class="font-semibold text-rose-500">{{ formatCurrency(totalDebt) }}</p>
                         </div>
-                        <div class="text-center w-1/3">
+                        <div class="hidden sm:block w-px h-8 bg-gray-300/50"></div>
+                        <div class="text-center w-full sm:w-1/3">
                             <p class="text-xs text-gray-500 mb-1">资产负债率</p>
                             <p class="font-semibold text-gray-700">{{ debtRatio }}%</p>
                         </div>
@@ -193,11 +205,65 @@
                 </div>
             </section>
 
-            <!-- 网格布局 (心愿单 & 纪念日) -->
+            <!-- 贷款大盘 (精准展示本息) -->
+            <section id="overview" class="max-w-6xl mx-auto px-4 mb-16">
+                <h2 class="text-xl font-semibold mb-6 flex items-center"><i class="ph ph-notebook mr-2 text-apple-subtext"></i> 贷款与精准月供分解</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div v-for="loan in processedLoans" :key="loan.id" class="glass-card rounded-2xl p-5 hover:shadow-lg transition-shadow relative overflow-hidden">
+                        <div v-if="loan.isAutoCalc" class="absolute -right-6 top-4 bg-blue-500/10 text-blue-600 text-[10px] py-0.5 px-8 transform rotate-45 flex items-center font-medium backdrop-blur-sm">
+                            <i class="ph-fill ph-magic-wand mr-1"></i> 精准推演
+                        </div>
+                        <div class="flex items-center space-x-3 mb-4">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white shadow-sm" :class="loan.type === '房贷' ? 'bg-blue-500/90' : 'bg-orange-500/90'">
+                                <i :class="loan.type === '房贷' ? 'ph ph-house' : 'ph ph-credit-card'"></i>
+                            </div>
+                            <div>
+                                <p class="text-sm font-semibold text-gray-800">{{ loan.bank }}</p>
+                                <p class="text-[10px] text-gray-500">每月 {{ loan.day || '未定' }} 日还款 · 年化利率 {{ loan.rate }}%</p>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white/40 p-4 rounded-xl border border-white/60 space-y-3">
+                            <div class="flex justify-between items-center text-sm border-b border-gray-200/50 pb-2">
+                                <span class="text-gray-600 font-medium">总剩余本金</span>
+                                <span class="font-bold text-gray-800">{{ formatCurrency(loan.left) }}</span>
+                            </div>
+                            <div class="flex justify-between items-center text-sm">
+                                <span class="text-gray-600 font-medium">本月应还总额</span>
+                                <span class="font-bold text-rose-500">{{ formatCurrency(loan.monthly) }}</span>
+                            </div>
+                            
+                            <!-- 若是房贷，展示精准拆解 -->
+                            <div v-if="loan.isAutoCalc" class="bg-gray-50/50 rounded-lg p-2 flex justify-between text-xs text-gray-500 mt-2">
+                                <span>推演本金: {{ formatCurrency(loan.nextPrincipal) }}</span>
+                                <span>推演利息: {{ formatCurrency(loan.nextInterest) }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 资金流转图 (修复滚动与展示) -->
+            <section id="flow" class="max-w-6xl mx-auto px-4 mb-20">
+                <div class="flex justify-between items-end mb-4">
+                    <h2 class="text-xl font-semibold flex items-center"><i class="ph ph-git-branch mr-2 text-apple-subtext"></i> 资金自动流转拓扑</h2>
+                </div>
+                <!-- 手机端专属提示，并且添加了脉冲动画吸引注意力 -->
+                <div class="text-center text-[11px] text-gray-500 mb-3 md:hidden flex items-center justify-center bg-white/40 py-1.5 rounded-full border border-white/60">
+                    <i class="ph ph-arrows-out-line-horizontal mr-1 animate-pulse"></i> 在框内左右滑动或双指缩放查看
+                </div>
+                <!-- 改用 flow-scroll 以显示滚动条 -->
+                <div class="glass-card rounded-3xl p-6 md:p-10 overflow-x-auto border-white/60 flow-scroll relative">
+                    <div class="min-w-[800px] flex flex-col items-center justify-start pb-4">
+                        <flow-node :node="flowTree" :root-salary-day="rootSalaryDay" :is-masked="isMasked"></flow-node>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- 梦想与纪念日 -->
             <section class="max-w-6xl mx-auto px-4 mb-12 grid grid-cols-1 md:grid-cols-2 gap-6">
-                <!-- 梦想小金库 -->
                 <div class="glass-card rounded-3xl p-6">
-                    <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800"><i class="ph-fill ph-star mr-2 text-yellow-500"></i> 梦想小金库 (Sinking Funds)</h3>
+                    <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800"><i class="ph-fill ph-star mr-2 text-yellow-500"></i> 梦想小金库</h3>
                     <div class="space-y-5">
                         <div v-for="goal in goals" :key="goal.name" class="bg-white/40 p-4 rounded-2xl border border-white/60">
                             <div class="flex justify-between items-end mb-2">
@@ -217,7 +283,6 @@
                     </div>
                 </div>
 
-                <!-- 纪念日提醒 -->
                 <div class="glass-card rounded-3xl p-6">
                     <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800"><i class="ph-fill ph-calendar-heart mr-2 text-rose-400"></i> 家庭温馨日历</h3>
                     <div class="space-y-3 max-h-[250px] overflow-y-auto modal-scroll pr-2">
@@ -240,53 +305,17 @@
                 </div>
             </section>
 
-            <!-- 原始模块：负债大盘 & 资金自动轨迹 -->
-            <!-- 这部分为了避免篇幅过长，UI和上面相似。 -->
-            <section id="overview" class="max-w-6xl mx-auto px-4 mb-16">
-                <h2 class="text-xl font-semibold mb-6 flex items-center"><i class="ph ph-notebook mr-2 text-apple-subtext"></i> 贷款与每月固定账单</h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <div v-for="loan in processedLoans" :key="loan.id" class="glass-card rounded-2xl p-5 hover:shadow-lg transition-shadow relative overflow-hidden">
-                        <div v-if="loan.isAutoCalc" class="absolute -right-6 top-4 bg-blue-500/10 text-blue-600 text-[10px] py-0.5 px-8 transform rotate-45 flex items-center font-medium backdrop-blur-sm">
-                            <i class="ph-fill ph-magic-wand mr-1"></i> 推演
-                        </div>
-                        <div class="flex items-center space-x-3 mb-4">
-                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white shadow-sm" :class="loan.type === '房贷' ? 'bg-blue-500/90' : 'bg-orange-500/90'">
-                                <i :class="loan.type === '房贷' ? 'ph ph-house' : 'ph ph-credit-card'"></i>
-                            </div>
-                            <div>
-                                <p class="text-sm font-semibold text-gray-800">{{ loan.bank }}</p>
-                                <p class="text-[10px] text-gray-500">每月 {{ loan.day || '未定' }} 日 · 利率 {{ loan.rate }}%</p>
-                            </div>
-                        </div>
-                        <div class="space-y-3 bg-white/40 p-3 rounded-xl border border-white/60 text-sm">
-                            <div class="flex justify-between items-center"><span class="text-gray-600 text-xs">剩余本金</span><span class="font-medium text-gray-800">{{ formatCurrency(loan.left) }}</span></div>
-                            <div class="flex justify-between items-center"><span class="text-gray-600 text-xs">当月应还</span><span class="font-medium text-rose-500">{{ formatCurrency(loan.monthly) }}</span></div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 资金流转图 -->
-            <section id="flow" class="max-w-6xl mx-auto px-4 mb-20">
-                <h2 class="text-xl font-semibold mb-6 flex items-center"><i class="ph ph-git-branch mr-2 text-apple-subtext"></i> 资金自动流转拓扑</h2>
-                <div class="glass-card rounded-3xl p-6 md:p-10 overflow-x-auto no-scrollbar border-white/60">
-                    <div class="min-w-[800px] flex flex-col items-center justify-start pb-8">
-                        <flow-node :node="flowTree" :root-salary-day="rootSalaryDay" :is-masked="isMasked"></flow-node>
-                    </div>
-                </div>
-            </section>
-
             <!-- 页脚 -->
-            <footer class="border-t border-white/40 backdrop-blur-sm mt-10">
+            <footer class="border-t border-white/40 backdrop-blur-sm mt-10 pb-8">
                 <div class="max-w-6xl mx-auto px-4 py-8 flex flex-col items-center text-xs text-gray-500">
-                    <p>Aosen & 小悦的专属家庭面板。所有数据均加密存放于本机。</p>
-                    <button @click="resetData" class="mt-4 text-gray-400 hover:text-rose-400">重置系统</button>
+                    <p>Aosen & 小悦的专属家庭面板。Vercel 安全驱动。</p>
+                    <button @click="resetData" class="mt-4 text-gray-400 hover:text-rose-400 transition-colors">恢复出厂对账单</button>
                 </div>
             </footer>
 
-            <!-- ================= 配置模态框 (Tabs设计) ================= -->
+            <!-- ================= 配置模态框 ================= -->
             <div v-if="showConfig" class="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="showConfig = false"></div>
+                <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="showConfig = false"></div>
                 <div class="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col relative z-10 overflow-hidden">
                     
                     <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
@@ -295,13 +324,13 @@
                     </div>
                     
                     <!-- Tabs -->
-                    <div class="flex border-b border-gray-200 px-6 bg-gray-50/50">
-                        <button @click="configTab = 'assets'" :class="configTab === 'assets' ? 'border-apple-blue text-apple-blue' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-4 py-3 border-b-2 text-sm font-medium transition-colors">资产与股权</button>
-                        <button @click="configTab = 'loans'" :class="configTab === 'loans' ? 'border-apple-blue text-apple-blue' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-4 py-3 border-b-2 text-sm font-medium transition-colors">负债与转账</button>
-                        <button @click="configTab = 'life'" :class="configTab === 'life' ? 'border-apple-blue text-apple-blue' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-4 py-3 border-b-2 text-sm font-medium transition-colors">心愿与生活</button>
+                    <div class="flex overflow-x-auto no-scrollbar border-b border-gray-200 px-6 bg-gray-50/50">
+                        <button @click="configTab = 'assets'" :class="configTab === 'assets' ? 'border-apple-blue text-apple-blue' : 'border-transparent text-gray-500'" class="px-4 py-3 border-b-2 text-sm font-medium whitespace-nowrap">资产与股权</button>
+                        <button @click="configTab = 'loans'" :class="configTab === 'loans' ? 'border-apple-blue text-apple-blue' : 'border-transparent text-gray-500'" class="px-4 py-3 border-b-2 text-sm font-medium whitespace-nowrap">负债与转账</button>
+                        <button @click="configTab = 'life'" :class="configTab === 'life' ? 'border-apple-blue text-apple-blue' : 'border-transparent text-gray-500'" class="px-4 py-3 border-b-2 text-sm font-medium whitespace-nowrap">心愿与生活</button>
                     </div>
 
-                    <div class="flex-1 overflow-y-auto modal-scroll p-6 bg-gray-50">
+                    <div class="flex-1 overflow-y-auto modal-scroll p-4 md:p-6 bg-gray-50">
                         
                         <!-- TAB 1: 资产与股权 -->
                         <div v-if="configTab === 'assets'" class="space-y-6">
@@ -335,31 +364,27 @@
                             </div>
                         </div>
 
-                        <!-- TAB 2: 负债与转账 (保持原有精简结构) -->
+                        <!-- TAB 2: 负债与转账 (修复本息逻辑版本) -->
                         <div v-if="configTab === 'loans'" class="space-y-6">
-                             <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                                <h4 class="text-sm font-semibold mb-4 text-apple-blue flex items-center"><i class="ph ph-wallet mr-1"></i> 发薪大本营</h4>
-                                <div class="grid grid-cols-2 gap-4">
-                                    <div><label class="block text-xs text-gray-500 mb-1">工资卡</label><input v-model="salaryBank" type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"></div>
-                                    <div><label class="block text-xs text-gray-500 mb-1">发薪日</label><input v-model.number="salaryDay" type="number" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"></div>
-                                </div>
-                            </div>
                             <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                                <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-notebook mr-1"></i> 贷款清单</h4><button @click="addLoan" class="text-[10px] bg-gray-100 px-2 py-1 rounded">新增贷款</button></div>
+                                <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-notebook mr-1"></i> 贷款明细 (匹配银行月供)</h4><button @click="addLoan" class="text-[10px] bg-gray-100 px-2 py-1 rounded">新增贷款</button></div>
                                 <div class="space-y-3">
                                     <div v-for="(loan, idx) in loans" :key="loan.id" class="p-3 bg-gray-50 rounded-xl border border-gray-200 relative">
                                         <button @click="removeLoan(idx)" class="absolute right-2 top-2 text-red-500 text-xs"><i class="ph ph-trash"></i></button>
                                         <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
                                             <div><label class="text-[10px] text-gray-500">名称</label><input v-model="loan.bank" type="text" class="w-full border rounded px-1.5 py-1 text-xs"></div>
-                                            <div><label class="text-[10px] text-gray-500">类型</label><select v-model="loan.type" class="w-full border rounded px-1.5 py-1 text-xs bg-white"><option value="房贷">房贷(推演)</option><option value="消费贷">消费贷(手动)</option></select></div>
+                                            <div><label class="text-[10px] text-gray-500">类型</label><select v-model="loan.type" class="w-full border rounded px-1.5 py-1 text-xs bg-white"><option value="房贷">房贷(精准推演)</option><option value="消费贷">消费贷(手动)</option></select></div>
                                             <div><label class="text-[10px] text-gray-500">还款日</label><input v-model.number="loan.day" type="number" class="w-full border rounded px-1.5 py-1 text-xs"></div>
-                                            <div><label class="text-[10px] text-gray-500">利率%</label><input v-model.number="loan.rate" type="number" step="0.01" class="w-full border rounded px-1.5 py-1 text-xs"></div>
+                                            <div><label class="text-[10px] text-gray-500">年化利率%</label><input v-model.number="loan.rate" type="number" step="0.01" class="w-full border rounded px-1.5 py-1 text-xs"></div>
                                         </div>
-                                        <div v-if="loan.type === '房贷'" class="grid grid-cols-3 gap-2 border-t pt-2 mt-2 border-gray-200">
-                                            <div><label class="text-[10px] text-blue-500">基准年月</label><input v-model="loan.baseDate" type="text" placeholder="2026-06" class="w-full border border-blue-200 rounded px-1.5 py-1 text-xs"></div>
-                                            <div><label class="text-[10px] text-blue-500">基准本金</label><input v-model.number="loan.baseLeft" type="number" class="w-full border border-blue-200 rounded px-1.5 py-1 text-xs"></div>
-                                            <div><label class="text-[10px] text-blue-500">到期日</label><input v-model="loan.endDate" type="text" placeholder="2051-09-18" class="w-full border border-blue-200 rounded px-1.5 py-1 text-xs"></div>
+                                        
+                                        <!-- 房贷：需要填写基准月份、该月真实剩余本金、以及银行扣除的具体总月供 -->
+                                        <div v-if="loan.type === '房贷'" class="grid grid-cols-1 md:grid-cols-3 gap-2 border-t pt-2 mt-2 border-gray-200">
+                                            <div><label class="text-[10px] text-blue-500">数据快照年月</label><input v-model="loan.baseDate" type="text" placeholder="2026-05" class="w-full border border-blue-200 rounded px-1.5 py-1 text-xs"></div>
+                                            <div><label class="text-[10px] text-blue-500">该月剩余真实本金</label><input v-model.number="loan.baseLeft" type="number" class="w-full border border-blue-200 rounded px-1.5 py-1 text-xs"></div>
+                                            <div><label class="text-[10px] text-blue-600 font-bold">银行固定月供金额</label><input v-model.number="loan.baseMonthly" type="number" class="w-full border border-blue-400 bg-blue-50 rounded px-1.5 py-1 text-xs text-blue-800 font-semibold" title="填入银行App显示的真实月供"></div>
                                         </div>
+                                        
                                         <div v-else class="grid grid-cols-2 gap-2 border-t pt-2 mt-2 border-gray-200">
                                             <div><label class="text-[10px] text-orange-500">目前剩余</label><input v-model.number="loan.left" type="number" class="w-full border border-orange-200 rounded px-1.5 py-1 text-xs"></div>
                                             <div><label class="text-[10px] text-orange-500">每月月供</label><input v-model.number="loan.monthly" type="number" class="w-full border border-orange-200 rounded px-1.5 py-1 text-xs"></div>
@@ -369,15 +394,17 @@
                             </div>
                             <!-- 自动化转账配置 -->
                              <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                                <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-arrows-left-right mr-1"></i> 转账路线图</h4><button @click="addTransfer" class="text-[10px] bg-gray-100 px-2 py-1 rounded">添加线路</button></div>
+                                <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-arrows-left-right mr-1"></i> 自动转账拓扑线</h4><button @click="addTransfer" class="text-[10px] bg-gray-100 px-2 py-1 rounded">添加线路</button></div>
                                 <div class="space-y-2">
                                     <div v-for="(transfer, idx) in transfers" :key="idx" class="flex flex-wrap gap-2 items-center bg-gray-50 p-2 rounded-lg border border-gray-200 relative">
-                                        <input v-model="transfer.from" type="text" placeholder="转出" class="w-20 border rounded px-1 py-1 text-xs"><i class="ph ph-arrow-right text-gray-400"></i>
-                                        <input v-model="transfer.to" type="text" placeholder="转入" class="w-20 border rounded px-1 py-1 text-xs">
-                                        <input v-model.number="transfer.amount" type="number" placeholder="金额" class="w-20 border rounded px-1 py-1 text-xs text-blue-600">
-                                        <input v-model.number="transfer.day" type="number" placeholder="几号" class="w-12 border rounded px-1 py-1 text-xs text-center">
-                                        <input v-model="transfer.expire" type="text" placeholder="到期日" class="w-20 border rounded px-1 py-1 text-xs">
-                                        <button @click="removeTransfer(idx)" class="text-red-500"><i class="ph ph-x"></i></button>
+                                        <input v-model="transfer.from" type="text" placeholder="转出" class="w-[80px] border rounded px-1 py-1 text-xs"><i class="ph ph-arrow-right text-gray-400"></i>
+                                        <input v-model="transfer.to" type="text" placeholder="转入" class="w-[80px] border rounded px-1 py-1 text-xs">
+                                        <input v-model.number="transfer.amount" type="number" placeholder="金额" class="w-20 border rounded px-1 py-1 text-xs text-blue-600 font-medium">
+                                        <div class="flex items-center text-xs text-gray-500 w-16">
+                                            <input v-model.number="transfer.day" type="number" placeholder="日" class="w-8 border rounded px-1 py-1 text-center mr-1">日
+                                        </div>
+                                        <input v-model="transfer.expire" type="text" placeholder="到期日" class="w-24 border rounded px-1 py-1 text-[10px]">
+                                        <button @click="removeTransfer(idx)" class="text-red-500 absolute right-2"><i class="ph ph-x"></i></button>
                                     </div>
                                 </div>
                             </div>
@@ -388,11 +415,11 @@
                             <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-star mr-2 text-yellow-500"></i> 心愿单</h4><button @click="addGoal" class="text-[10px] bg-gray-100 px-2 py-1 rounded">加个心愿</button></div>
                                 <div class="space-y-3">
-                                    <div v-for="(goal, idx) in goals" :key="idx" class="flex gap-2">
-                                        <input v-model="goal.name" type="text" placeholder="心愿名称" class="flex-1 border rounded px-2 py-1 text-xs">
-                                        <input v-model.number="goal.target" type="number" placeholder="目标金额" class="w-24 border rounded px-2 py-1 text-xs">
-                                        <input v-model.number="goal.current" type="number" placeholder="已攒金额" class="w-24 border rounded px-2 py-1 text-xs text-apple-blue">
-                                        <button @click="goals.splice(idx,1)" class="text-red-500"><i class="ph ph-x"></i></button>
+                                    <div v-for="(goal, idx) in goals" :key="idx" class="flex flex-wrap md:flex-nowrap gap-2 items-center relative pr-6">
+                                        <input v-model="goal.name" type="text" placeholder="心愿名称" class="w-full md:flex-1 border rounded px-2 py-1 text-xs">
+                                        <input v-model.number="goal.target" type="number" placeholder="目标金额" class="w-[45%] md:w-24 border rounded px-2 py-1 text-xs">
+                                        <input v-model.number="goal.current" type="number" placeholder="已攒金额" class="w-[45%] md:w-24 border rounded px-2 py-1 text-xs text-apple-blue">
+                                        <button @click="goals.splice(idx,1)" class="text-red-500 absolute right-0"><i class="ph ph-x"></i></button>
                                     </div>
                                 </div>
                             </div>
@@ -400,15 +427,14 @@
                             <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-calendar-heart mr-2 text-rose-400"></i> 纪念日</h4><button @click="addDate" class="text-[10px] bg-gray-100 px-2 py-1 rounded">加日子</button></div>
                                 <div class="space-y-3">
-                                    <div v-for="(date, idx) in dates" :key="idx" class="flex gap-2">
-                                        <input v-model="date.name" type="text" placeholder="谁的生日/纪念日" class="flex-1 border rounded px-2 py-1 text-xs">
-                                        <input v-model="date.date" type="text" placeholder="YYYY-MM-DD" class="w-28 border rounded px-2 py-1 text-xs">
-                                        <select v-model="date.type" class="w-20 border rounded px-1 py-1 text-xs bg-white">
+                                    <div v-for="(date, idx) in dates" :key="idx" class="flex flex-wrap md:flex-nowrap gap-2 items-center relative pr-6">
+                                        <input v-model="date.name" type="text" placeholder="名字" class="w-full md:flex-1 border rounded px-2 py-1 text-xs">
+                                        <input v-model="date.date" type="text" placeholder="YYYY-MM-DD" class="w-[50%] md:w-28 border rounded px-2 py-1 text-xs">
+                                        <select v-model="date.type" class="w-[40%] md:w-20 border rounded px-1 py-1 text-xs bg-white">
                                             <option value="birthday">生日</option><option value="anniversary">纪念日</option>
                                         </select>
-                                        <button @click="dates.splice(idx,1)" class="text-red-500"><i class="ph ph-x"></i></button>
+                                        <button @click="dates.splice(idx,1)" class="text-red-500 absolute right-0"><i class="ph ph-x"></i></button>
                                     </div>
-                                    <p class="text-[10px] text-gray-400 mt-2">* 日期请严格按照 YYYY-MM-DD 格式填写</p>
                                 </div>
                             </div>
                         </div>
@@ -416,10 +442,10 @@
                     </div>
 
                     <div class="px-6 py-4 border-t border-gray-100 flex justify-between items-center bg-white">
-                        <button @click="logout" class="text-sm text-red-500 hover:text-red-700 transition-colors">锁定账本</button>
+                        <button @click="logout" class="text-sm text-red-500 hover:text-red-700 transition-colors"><i class="ph ph-lock mr-1"></i>锁定</button>
                         <div class="space-x-3">
                             <button @click="showConfig = false" class="px-4 py-2 text-sm text-gray-600">取消</button>
-                            <button @click="saveAndCloseConfig" class="px-6 py-2 text-sm bg-gray-800 text-white rounded-full hover:bg-gray-700 shadow-md">保存设置</button>
+                            <button @click="saveAndCloseConfig" class="px-6 py-2 text-sm bg-gray-800 text-white rounded-full hover:bg-gray-700 shadow-md">保存刷新</button>
                         </div>
                     </div>
                 </div>
@@ -433,18 +459,18 @@
             <div v-if="node.transfer" class="text-[10px] text-gray-700 my-2 bg-white/80 backdrop-blur-sm px-3 py-1 rounded-lg shadow-sm border border-white/60 flex flex-col items-center relative z-10 transition-transform hover:scale-105">
                 <span class="text-apple-blue font-medium">{{node.transfer.day}}日 转入</span>
                 <span class="font-bold text-sm my-0.5">{{formatCurrencyInt(node.transfer.amount)}}</span>
-                <span v-if="node.transfer.expire" class="text-[9px] text-gray-400 border-t border-gray-200 pt-0.5 w-full text-center mt-0.5">到期: {{node.transfer.expire}}</span>
+                <span v-if="node.transfer.expire" class="text-[9px] text-gray-500 border-t border-gray-200 pt-0.5 w-full text-center mt-0.5">到期: {{node.transfer.expire}}</span>
             </div>
             <div v-if="node.transfer" class="w-px h-6 bg-gray-400 -mt-2 z-0"></div>
             
-            <div class="bg-white/70 backdrop-blur-xl border border-white px-5 py-3 rounded-2xl shadow-sm text-center relative min-w-[140px] transition-all hover:shadow-md z-10" :class="{'border-b-4 border-b-apple-blue bg-white/90': node.isRoot}">
+            <div class="bg-white/80 backdrop-blur-xl border border-white px-5 py-3 rounded-2xl shadow-sm text-center relative min-w-[140px] transition-all hover:shadow-md z-10" :class="{'border-b-4 border-b-apple-blue bg-white/95': node.isRoot}">
                 <div class="font-semibold text-sm text-gray-800 flex justify-center items-center">
                     <i v-if="node.isRoot" class="ph-fill ph-bank mr-1 text-apple-blue"></i>{{ node.name }}
                 </div>
                 <div v-if="node.isRoot" class="text-[10px] text-blue-500 mt-0.5 font-medium">发薪日: {{rootSalaryDay}}日</div>
                 
                 <div v-if="node.loans && node.loans.length" class="mt-3 pt-3 border-t border-gray-200/50 flex flex-col gap-1.5">
-                    <div v-for="loan in node.loans" class="text-[10px] text-gray-600 bg-white/50 rounded px-2 py-1 flex justify-between items-center shadow-sm">
+                    <div v-for="loan in node.loans" class="text-[10px] text-gray-600 bg-white/60 rounded px-2 py-1 flex justify-between items-center shadow-sm">
                         <span>{{loan.type}}({{loan.day}}日)</span>
                         <span class="text-rose-500 font-semibold ml-2">{{formatCurrencyInt(loan.monthly)}}</span>
                     </div>
@@ -465,13 +491,13 @@
     <script>
         const { createApp } = Vue
 
-        // 包含所有你提供的数据的初始模板
+        // 默认数据：已根据真实数学推演修复了中信和浦发的基准本金与基准月供
         const defaultData = {
             salaryBank: '工商银行',
             salaryDay: 15,
             loans: [
-                { id: 1, type: '房贷', bank: '中信银行', isAutoCalc: true, baseLeft: 1786921, endDate: '2051-09-18', baseDate: '2026-06', rate: 3.2, day: 20, monthly: 0, left: 0 },
-                { id: 2, type: '房贷', bank: '浦发银行', isAutoCalc: true, baseLeft: 4625693.97, endDate: '2054-11-06', baseDate: '2026-06', rate: 2.8, day: 10, monthly: 0, left: 0 },
+                { id: 1, type: '房贷', bank: '中信银行', isAutoCalc: true, baseLeft: 1786921.68, baseMonthly: 8891, baseDate: '2026-04', rate: 3.2, day: 20, monthly: 0, left: 0 },
+                { id: 2, type: '房贷', bank: '浦发银行', isAutoCalc: true, baseLeft: 4625693.97, baseMonthly: 19647.28, baseDate: '2026-05', rate: 2.8, day: 10, monthly: 0, left: 0 },
                 { id: 3, type: '消费贷', bank: '北京银行', isAutoCalc: false, left: 200000, monthly: 500, day: 2, rate: 3.0 },
                 { id: 4, type: '消费贷', bank: '南京银行', isAutoCalc: false, left: 500000, monthly: 1250, day: 20, rate: 3.0 }
             ],
@@ -504,10 +530,10 @@
             data() {
                 return {
                     // 安全锁状态
-                    auth: { isLoggedIn: false, hasPinSet: false, inputPin: '', errorMsg: '' },
+                    auth: { isLoggedIn: false, inputPin: '', errorMsg: '' },
                     isMasked: false, 
                     showConfig: false,
-                    configTab: 'assets', // loans, assets, life
+                    configTab: 'assets', 
                     
                     // 核心数据
                     salaryBank: '', salaryDay: 15,
@@ -524,7 +550,7 @@
             computed: {
                 currentYearMonth() { return this.currentDateStr; },
                 rootSalaryDay() { return this.salaryDay; },
-                // === 房贷核心推演引擎 ===
+                // === 全新精准推演引擎 ===
                 processedLoans() {
                     const now = new Date();
                     const currentYear = now.getFullYear();
@@ -533,30 +559,36 @@
 
                     return this.loans.map(loan => {
                         let pLoan = { ...loan };
-                        if (loan.isAutoCalc && loan.endDate && loan.baseDate) {
+                        // 采用真实月供计算，不再通过公式强行折算，杜绝分歧
+                        if (loan.isAutoCalc && loan.baseDate) {
                             const [baseY, baseM] = loan.baseDate.split('-').map(Number);
-                            const endY = parseInt(loan.endDate.substring(0,4));
-                            const endM = parseInt(loan.endDate.substring(5,7));
-                            const totalMonths = (endY - baseY) * 12 + (endM - baseM);
-                            const r = (loan.rate / 100) / 12;
-                            
-                            let monthly = 0;
-                            if(r > 0 && totalMonths > 0) monthly = loan.baseLeft * (r * Math.pow(1 + r, totalMonths)) / (Math.pow(1 + r, totalMonths) - 1);
+                            const r = (loan.rate / 100) / 12; // 月利率
                             
                             let elapsed = (currentYear - baseY) * 12 + (currentMonth - (baseM - 1));
+                            // 如果还未到本月还款日，则退回一个月
                             if (currentDate < loan.day) elapsed -= 1; 
                             if (elapsed < 0) elapsed = 0;
                             
                             let currentLeft = loan.baseLeft;
+                            let fixedMonthly = loan.baseMonthly || 0; // 银行规定月供
+                            
+                            // 逐月模拟银行的扣除行为
                             for(let i = 0; i < elapsed; i++) {
-                                currentLeft -= (monthly - currentLeft * r);
+                                const interest = currentLeft * r;
+                                const principal = fixedMonthly - interest;
+                                currentLeft -= principal;
                             }
-                            pLoan.monthly = monthly; pLoan.left = currentLeft;
+                            
+                            pLoan.left = currentLeft;
+                            pLoan.monthly = fixedMonthly;
+                            
+                            // 计算即将到来的下一次付款的本息明细，展示在UI上
+                            pLoan.nextInterest = currentLeft * r;
+                            pLoan.nextPrincipal = fixedMonthly - pLoan.nextInterest;
                         }
                         return pLoan;
                     });
                 },
-                // === 资产负债计算 ===
                 totalAssets() { return Object.values(this.assets).reduce((a, b) => Number(a) + Number(b), 0); },
                 totalDebt() { return this.processedLoans.reduce((sum, loan) => sum + Number(loan.left || 0), 0); },
                 netWorth() { return this.totalAssets - this.totalDebt; },
@@ -566,7 +598,6 @@
                 coverageRate() { return this.totalMonthly === 0 ? 100 : Math.min(100, Math.round((this.totalAutoTransfers / this.totalMonthly) * 100)); },
                 totalDividends() { return this.equity.members.reduce((sum, m) => sum + (m.shares * this.equity.rate), 0); },
                 
-                // === 拓扑图生成 ===
                 flowTree() {
                     const buildTree = (bankName) => {
                         return {
@@ -578,7 +609,6 @@
                     return buildTree(this.salaryBank);
                 },
 
-                // === 纪念日倒数日历算法 ===
                 processedDates() {
                     const today = new Date();
                     today.setHours(0,0,0,0);
@@ -587,11 +617,9 @@
                     let sorted = this.dates.map(item => {
                         const [y, m, d] = item.date.split('-').map(Number);
                         const birthYear = y;
-                        // 寻找下一次纪念日
                         let nextDate = new Date(currentYear, m - 1, d);
                         let yearsPassed = currentYear - birthYear;
                         
-                        // 如果今年的纪念日已经过了，就算明年的
                         if (nextDate.getTime() < today.getTime()) {
                             nextDate.setFullYear(currentYear + 1);
                             yearsPassed += 1;
@@ -599,44 +627,37 @@
                         
                         const diffTime = Math.abs(nextDate - today);
                         const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                        
                         const formattedDate = `${nextDate.getMonth()+1}月${nextDate.getDate()}日`;
 
                         return { ...item, daysLeft, nextDateStr: formattedDate, yearsPassed, isMarriage: item.type === 'anniversary' };
                     });
-                    // 按即将来临排序
                     return sorted.sort((a, b) => a.daysLeft - b.daysLeft);
                 }
             },
             methods: {
-                // === 安全登录控制 ===
+                // === 安全登录控制 (硬编码版) ===
                 checkAuthStatus() {
-                    const savedPin = localStorage.getItem('family_pin_code');
-                    if (savedPin) { this.auth.hasPinSet = true; }
+                    const savedStatus = sessionStorage.getItem('family_auth_token');
+                    // 只要当前会话有效或者输入密码正确即可
+                    if (savedStatus === SYSTEM_PASSWORD) { this.auth.isLoggedIn = true; }
                 },
                 handleLogin() {
-                    if (this.auth.inputPin.length < 4) { this.auth.errorMsg = '密码太短啦'; return; }
-                    
-                    if (!this.auth.hasPinSet) {
-                        localStorage.setItem('family_pin_code', this.auth.inputPin);
+                    if (this.auth.inputPin === SYSTEM_PASSWORD) {
+                        // 使用 sessionStorage，关掉浏览器标签就需要重输密码，更安全
+                        sessionStorage.setItem('family_auth_token', SYSTEM_PASSWORD);
                         this.auth.isLoggedIn = true;
+                        this.auth.errorMsg = '';
                     } else {
-                        const savedPin = localStorage.getItem('family_pin_code');
-                        if (this.auth.inputPin === savedPin) {
-                            this.auth.isLoggedIn = true;
-                            this.auth.errorMsg = '';
-                        } else {
-                            this.auth.errorMsg = '密码不太对哦，再试试？';
-                        }
+                        this.auth.errorMsg = '密码好像不对哦，再试一次吧';
                     }
                 },
                 logout() {
                     this.auth.isLoggedIn = false;
                     this.auth.inputPin = '';
                     this.showConfig = false;
+                    sessionStorage.removeItem('family_auth_token');
                 },
 
-                // === 格式化 ===
                 formatCurrency(value) {
                     if (this.isMasked) return '¥ ***';
                     return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
@@ -646,19 +667,20 @@
                     return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(value);
                 },
                 
-                // === 数据持久化与增删 ===
                 loadConfig() {
-                    const saved = localStorage.getItem('cashflow_family_v4');
+                    const saved = localStorage.getItem('cashflow_family_v5');
                     const data = saved ? JSON.parse(saved) : defaultData;
                     this.salaryBank = data.salaryBank; this.salaryDay = data.salaryDay;
-                    this.loans = data.loans || []; this.transfers = data.transfers || [];
+                    // 为了向下兼容旧数据结构，补全 baseMonthly
+                    this.loans = (data.loans || []).map(l => ({...l, baseMonthly: l.baseMonthly || l.monthly})); 
+                    this.transfers = data.transfers || [];
                     this.assets = data.assets || defaultData.assets;
                     this.equity = data.equity || defaultData.equity;
                     this.goals = data.goals || defaultData.goals;
                     this.dates = data.dates || defaultData.dates;
                 },
                 saveConfig() {
-                    localStorage.setItem('cashflow_family_v4', JSON.stringify({
+                    localStorage.setItem('cashflow_family_v5', JSON.stringify({
                         salaryBank: this.salaryBank, salaryDay: this.salaryDay,
                         loans: this.loans, transfers: this.transfers,
                         assets: this.assets, equity: this.equity, goals: this.goals, dates: this.dates
@@ -667,9 +689,8 @@
                 openConfig() { this.showConfig = true; this.configTab = 'assets'; },
                 saveAndCloseConfig() { this.saveConfig(); this.showConfig = false; },
                 resetData() {
-                    if(confirm('警告：确定要清除所有数据，恢复初始模板吗？密码也会被重置！')) {
-                        localStorage.removeItem('cashflow_family_v4');
-                        localStorage.removeItem('family_pin_code');
+                    if(confirm('警告：确定要清除您修改过的所有数据，恢复初始模板吗？')) {
+                        localStorage.removeItem('cashflow_family_v5');
                         window.location.reload();
                     }
                 },
