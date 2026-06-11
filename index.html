@@ -413,7 +413,7 @@
                         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8">
                             <div v-for="(photo, idx) in photos" :key="idx" class="photo-card glass-card p-3 rounded-2xl relative group cursor-pointer" :style="{'transform': `rotate(${idx%2===0?-1.5:1.5}deg)`}">
                                 <div class="aspect-square md:aspect-[4/5] bg-gray-200/50 rounded-xl overflow-hidden relative shadow-inner border border-white/50">
-                                    <img :src="photo.url" alt="家庭回忆" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" onerror="this.src='https://images.unsplash.com/photo-1511895426328-dc8714191300?w=500&q=80'">
+                                   <img :src="photo.url.includes('myhuaweicloud.com') ? photo.url + '?x-image-process=image/resize,w_800/quality,q_80' : photo.url" alt="家庭回忆" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" onerror="this.src='[https://images.unsplash.com/photo-1511895426328-dc8714191300?w=500&q=80](https://images.unsplash.com/photo-1511895426328-dc8714191300?w=500&q=80)'">
                                 </div>
                                 <div class="text-center mt-4 mb-2">
                                     <p class="text-sm font-medium text-gray-800 truncate px-2">{{ photo.desc || '美好的瞬间' }}</p>
