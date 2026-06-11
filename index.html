@@ -14,8 +14,9 @@
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
     <script>
-        // 注意：为保证极致安全，密码和 JSONBin 密钥已全部转移至 Vercel 云端环境变量。
+        // 注意：为保证极致安全，真实密码和 JSONBin 密钥已全部转移至 Vercel 云端环境变量。
         // 前端代码不再暴露任何核心机密！
+        
         tailwind.config = {
             theme: {
                 extend: {
@@ -63,7 +64,7 @@
                 <h2 class="text-xl font-semibold text-gray-800 mb-2">欢迎回家</h2>
                 <p class="text-xs text-gray-500 mb-6">请输入专属密码解锁家庭空间</p>
                 <input v-model="auth.inputPin" type="password" placeholder="••••" maxlength="8" class="w-full text-center text-2xl tracking-widest bg-white/50 border border-white rounded-xl py-3 mb-4 focus:outline-none focus:ring-2 focus:ring-rose-400 text-gray-800" @keyup.enter="handleLogin">
-                <p v-if="auth.errorMsg" class="text-rose-500 text-xs mb-4">{{ auth.errorMsg }}</p>
+                <p v-if="auth.errorMsg" class="text-rose-500 text-xs mb-4 font-medium" v-html="auth.errorMsg"></p>
                 <button @click="handleLogin" :disabled="auth.isAuthenticating" class="w-full bg-gray-800 text-white font-medium py-3 rounded-xl hover:bg-gray-700 shadow-md transition-colors disabled:bg-gray-400">
                     {{ auth.isAuthenticating ? '验证中...' : '推开家门' }}
                 </button>
@@ -80,7 +81,7 @@
                         <i class="ph-fill ph-heart text-xl text-rose-500"></i><span class="hidden sm:inline">Aosen & 小悦</span>
                     </div>
                     
-                    <!-- 空间切换器 (Apple 风格居中 Toggle) -->
+                    <!-- 空间切换器 -->
                     <div class="absolute left-1/2 transform -translate-x-1/2 flex items-center bg-white/40 p-1 rounded-full border border-white/60 shadow-sm z-10">
                         <button @click="currentSpace = 'wealth'" :class="currentSpace === 'wealth' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-800'" class="px-3 sm:px-5 py-1 rounded-full text-[10px] sm:text-xs font-medium transition-all">财富看板</button>
                         <button @click="currentSpace = 'gallery'" :class="currentSpace === 'gallery' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-800'" class="px-3 sm:px-5 py-1 rounded-full text-[10px] sm:text-xs font-medium transition-all">光影画廊</button>
@@ -780,6 +781,7 @@
                     } 
                 },
                 
+                // 本地智能自适应降级：拦截 404
                 async handleLogin() {
                     if (!this.auth.inputPin) {
                         this.auth.errorMsg = '请输入密码';
@@ -805,12 +807,25 @@
                                 this.applyData(defaultData);
                             }
                             if(this.stocks && this.stocks.length > 0) this.fetchStocks();
+                        } else if (res.status === 404) {
+                            // API不存在（本地或Canvas环境），触发降级
+                            throw new Error('LocalMode');
                         } else {
                             this.auth.errorMsg = '密码好像不对哦，家门紧闭 🔒';
                         }
                     } catch(e) {
-                        this.auth.errorMsg = '网络错误或尚未配置 Vercel API';
-                        console.error("Login Error:", e);
+                        // 降级到本地离线模式：仅使用假密码 '0000' 供右侧预览测试使用
+                        if (this.auth.inputPin === '0000') {
+                            sessionStorage.setItem('family_auth_token', 'local_dummy_token');
+                            this.auth.isLoggedIn = true;
+                            const saved = localStorage.getItem('cashflow_family_v8');
+                            if (saved) this.applyData(JSON.parse(saved));
+                            else this.applyData(defaultData);
+                            if(this.stocks && this.stocks.length > 0) this.fetchStocks();
+                            this.syncStatus = '本地预览模式 (未连接云端)';
+                        } else {
+                            this.auth.errorMsg = '本地预览密码错误 🔒 (提示: 预览请输 0000)';
+                        }
                     } finally {
                         this.auth.isAuthenticating = false;
                     }
@@ -861,10 +876,14 @@
                                 } else {
                                     this.syncStatus = '初始化云盒子...'; await this.saveConfig();
                                 }
+                            } else if (res.status === 404) {
+                                throw new Error('LocalMode');
                             } else if (res.status === 401) {
                                 this.logout();
                             }
-                        } catch (err) { this.syncStatus = '离线模式(或API尚未生效)'; } 
+                        } catch (err) { 
+                            this.syncStatus = '本地预览模式 (离线)'; 
+                        } 
                         finally { setTimeout(() => this.syncStatus = '', 3000); this.isSyncing = false; }
                     }
                 },
@@ -888,10 +907,14 @@
                             });
                             if(res.ok) {
                                 this.syncStatus = '保存成功！';
+                            } else if (res.status === 404) {
+                                throw new Error('LocalMode');
                             } else {
                                 this.syncStatus = '权限验证失败';
                             }
-                        } catch(e) { this.syncStatus = '网络异常，仅存本地'; } 
+                        } catch(e) { 
+                            this.syncStatus = '已存本地 (预览模式无云端)'; 
+                        } 
                         finally { setTimeout(() => this.syncStatus = '', 3000); this.isSyncing = false; }
                     }
                 },
