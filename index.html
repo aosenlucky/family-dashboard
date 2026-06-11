@@ -14,13 +14,8 @@
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
     <script>
-        // 【安全配置】您的专属固定密码
-        const SYSTEM_PASSWORD = "0909"; 
-
-        // 【云端同步配置】将你在 JSONBin 获取的凭证填在这里，实现两口子数据同步
-        const JSONBIN_API_KEY = "$2a$10$SCPfUWFz0t.fUqeNkRXirO/yDDP09//NlOnz.ZT6pTcjCuTwfa8pC"; 
-        const JSONBIN_BIN_ID = "6a29ea9bf5f4af5e29db6eed";
-
+        // 注意：为保证极致安全，密码和 JSONBin 密钥已全部转移至 Vercel 云端环境变量。
+        // 前端代码不再暴露任何核心机密！
         tailwind.config = {
             theme: {
                 extend: {
@@ -69,7 +64,9 @@
                 <p class="text-xs text-gray-500 mb-6">请输入专属密码解锁家庭空间</p>
                 <input v-model="auth.inputPin" type="password" placeholder="••••" maxlength="8" class="w-full text-center text-2xl tracking-widest bg-white/50 border border-white rounded-xl py-3 mb-4 focus:outline-none focus:ring-2 focus:ring-rose-400 text-gray-800" @keyup.enter="handleLogin">
                 <p v-if="auth.errorMsg" class="text-rose-500 text-xs mb-4">{{ auth.errorMsg }}</p>
-                <button @click="handleLogin" class="w-full bg-gray-800 text-white font-medium py-3 rounded-xl hover:bg-gray-700 shadow-md transition-colors">推开家门</button>
+                <button @click="handleLogin" :disabled="auth.isAuthenticating" class="w-full bg-gray-800 text-white font-medium py-3 rounded-xl hover:bg-gray-700 shadow-md transition-colors disabled:bg-gray-400">
+                    {{ auth.isAuthenticating ? '验证中...' : '推开家门' }}
+                </button>
             </div>
         </div>
 
@@ -374,7 +371,7 @@
             <!-- 页脚 -->
             <footer class="border-t border-white/40 backdrop-blur-sm pb-12 pt-8">
                 <div class="max-w-6xl mx-auto px-4 flex flex-col items-center text-xs text-gray-500">
-                    <p>Aosen & 小悦的家庭空间。Vercel 云端驱动 & 本地加密。</p>
+                    <p>Aosen & 小悦的家庭空间。Vercel 云端驱动 & 银行级加密路由。</p>
                     <button @click="resetData" class="mt-4 text-gray-400 hover:text-rose-400 transition-colors">⚠️ 恢复初始模板数据</button>
                 </div>
             </footer>
@@ -637,9 +634,9 @@
         const app = createApp({
             data() {
                 return {
-                    auth: { isLoggedIn: false, inputPin: '', errorMsg: '' },
-                    isMasked: false, showConfig: false, configTab: 'assets',
-                    currentSpace: 'wealth', // wealth 或 gallery
+                    auth: { isLoggedIn: false, inputPin: '', errorMsg: '', isAuthenticating: false },
+                    isMasked: true, showConfig: false, configTab: 'assets',
+                    currentSpace: 'wealth',
                     
                     salaryBank: '', salaryDay: 15, usdRate: 7.25,
                     loans: [], transfers: [], assets: [], stocks: [], equity: {}, goals: [], dates: [], photos: [],
@@ -660,7 +657,7 @@
                 ];
                 this.dailyQuote = quotes[now.getDate() % quotes.length];
                 
-                if(this.stocks && this.stocks.length > 0) this.fetchStocks();
+                if(this.stocks && this.stocks.length > 0 && this.auth.isLoggedIn) this.fetchStocks();
             },
             computed: {
                 rootSalaryDay() { return this.salaryDay; },
@@ -755,7 +752,7 @@
                             const symbol = stock.symbol.toLowerCase();
                             const query = market === 'US' ? `gb_${symbol}` : symbol; 
                             
-                            await new Promise((resolve, reject) => {
+                            await new Promise((resolve) => {
                                 const script = document.createElement('script');
                                 script.src = `https://hq.sinajs.cn/list=${query}`;
                                 window[`hq_str_${query}`] = "";
@@ -777,14 +774,54 @@
                     setTimeout(() => { this.isFetchingStocks = false; }, 800);
                 },
 
-                checkAuthStatus() { if (sessionStorage.getItem('family_auth_token') === SYSTEM_PASSWORD) { this.auth.isLoggedIn = true; } },
-                handleLogin() {
-                    if (this.auth.inputPin === SYSTEM_PASSWORD) {
-                        sessionStorage.setItem('family_auth_token', SYSTEM_PASSWORD);
-                        this.auth.isLoggedIn = true; this.auth.errorMsg = '';
-                    } else { this.auth.errorMsg = '密码好像不对哦，再试一下'; }
+                checkAuthStatus() { 
+                    if (sessionStorage.getItem('family_auth_token')) { 
+                        this.auth.isLoggedIn = true; 
+                    } 
                 },
-                logout() { this.auth.isLoggedIn = false; this.auth.inputPin = ''; this.showConfig = false; sessionStorage.removeItem('family_auth_token'); },
+                
+                async handleLogin() {
+                    if (!this.auth.inputPin) {
+                        this.auth.errorMsg = '请输入密码';
+                        return;
+                    }
+                    this.auth.isAuthenticating = true;
+                    this.auth.errorMsg = '';
+                    
+                    try {
+                        const res = await fetch('/api/sync', {
+                            headers: { 'Authorization': this.auth.inputPin }
+                        });
+                        
+                        if (res.ok) {
+                            sessionStorage.setItem('family_auth_token', this.auth.inputPin);
+                            this.auth.isLoggedIn = true; 
+                            
+                            const json = await res.json();
+                            if(json && Object.keys(json).length > 0 && json.salaryBank) {
+                                this.applyData(json);
+                                localStorage.setItem('cashflow_family_v8', JSON.stringify(json));
+                            } else {
+                                this.applyData(defaultData);
+                            }
+                            if(this.stocks && this.stocks.length > 0) this.fetchStocks();
+                        } else {
+                            this.auth.errorMsg = '密码好像不对哦，家门紧闭 🔒';
+                        }
+                    } catch(e) {
+                        this.auth.errorMsg = '网络错误或尚未配置 Vercel API';
+                        console.error("Login Error:", e);
+                    } finally {
+                        this.auth.isAuthenticating = false;
+                    }
+                },
+                
+                logout() { 
+                    this.auth.isLoggedIn = false; 
+                    this.auth.inputPin = ''; 
+                    this.showConfig = false; 
+                    sessionStorage.removeItem('family_auth_token'); 
+                },
 
                 formatCurrency(value) { return this.isMasked ? '¥ ***' : new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value); },
                 formatCurrencyInt(value) { return this.isMasked ? '¥ ***' : new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(value); },
@@ -810,22 +847,25 @@
                     const saved = localStorage.getItem('cashflow_family_v8');
                     this.applyData(saved ? JSON.parse(saved) : defaultData);
                     
-                    if (JSONBIN_API_KEY && JSONBIN_BIN_ID) {
+                    const token = sessionStorage.getItem('family_auth_token');
+                    if (token) {
                         this.isSyncing = true; this.syncStatus = '云端同步中...';
                         try {
-                            const res = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, { headers: { 'X-Master-Key': JSONBIN_API_KEY } });
+                            const res = await fetch('/api/sync', { headers: { 'Authorization': token } });
                             if (res.ok) {
                                 const json = await res.json();
-                                if (json.record && json.record.salaryBank) {
-                                    this.applyData(json.record);
-                                    localStorage.setItem('cashflow_family_v8', JSON.stringify(json.record));
+                                if (json && json.salaryBank) {
+                                    this.applyData(json);
+                                    localStorage.setItem('cashflow_family_v8', JSON.stringify(json));
                                     this.syncStatus = '已与云端对齐';
                                 } else {
                                     this.syncStatus = '初始化云盒子...'; await this.saveConfig();
                                 }
+                            } else if (res.status === 401) {
+                                this.logout();
                             }
-                        } catch (err) { this.syncStatus = '离线模式'; } 
-                        finally { setTimeout(() => this.syncStatus = '', 2000); this.isSyncing = false; }
+                        } catch (err) { this.syncStatus = '离线模式(或API尚未生效)'; } 
+                        finally { setTimeout(() => this.syncStatus = '', 3000); this.isSyncing = false; }
                     }
                 },
                 
@@ -836,16 +876,23 @@
                         equity: this.equity, goals: this.goals, dates: this.dates, photos: this.photos
                     };
                     localStorage.setItem('cashflow_family_v8', JSON.stringify(dataToSave));
-                    if (JSONBIN_API_KEY && JSONBIN_BIN_ID) {
+                    
+                    const token = sessionStorage.getItem('family_auth_token');
+                    if (token) {
                         this.isSyncing = true; this.syncStatus = '正在保存至云端...';
                         try {
-                            await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`, {
-                                method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_API_KEY },
+                            const res = await fetch('/api/sync', {
+                                method: 'POST', 
+                                headers: { 'Content-Type': 'application/json', 'Authorization': token },
                                 body: JSON.stringify(dataToSave)
                             });
-                            this.syncStatus = '保存成功！';
+                            if(res.ok) {
+                                this.syncStatus = '保存成功！';
+                            } else {
+                                this.syncStatus = '权限验证失败';
+                            }
                         } catch(e) { this.syncStatus = '网络异常，仅存本地'; } 
-                        finally { setTimeout(() => this.syncStatus = '', 2000); this.isSyncing = false; }
+                        finally { setTimeout(() => this.syncStatus = '', 3000); this.isSyncing = false; }
                     }
                 },
                 openConfig() { this.showConfig = true; this.configTab = 'assets'; },
