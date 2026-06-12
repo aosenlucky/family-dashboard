@@ -2,6 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
+    <meta name="referrer" content="never">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>Aosen & 小悦的家庭空间</title>
     
@@ -13,10 +14,6 @@
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
     <script>
-        // 注意：为保证极致安全，真实密码和 JSONBin 密钥已全部转移至 Vercel 云端环境变量。
-        // 为了方便本地预览，保留一个基础密码用于“本地离线模式”的自适应降级验证。
-        const SYSTEM_PASSWORD = "0909"; 
-
         tailwind.config = {
             theme: {
                 extend: {
@@ -31,7 +28,13 @@
 
     <style>
         body { margin: 0; color: #1d1d1f; -webkit-font-smoothing: antialiased; position: relative; min-height: 100vh; }
-        .bg-image-layer { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-image: url('合影.jpg'); background-size: cover; background-position: center; filter: blur(12px) brightness(1.1); z-index: -2; transform: scale(1.05); }
+        /* 渐变色兜底，防止图片丢失时白屏 */
+        .bg-image-layer { 
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; 
+            background: linear-gradient(135deg, #e0f2fe 0%, #fae8ff 100%);
+            background-image: url('合影.jpg'); background-size: cover; background-position: center; 
+            filter: blur(12px) brightness(1.1); z-index: -2; transform: scale(1.05); 
+        }
         .bg-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(245, 245, 247, 0.75); z-index: -1; }
         .glass-card { background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.8); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04); }
         .glass-nav { background-color: rgba(255, 255, 255, 0.6); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); }
@@ -47,11 +50,11 @@
         .photo-card { transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); }
         .photo-card:hover { transform: translateY(-5px) scale(1.02) rotate(1deg); box-shadow: 0 15px 30px rgba(0,0,0,0.1); z-index: 10; }
         
-        /* 页面切换动画 */
         .fade-enter-active, .fade-leave-active { transition: opacity 0.4s ease; }
         .fade-enter-from, .fade-leave-to { opacity: 0; }
+        .toast-enter-active, .toast-leave-active { transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); }
+        .toast-enter-from, .toast-leave-to { opacity: 0; transform: translate(-50%, -100%) scale(0.9); }
         
-        /* 自定义 Checkbox */
         .apple-checkbox { appearance: none; width: 1.25rem; height: 1.25rem; border: 1px solid #d1d5db; border-radius: 50%; outline: none; cursor: pointer; position: relative; transition: all 0.2s; background: white; }
         .apple-checkbox:checked { background-color: #0066cc; border-color: #0066cc; }
         .apple-checkbox:checked::after { content: ''; position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%) rotate(45deg); width: 4px; height: 9px; border: solid white; border-width: 0 2px 2px 0; }
@@ -62,7 +65,15 @@
     <div class="bg-overlay"></div>
 
     <div id="app" v-cloak>
-        <!-- ================= 登录界面 ================= -->
+        <!-- 全局通知 Toast -->
+        <transition name="toast">
+            <div v-if="showToast" class="fixed top-24 left-1/2 transform -translate-x-1/2 z-[300] bg-gray-900/90 backdrop-blur-md text-white px-6 py-3 rounded-full shadow-2xl flex items-center space-x-2 border border-gray-700 pointer-events-none">
+                <i class="ph-fill ph-bell-ringing text-yellow-400 text-lg animate-pulse"></i>
+                <span class="text-sm font-medium tracking-wide" v-html="toastMsg"></span>
+            </div>
+        </transition>
+
+        <!-- 主门登录 -->
         <div v-if="!auth.isLoggedIn" class="fixed inset-0 z-[200] flex items-center justify-center backdrop-blur-xl bg-white/40">
             <div class="glass-card rounded-3xl p-8 w-80 text-center flex flex-col items-center shadow-2xl">
                 <div class="w-16 h-16 rounded-full bg-rose-500/90 text-white flex items-center justify-center mb-6 shadow-md"><i class="ph-fill ph-lock-key text-3xl"></i></div>
@@ -76,20 +87,32 @@
             </div>
         </div>
 
-        <!-- ================= 主家庭空间 ================= -->
+        <!-- 二次密码防窥弹窗 -->
+        <div v-if="showWealthAuth" class="fixed inset-0 z-[250] flex items-center justify-center backdrop-blur-xl bg-gray-900/60 transition-all">
+            <div class="bg-white rounded-3xl p-8 w-80 text-center flex flex-col items-center shadow-2xl relative">
+                <button @click="showWealthAuth = false" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><i class="ph ph-x text-xl"></i></button>
+                <div class="w-16 h-16 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center mb-4 shadow-sm border border-blue-100"><i class="ph-fill ph-shield-check text-3xl"></i></div>
+                <h2 class="text-xl font-semibold text-gray-800 mb-2">私密资产验证</h2>
+                <p class="text-xs text-gray-500 mb-6">需二次验证密码以解除金额脱敏</p>
+                <input v-model="wealthInputPin" type="password" placeholder="••••" maxlength="8" class="w-full text-center text-2xl tracking-widest bg-gray-50 border border-gray-200 rounded-xl py-3 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-800" @keyup.enter="verifyWealthPassword">
+                <p v-if="wealthErrorMsg" class="text-rose-500 text-xs mb-4 font-medium">{{ wealthErrorMsg }}</p>
+                <button @click="verifyWealthPassword" class="w-full bg-blue-600 text-white font-medium py-3 rounded-xl hover:bg-blue-700 shadow-md transition-colors">验证解锁</button>
+            </div>
+        </div>
+
+        <!-- 主家庭空间 -->
         <div v-if="auth.isLoggedIn">
             <!-- 导航栏 -->
             <nav class="fixed top-0 w-full z-50 glass-nav border-b border-white/50 shadow-sm">
                 <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative flex items-center justify-between h-14">
-                    
                     <div class="flex items-center space-x-2 text-apple-text font-medium text-sm z-10">
                         <i class="ph-fill ph-heart text-xl text-rose-500"></i><span class="hidden sm:inline">Aosen & 小悦</span>
                     </div>
                     
-                    <!-- 空间切换器 -->
+                    <!-- 空间切换器：生活优先排序 -->
                     <div class="absolute left-1/2 transform -translate-x-1/2 flex items-center bg-white/40 p-1 rounded-full border border-white/60 shadow-sm z-10">
-                        <button @click="currentSpace = 'wealth'" :class="currentSpace === 'wealth' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-800'" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium transition-all">财富</button>
                         <button @click="currentSpace = 'life'" :class="currentSpace === 'life' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-800'" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium transition-all">生活</button>
+                        <button @click="currentSpace = 'wealth'" :class="currentSpace === 'wealth' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-800'" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium transition-all">财富</button>
                         <button @click="currentSpace = 'gallery'" :class="currentSpace === 'gallery' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-800'" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium transition-all">画廊</button>
                     </div>
 
@@ -97,224 +120,68 @@
                         <span v-if="syncStatus" class="hidden lg:flex items-center text-[10px] text-apple-blue bg-blue-50 px-2 py-1 rounded-full border border-blue-100 transition-all">
                             <i class="ph ph-cloud-arrows mr-1" :class="{'animate-pulse': isSyncing}"></i> {{ syncStatus }}
                         </span>
-                        <!-- 脱敏按钮仅在财富面板显示 -->
-                        <button v-if="currentSpace === 'wealth'" @click="isMasked = !isMasked" class="flex items-center text-gray-600 hover:text-apple-blue bg-white/50 px-2 py-1.5 rounded-full border border-white shadow-sm transition-colors"><i class="ph text-lg md:mr-1" :class="isMasked ? 'ph-eye-closed' : 'ph-eye'"></i><span class="hidden md:inline">{{ isMasked ? '显示金额' : '脱敏模式' }}</span></button>
+                        <!-- 仅在财富看板显示脱敏/解密按钮 -->
+                        <button v-if="currentSpace === 'wealth'" @click="toggleMask" class="flex items-center text-gray-600 hover:text-apple-blue bg-white/50 px-2 py-1.5 rounded-full border border-white shadow-sm transition-colors"><i class="ph text-lg md:mr-1" :class="isMasked ? 'ph-eye-closed' : 'ph-eye'"></i><span class="hidden md:inline">{{ isMasked ? '显示金额' : '隐藏金额' }}</span></button>
                         <button @click="openConfig" class="flex items-center bg-gray-800 text-white hover:bg-gray-700 px-2 sm:px-3 py-1.5 rounded-full shadow-sm transition-colors"><i class="ph ph-gear md:mr-1"></i> <span class="hidden md:inline">配置</span></button>
                     </div>
                 </div>
             </nav>
 
-            <!-- 动态空间切换 -->
             <transition name="fade" mode="out-in">
                 
-                <!-- ================= 空间 A：财富看板 (纯粹财务) ================= -->
-                <div v-if="currentSpace === 'wealth'" key="wealth">
-                    <header class="pt-28 pb-8 px-4 text-center">
-                        <div v-if="syncStatus" class="md:hidden flex justify-center mb-3">
-                            <span class="flex items-center text-[10px] text-apple-blue bg-blue-50 px-2 py-1 rounded-full border border-blue-100 shadow-sm transition-all"><i class="ph ph-cloud-arrows mr-1" :class="{'animate-pulse': isSyncing}"></i> {{ syncStatus }}</span>
-                        </div>
-                        <h1 class="text-3xl md:text-5xl font-semibold tracking-tight text-apple-text mb-4">记录爱与财富的生长</h1>
-                        <div class="flex items-center justify-center space-x-3 text-sm text-gray-600 mb-2 font-medium">
-                            <span class="bg-white/60 px-3 py-1 rounded-full border border-white shadow-sm"><i class="ph ph-calendar-blank mr-1"></i>{{ currentDateStr }}</span>
-                            <span class="bg-white/60 px-3 py-1 rounded-full border border-white shadow-sm">{{ weather }}</span>
-                        </div>
-                        <p class="text-gray-500 text-xs md:text-sm max-w-2xl mx-auto font-light leading-relaxed">"{{ dailyQuote }}"</p>
-                    </header>
-
-                    <section class="max-w-6xl mx-auto px-4 mb-12">
-                        <div class="glass-card rounded-3xl p-6 md:p-8 flex flex-col items-center justify-center text-center shadow-lg border-2 border-white/80 relative overflow-hidden">
-                            <div class="absolute -top-10 -right-10 w-32 h-32 bg-rose-100 rounded-full blur-3xl opacity-50"></div>
-                            <div class="absolute -bottom-10 -left-10 w-32 h-32 bg-blue-100 rounded-full blur-3xl opacity-50"></div>
-                            
-                            <p class="text-sm text-gray-500 mb-2 font-medium flex items-center z-10"><i class="ph-fill ph-chart-line-up mr-2 text-rose-500"></i> 家庭实时净资产</p>
-                            <p class="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight text-gray-800 z-10 mb-6 px-2 drop-shadow-sm">{{ formatCurrency(netWorth) }}</p>
-                            
-                            <div class="flex flex-col sm:flex-row w-full max-w-2xl justify-between items-center text-sm bg-white/60 p-4 rounded-2xl z-10 border border-white shadow-sm gap-4 sm:gap-0">
-                                <div class="text-center w-full sm:w-1/3">
-                                    <p class="text-xs text-gray-500 mb-1">总资产</p>
-                                    <p class="font-semibold text-gray-800">{{ formatCurrency(totalAssets) }}</p>
-                                </div>
-                                <div class="hidden sm:block w-px h-8 bg-gray-300/50"></div>
-                                <div class="text-center w-full sm:w-1/3 border-t border-b sm:border-t-0 sm:border-b-0 border-gray-200/50 py-2 sm:py-0">
-                                    <p class="text-xs text-gray-500 mb-1">总负债</p>
-                                    <p class="font-semibold text-rose-500">{{ formatCurrency(totalDebt) }}</p>
-                                </div>
-                                <div class="hidden sm:block w-px h-8 bg-gray-300/50"></div>
-                                <div class="text-center w-full sm:w-1/3">
-                                    <p class="text-xs text-gray-500 mb-1">资产负债率</p>
-                                    <p class="font-semibold text-gray-700">{{ isMasked ? '***' : debtRatio }}%</p>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="max-w-6xl mx-auto px-4 mb-12">
-                        <div class="glass-card rounded-3xl p-6 shadow-sm border border-white/60">
-                            <div class="flex justify-between items-center mb-4">
-                                <h3 class="text-lg font-semibold flex items-center text-gray-800"><i class="ph-fill ph-trend-up mr-2 text-rose-500"></i> 投资与股市雷达</h3>
-                                <div class="flex items-center space-x-3">
-                                    <span class="text-[10px] text-gray-500">美元汇率: {{ usdRate }}</span>
-                                    <button @click="fetchStocks" :disabled="isFetchingStocks" class="text-xs bg-white border border-gray-200 shadow-sm px-3 py-1.5 rounded-full hover:bg-gray-50 transition flex items-center">
-                                        <i class="ph ph-arrows-clockwise mr-1" :class="{'animate-spin text-apple-blue': isFetchingStocks}"></i> {{ isFetchingStocks ? '同步中' : '行情同步' }}
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                <div v-for="stock in stocks" :key="stock.symbol" class="bg-white/60 backdrop-blur-sm p-4 rounded-2xl border border-white shadow-sm relative overflow-hidden">
-                                    <div class="absolute right-0 top-0 bottom-0 w-1/2 bg-gradient-to-l opacity-10 pointer-events-none" :class="getStockProfit(stock) >= 0 ? 'from-rose-500' : 'from-green-500'"></div>
-                                    <div class="flex justify-between items-start mb-3 relative z-10">
-                                        <div>
-                                            <h4 class="font-semibold text-gray-800 flex items-center">{{ stock.name }} <span class="ml-2 text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{{stock.market}}</span></h4>
-                                            <p class="text-[10px] text-gray-500 mt-1 flex items-center"><span class="mr-2">{{ stock.symbol }}</span> <span class="text-[9px] border px-1.5 py-0.5 rounded" :class="getOwnerTagClass(stock.owner)">{{ stock.owner }}</span></p>
-                                        </div>
-                                        <div class="text-right">
-                                            <p class="text-sm font-bold text-gray-800">{{ isMasked ? '***' : stock.currentPrice }} <span class="text-[10px] font-normal">{{ stock.market==='US'?'USD':'CNY' }}</span></p>
-                                            <p class="text-[10px] text-gray-500 mt-0.5">持仓: {{ isMasked ? '***' : stock.shares }} 股</p>
-                                        </div>
-                                    </div>
-                                    <div class="flex justify-between items-center text-xs border-t border-gray-200/50 pt-2 relative z-10">
-                                        <span class="text-gray-500">持仓盈亏</span>
-                                        <div class="font-semibold" :class="getStockProfit(stock) >= 0 ? 'text-rose-500' : 'text-green-500'">
-                                            {{ getStockProfit(stock) >= 0 ? '+' : '' }}{{ formatCurrency(getStockProfit(stock)) }}
-                                            <span class="text-[10px] ml-1">({{ isMasked ? '***' : getStockProfitPercent(stock) }}%)</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div v-for="fund in funds" :key="fund.name" class="bg-white/60 backdrop-blur-sm p-4 rounded-2xl border border-white shadow-sm flex flex-col justify-between">
-                                    <div>
-                                        <h4 class="font-semibold text-gray-800 flex items-center">{{ fund.name }}</h4>
-                                        <p class="text-[10px] text-gray-500 mt-1"><span class="text-[9px] border px-1.5 py-0.5 rounded" :class="getOwnerTagClass(fund.owner)">{{ fund.owner }}</span></p>
-                                    </div>
-                                    <div class="text-right mt-3 border-t border-gray-200/50 pt-2">
-                                        <span class="text-sm font-bold text-gray-800">{{ formatCurrency(fund.value) }}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="max-w-6xl mx-auto px-4 mb-12 grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div class="glass-card rounded-3xl p-6">
-                            <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800"><i class="ph-fill ph-house mr-2 text-blue-500"></i> 固定与流动资产</h3>
-                            <div class="space-y-3 max-h-[300px] overflow-y-auto pr-2 modal-scroll">
-                                <div v-for="asset in regularAssets" :key="asset.id" class="flex justify-between items-center text-sm border-b border-gray-200/30 pb-2">
-                                    <span class="text-gray-600 flex items-center">
-                                        <span class="text-[9px] border px-1.5 py-0.5 rounded mr-2" :class="getOwnerTagClass(asset.owner)">{{ asset.owner }}</span>
-                                        {{ asset.name }}
-                                    </span>
-                                    <span class="font-medium text-gray-800">{{ formatCurrency(asset.value) }}</span>
-                                </div>
-                                <div class="flex justify-between items-center text-sm pt-2">
-                                    <span class="text-gray-600 font-medium flex items-center"><i class="ph-fill ph-aperture text-red-500 mr-2"></i> HW 股权总本金</span>
-                                    <span class="font-medium text-gray-800">{{ formatCurrency(totalEquityPrincipal) }}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="glass-card rounded-3xl p-6 relative overflow-hidden">
-                            <div class="absolute top-0 right-0 w-24 h-24 bg-red-500/10 rounded-full blur-2xl transform translate-x-4 -translate-y-4"></div>
-                            <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800"><i class="ph-fill ph-aperture mr-2 text-red-500"></i> HW 家族股权大盘</h3>
-                            
-                            <div class="flex flex-wrap gap-x-4 gap-y-2 text-xs text-gray-600 mb-4 bg-white/50 p-3 rounded-xl border border-white shadow-sm">
-                                <div class="w-full sm:w-auto"><span class="text-gray-400">每股价格:</span> <span class="font-medium text-gray-800">{{ isMasked ? '***' : equity.pricePerShare }} 元</span></div>
-                                <div class="w-full sm:w-auto"><span class="text-gray-400">预测分红:</span> <span class="font-bold text-rose-500">{{ isMasked ? '***' : equity.dividendRate }} 元/股</span></div>
-                                <div class="w-full sm:w-auto"><span class="text-gray-400">年收益率:</span> <span class="font-bold text-green-600">{{ isMasked ? '***' : equityYieldRate }}%</span></div>
-                                <div class="w-full h-px bg-gray-200/50 my-0.5"></div>
-                                <div class="w-full sm:w-auto"><span class="text-gray-400">总股本:</span> <span class="font-medium text-gray-800">{{ formatCurrencyInt(totalEquityPrincipal) }}</span></div>
-                                <div class="w-full sm:w-auto"><span class="text-gray-400">总股数:</span> <span class="font-medium text-gray-800">{{ isMasked ? '***' : formatCurrencyIntNoSymbol(totalEquityShares) }} 股</span></div>
-                            </div>
-                            
-                            <div class="space-y-2 max-h-[200px] overflow-y-auto modal-scroll pr-2">
-                                <div v-for="member in equity.members" :key="member.name" class="flex justify-between items-center bg-white/40 px-3 py-2.5 rounded-xl text-sm border border-white/50 shadow-sm transition hover:shadow-md">
-                                    <div class="flex flex-col w-1/3">
-                                        <span class="text-gray-800 font-medium text-sm">{{ member.name }}</span>
-                                        <span class="text-[10px] text-gray-500 mt-0.5">本金: {{ formatCurrencyInt(member.principal) }}</span>
-                                    </div>
-                                    <div class="w-1/4 text-center">
-                                        <span class="text-gray-500 text-[10px] bg-gray-100/50 px-2 py-1 rounded">{{ isMasked ? '***' : formatCurrencyIntNoSymbol(member.principal / equity.pricePerShare) }} 股</span>
-                                    </div>
-                                    <div class="flex flex-col items-end w-5/12">
-                                        <span class="font-bold text-green-600 text-sm" title="扣除20%税率">+{{ formatCurrencyInt((member.principal / equity.pricePerShare) * equity.dividendRate * 0.8) }} <span class="text-[9px] font-normal text-green-600 border border-green-200 bg-green-50 px-1 rounded ml-1">税后</span></span>
-                                        <span class="text-[9px] text-gray-400 mt-0.5">税前: {{ formatCurrencyInt((member.principal / equity.pricePerShare) * equity.dividendRate) }}</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="mt-4 pt-3 border-t border-gray-300/50 flex justify-between items-center">
-                                <span class="text-sm font-semibold text-gray-800">家族年预期 <span class="text-green-600">税后</span> 总分红</span>
-                                <span class="text-xl font-bold text-green-600">{{ formatCurrencyInt(totalDividendsPostTax) }}</span>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="max-w-6xl mx-auto px-4 mb-16">
-                        <h2 class="text-xl font-semibold mb-6 flex items-center"><i class="ph ph-notebook mr-2 text-apple-subtext"></i> 贷款月供分解</h2>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div v-for="loan in processedLoans" :key="loan.id" class="glass-card rounded-2xl p-5 hover:shadow-lg transition-shadow relative overflow-hidden">
-                                <div v-if="loan.isAutoCalc" class="absolute -right-6 top-4 bg-blue-500/10 text-blue-600 text-[10px] py-0.5 px-8 transform rotate-45 flex items-center font-medium backdrop-blur-sm shadow-sm"><i class="ph-fill ph-magic-wand mr-1"></i> 精准引擎</div>
-                                <div class="flex items-center space-x-3 mb-4">
-                                    <div class="w-8 h-8 rounded-full flex items-center justify-center text-white shadow-sm" :class="loan.type === '房贷' ? 'bg-blue-500/90' : 'bg-orange-500/90'">
-                                        <i :class="loan.type === '房贷' ? 'ph ph-house' : 'ph ph-credit-card'"></i>
-                                    </div>
-                                    <div>
-                                        <p class="text-sm font-semibold text-gray-800 flex items-center">
-                                            <span class="text-[9px] border px-1.5 py-0.5 rounded mr-2" :class="getOwnerTagClass(loan.owner)">{{ loan.owner }}</span>
-                                            {{ loan.bank }} <span class="text-[10px] text-gray-500 font-normal ml-1">({{ loan.type }})</span>
-                                        </p>
-                                        <p class="text-[10px] text-gray-500 mt-1">每月 {{ loan.day || '未定' }} 日 · 利率 {{ loan.rate }}%</p>
-                                    </div>
-                                </div>
-                                <div class="bg-white/50 p-4 rounded-xl border border-white space-y-3 shadow-sm">
-                                    <div class="flex justify-between items-center text-sm border-b border-gray-200/50 pb-2">
-                                        <span class="text-gray-600 font-medium">剩余本金</span><span class="font-bold text-gray-800">{{ formatCurrency(loan.left) }}</span>
-                                    </div>
-                                    <div class="flex justify-between items-center text-sm">
-                                        <span class="text-gray-600 font-medium">本月需还总额</span><span class="font-bold text-rose-500">{{ formatCurrency(loan.monthly) }}</span>
-                                    </div>
-                                    <div class="bg-white/60 rounded-lg p-2 flex justify-between text-xs text-gray-500 mt-2 border border-gray-100">
-                                        <span>还本金: {{ formatCurrency(loan.nextPrincipal) }}</span>
-                                        <span class="text-orange-500">还利息: {{ formatCurrency(loan.nextInterest) }}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section id="flow" class="max-w-6xl mx-auto px-4 mb-20">
-                        <div class="flex justify-between items-end mb-4"><h2 class="text-xl font-semibold flex items-center"><i class="ph ph-git-branch mr-2 text-apple-subtext"></i> 资金自动化航线</h2></div>
-                        <div class="text-center text-[11px] text-gray-500 mb-3 md:hidden flex items-center justify-center bg-white/60 py-1.5 rounded-full border border-white shadow-sm"><i class="ph ph-arrows-out-line-horizontal mr-1 animate-pulse"></i> 左右滑动或双指缩放查看全貌</div>
-                        <div class="glass-card rounded-3xl p-6 md:p-10 overflow-x-auto border-white/60 flow-scroll relative shadow-inner">
-                            <div class="min-w-[800px] flex flex-col items-center justify-start pb-4">
-                                <flow-node :node="flowTree" :root-salary-day="rootSalaryDay" :is-masked="isMasked"></flow-node>
-                            </div>
-                        </div>
-                    </section>
-                </div>
-                
-                <!-- ================= 空间 B：生活与协作 (包含协作待办、宝宝时光轴、心愿日历) ================= -->
-                <div v-else-if="currentSpace === 'life'" key="life" class="pt-28 pb-20 min-h-screen">
+                <!-- ================= 空间 1：生活与协作 ================= -->
+                <div v-if="currentSpace === 'life'" key="life" class="pt-28 pb-20 min-h-screen">
                     <header class="px-4 text-center mb-12">
                         <h1 class="text-3xl md:text-5xl font-semibold tracking-tight text-apple-text mb-4">记录生活的点滴</h1>
-                        <p class="text-gray-500 text-sm md:text-base max-w-2xl mx-auto font-light leading-relaxed">
-                            协作，期待，与成长。
-                        </p>
+                        <p class="text-gray-500 text-sm md:text-base max-w-2xl mx-auto font-light leading-relaxed">协作，期待，与成长。</p>
                     </header>
                     
                     <section class="max-w-6xl mx-auto px-4 mb-16 grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
-                        
-                        <!-- 左列：待办协作 & 心愿单 -->
                         <div class="space-y-6 md:space-y-8">
+                            <!-- 习惯花园 -->
+                            <div class="glass-card rounded-3xl p-6 relative overflow-hidden">
+                                <div class="absolute top-0 right-0 w-32 h-32 bg-green-500/10 rounded-full blur-3xl transform translate-x-8 -translate-y-8 pointer-events-none"></div>
+                                <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800 relative z-10"><i class="ph-fill ph-potted-plant mr-2 text-green-500"></i> 习惯花园 <span class="ml-2 text-[10px] bg-green-100 text-green-600 px-2 py-0.5 rounded-full font-normal">雨露培育</span></h3>
+                                
+                                <div class="space-y-4">
+                                    <div v-for="habit in habits" :key="habit.id" class="bg-white/60 p-4 rounded-2xl border border-white shadow-sm relative overflow-hidden transition-all duration-500 hover:shadow-md">
+                                        <div class="absolute -right-2 -bottom-4 opacity-10 pointer-events-none transition-all duration-700 transform" :class="isWateredToday(habit) ? 'scale-105' : 'scale-100'">
+                                            <i :class="getHabitIcon(habit.growthValue)" class="text-8xl text-green-500"></i>
+                                        </div>
+                                        <div class="flex justify-between items-start relative z-10">
+                                            <div>
+                                                <h4 class="font-medium text-gray-800">{{ habit.name }}</h4>
+                                                <p class="text-[10px] text-gray-500 mt-1">已培育 <span class="text-green-600 font-bold text-xs mx-0.5">{{ habit.growthValue }}</span> 滴雨露</p>
+                                            </div>
+                                            <button @click="waterHabit(habit)" :disabled="isWateredToday(habit)" class="w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-sm focus:outline-none" :class="isWateredToday(habit) ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-blue-50 text-blue-500 hover:bg-blue-500 hover:text-white hover:scale-110 hover:shadow-md'">
+                                                <i class="ph-fill ph-drop text-xl" :class="{'animate-pulse': !isWateredToday(habit)}"></i>
+                                            </button>
+                                        </div>
+                                        <div class="mt-4 relative z-10" v-if="getNextReward(habit)">
+                                            <div class="flex justify-between text-[10px] text-gray-400 mb-1.5">
+                                                <span>通往下一阶段果实</span>
+                                                <span class="text-rose-500 font-medium">🎁 {{ getNextReward(habit).name }} (目标: {{ getNextReward(habit).days }}滴)</span>
+                                            </div>
+                                            <div class="w-full bg-gray-200/60 rounded-full h-1.5 overflow-hidden backdrop-blur-sm shadow-inner">
+                                                <div class="bg-gradient-to-r from-green-400 to-green-600 h-full rounded-full transition-all duration-1000 ease-out" :style="{ width: getHabitProgress(habit) + '%' }"></div>
+                                            </div>
+                                        </div>
+                                        <div class="mt-4 text-[10px] text-green-600 font-medium relative z-10 bg-green-50/80 px-2 py-1.5 rounded-lg inline-block border border-green-100" v-else>
+                                            🌟 所有的奖励果实都已结出，这颗树已成长为参天大树！
+                                        </div>
+                                    </div>
+                                    <div v-if="habits.length === 0" class="text-center py-4 text-gray-400 text-xs">花园里空空的，去配置中心种下第一颗种子吧。</div>
+                                </div>
+                            </div>
+
                             <!-- 待办清单 -->
                             <div class="glass-card rounded-3xl p-6">
-                                <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800"><i class="ph-fill ph-check-square-offset mr-2 text-blue-500"></i> 家庭待办协作 <span class="ml-2 text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-normal">实时同步</span></h3>
-                                
+                                <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800"><i class="ph-fill ph-check-square-offset mr-2 text-blue-500"></i> 家庭待办协作</h3>
                                 <div class="flex gap-2 mb-5">
                                     <input v-model="newTodoText" @keyup.enter="addTodo" type="text" placeholder="添加待办事项 (回车保存)" class="flex-1 border border-white/60 bg-white/50 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 shadow-sm transition">
                                     <button @click="addTodo" class="bg-apple-blue hover:bg-blue-600 text-white rounded-xl px-4 py-2 text-sm shadow-md transition"><i class="ph ph-plus font-bold"></i></button>
                                 </div>
-                                
-                                <div class="space-y-2 max-h-[350px] overflow-y-auto modal-scroll pr-2">
+                                <div class="space-y-2 max-h-[250px] overflow-y-auto modal-scroll pr-2">
                                     <div v-for="todo in sortedTodos" :key="todo.id" class="flex items-center justify-between bg-white/60 p-3 rounded-xl border border-white shadow-sm transition-all hover:bg-white/80" :class="{'opacity-60': todo.completed}">
                                         <div class="flex items-center space-x-3 overflow-hidden">
                                             <input type="checkbox" :checked="todo.completed" @change="toggleTodo(todo)" class="apple-checkbox shrink-0">
@@ -322,9 +189,7 @@
                                         </div>
                                         <button @click="deleteTodo(todo.id)" class="text-gray-400 hover:text-red-500 px-2 shrink-0"><i class="ph ph-trash"></i></button>
                                     </div>
-                                    <div v-if="todos.length === 0" class="text-center py-6 text-gray-400 text-sm">
-                                        还没有待办事项哦，添加一个试试吧。
-                                    </div>
+                                    <div v-if="todos.length === 0" class="text-center py-6 text-gray-400 text-sm">还没有待办事项哦，添加一个试试吧。</div>
                                 </div>
                             </div>
                             
@@ -334,14 +199,8 @@
                                 <div class="space-y-5">
                                     <div v-for="goal in goals" :key="goal.name" class="bg-white/60 p-4 rounded-2xl border border-white shadow-sm">
                                         <div class="flex justify-between items-end mb-2">
-                                            <div>
-                                                <h4 class="font-medium text-gray-800">{{ goal.name }}</h4>
-                                                <p class="text-[10px] text-gray-500 mt-0.5">目标: {{ formatCurrencyInt(goal.target) }}</p>
-                                            </div>
-                                            <div class="text-right">
-                                                <p class="text-sm font-bold text-apple-blue">{{ formatCurrencyInt(goal.current) }}</p>
-                                                <p class="text-[10px] text-gray-500 mt-0.5">{{ Math.round((goal.current/goal.target)*100) }}% 已完成</p>
-                                            </div>
+                                            <div><h4 class="font-medium text-gray-800">{{ goal.name }}</h4><p class="text-[10px] text-gray-500 mt-0.5">目标: {{ formatCurrencyInt(goal.target) }}</p></div>
+                                            <div class="text-right"><p class="text-sm font-bold text-apple-blue">{{ formatCurrencyInt(goal.current) }}</p><p class="text-[10px] text-gray-500 mt-0.5">{{ Math.round((goal.current/goal.target)*100) }}% 已完成</p></div>
                                         </div>
                                         <div class="w-full bg-gray-200/60 rounded-full h-2 overflow-hidden backdrop-blur-sm">
                                             <div class="bg-gradient-to-r from-blue-400 to-blue-600 h-2 rounded-full transition-all duration-1000" :style="{ width: Math.min(100, (goal.current/goal.target)*100) + '%' }"></div>
@@ -351,29 +210,22 @@
                             </div>
                         </div>
 
-                        <!-- 右列：宝宝时光轴 & 纪念日 -->
                         <div class="space-y-6 md:space-y-8">
                             <!-- 宝宝时光轴 -->
                             <div class="glass-card rounded-3xl p-6">
                                 <h3 class="text-lg font-semibold mb-6 flex items-center text-gray-800"><i class="ph-fill ph-baby mr-2 text-rose-400"></i> 宝宝成长时光轴</h3>
-                                
                                 <div class="relative border-l-2 border-rose-100 ml-4 space-y-8 pb-4">
                                     <div v-for="(milestone, idx) in sortedMilestones" :key="milestone.id" class="relative pl-6 group">
-                                        <!-- 时间线节点 -->
                                         <div class="absolute -left-[13px] top-0.5 w-6 h-6 bg-white border-[3px] border-rose-300 rounded-full flex justify-center items-center group-hover:border-rose-500 transition-colors shadow-sm">
                                             <i class="ph-fill text-[10px] text-rose-400 group-hover:text-rose-600" :class="milestone.icon || 'ph-star'"></i>
                                         </div>
-                                        
                                         <div class="bg-white/60 p-4 rounded-2xl border border-white shadow-sm hover:shadow-md transition">
                                             <span class="text-[10px] font-semibold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full">{{ milestone.date }}</span>
                                             <h4 class="font-medium text-gray-800 mt-2">{{ milestone.title }}</h4>
                                             <p class="text-xs text-gray-500 mt-1 leading-relaxed">{{ milestone.desc }}</p>
                                         </div>
                                     </div>
-                                    
-                                    <div v-if="milestones.length === 0" class="pl-6 text-gray-400 text-sm">
-                                        还没有记录哦，在控制中心里为宝宝添加第一个里程碑吧。
-                                    </div>
+                                    <div v-if="milestones.length === 0" class="pl-6 text-gray-400 text-sm">还没有记录哦，在控制中心里为宝宝添加第一个里程碑吧。</div>
                                 </div>
                             </div>
 
@@ -399,8 +251,178 @@
                         </div>
                     </section>
                 </div>
-                
-                <!-- ================= 空间 C：光影画廊 ================= -->
+
+                <!-- ================= 空间 2：财富看板 ================= -->
+                <div v-else-if="currentSpace === 'wealth'" key="wealth">
+                    <header class="pt-28 pb-8 px-4 text-center relative z-10">
+                        <div v-if="syncStatus" class="md:hidden flex justify-center mb-3">
+                            <span class="flex items-center text-[10px] text-apple-blue bg-blue-50 px-2 py-1 rounded-full border border-blue-100 shadow-sm transition-all"><i class="ph ph-cloud-arrows mr-1" :class="{'animate-pulse': isSyncing}"></i> {{ syncStatus }}</span>
+                        </div>
+                        <h1 class="text-3xl md:text-5xl font-semibold tracking-tight text-apple-text mb-4">记录爱与财富的生长</h1>
+                        <div class="flex items-center justify-center space-x-3 text-sm text-gray-600 mb-2 font-medium">
+                            <span class="bg-white/60 px-3 py-1 rounded-full border border-white shadow-sm"><i class="ph ph-calendar-blank mr-1"></i>{{ currentDateStr }}</span>
+                            <span class="bg-white/60 px-3 py-1 rounded-full border border-white shadow-sm">{{ weather }}</span>
+                        </div>
+                        <p class="text-gray-500 text-xs md:text-sm max-w-2xl mx-auto font-light leading-relaxed">"{{ dailyQuote }}"</p>
+                        
+                        <!-- 模糊覆盖层提示 (当处于加密状态时) -->
+                        <div v-if="isMasked" class="absolute top-44 left-1/2 transform -translate-x-1/2 flex flex-col items-center z-50">
+                            <i class="ph ph-lock-key text-4xl text-gray-400 mb-2 animate-bounce"></i>
+                            <span class="text-xs text-gray-500 bg-white/80 px-4 py-1.5 rounded-full border border-gray-200 shadow-sm">点击右上角「显示金额」查阅隐私资产</span>
+                        </div>
+                    </header>
+
+                    <!-- 当且仅当 isMasked 时整体页面处于模糊状态 -->
+                    <div :class="isMasked ? 'blur-md opacity-60 pointer-events-none select-none transition-all duration-500' : 'transition-all duration-500'">
+                        <section class="max-w-6xl mx-auto px-4 mb-12">
+                            <div class="glass-card rounded-3xl p-6 md:p-8 flex flex-col items-center justify-center text-center shadow-lg border-2 border-white/80 relative overflow-hidden">
+                                <div class="absolute -top-10 -right-10 w-32 h-32 bg-rose-100 rounded-full blur-3xl opacity-50"></div>
+                                <div class="absolute -bottom-10 -left-10 w-32 h-32 bg-blue-100 rounded-full blur-3xl opacity-50"></div>
+                                
+                                <p class="text-sm text-gray-500 mb-2 font-medium flex items-center z-10"><i class="ph-fill ph-chart-line-up mr-2 text-rose-500"></i> 家庭实时净资产</p>
+                                <p class="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight text-gray-800 z-10 mb-6 px-2 drop-shadow-sm">{{ formatCurrency(netWorth) }}</p>
+                                
+                                <div class="flex flex-col sm:flex-row w-full max-w-2xl justify-between items-center text-sm bg-white/60 p-4 rounded-2xl z-10 border border-white shadow-sm gap-4 sm:gap-0">
+                                    <div class="text-center w-full sm:w-1/3">
+                                        <p class="text-xs text-gray-500 mb-1">总资产</p>
+                                        <p class="font-semibold text-gray-800">{{ formatCurrency(totalAssets) }}</p>
+                                    </div>
+                                    <div class="hidden sm:block w-px h-8 bg-gray-300/50"></div>
+                                    <div class="text-center w-full sm:w-1/3 border-t border-b sm:border-t-0 sm:border-b-0 border-gray-200/50 py-2 sm:py-0">
+                                        <p class="text-xs text-gray-500 mb-1">总负债</p>
+                                        <p class="font-semibold text-rose-500">{{ formatCurrency(totalDebt) }}</p>
+                                    </div>
+                                    <div class="hidden sm:block w-px h-8 bg-gray-300/50"></div>
+                                    <div class="text-center w-full sm:w-1/3">
+                                        <p class="text-xs text-gray-500 mb-1">资产负债率</p>
+                                        <p class="font-semibold text-gray-700">{{ isMasked ? '***' : debtRatio }}%</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="max-w-6xl mx-auto px-4 mb-12">
+                            <div class="glass-card rounded-3xl p-6 shadow-sm border border-white/60">
+                                <div class="flex justify-between items-center mb-4">
+                                    <h3 class="text-lg font-semibold flex items-center text-gray-800"><i class="ph-fill ph-trend-up mr-2 text-rose-500"></i> 投资与股市雷达</h3>
+                                    <div class="flex items-center space-x-3">
+                                        <span class="text-[10px] text-gray-500">美元汇率: {{ usdRate }}</span>
+                                        <button @click="fetchStocks" :disabled="isFetchingStocks" class="text-xs bg-white border border-gray-200 shadow-sm px-3 py-1.5 rounded-full hover:bg-gray-50 transition flex items-center">
+                                            <i class="ph ph-arrows-clockwise mr-1" :class="{'animate-spin text-apple-blue': isFetchingStocks}"></i> {{ isFetchingStocks ? '同步中' : '行情同步' }}
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    <div v-for="stock in stocks" :key="stock.symbol" class="bg-white/60 backdrop-blur-sm p-4 rounded-2xl border border-white shadow-sm relative overflow-hidden">
+                                        <div class="absolute right-0 top-0 bottom-0 w-1/2 bg-gradient-to-l opacity-10 pointer-events-none" :class="getStockProfit(stock) >= 0 ? 'from-rose-500' : 'from-green-500'"></div>
+                                        <div class="flex justify-between items-start mb-3 relative z-10">
+                                            <div>
+                                                <h4 class="font-semibold text-gray-800 flex items-center">{{ stock.name }} <span class="ml-2 text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{{stock.market}}</span></h4>
+                                                <p class="text-[10px] text-gray-500 mt-1 flex items-center"><span class="mr-2">{{ stock.symbol }}</span> <span class="text-[9px] border px-1.5 py-0.5 rounded" :class="getOwnerTagClass(stock.owner)">{{ stock.owner }}</span></p>
+                                            </div>
+                                            <div class="text-right">
+                                                <p class="text-sm font-bold text-gray-800">{{ isMasked ? '***' : stock.currentPrice }} <span class="text-[10px] font-normal">{{ stock.market==='US'?'USD':'CNY' }}</span></p>
+                                                <p class="text-[10px] text-gray-500 mt-0.5">持仓: {{ isMasked ? '***' : stock.shares }} 股</p>
+                                            </div>
+                                        </div>
+                                        <div class="flex justify-between items-center text-xs border-t border-gray-200/50 pt-2 relative z-10">
+                                            <span class="text-gray-500">持仓盈亏</span>
+                                            <div class="font-semibold" :class="getStockProfit(stock) >= 0 ? 'text-rose-500' : 'text-green-500'">
+                                                {{ getStockProfit(stock) >= 0 ? '+' : '' }}{{ formatCurrency(getStockProfit(stock)) }}
+                                                <span class="text-[10px] ml-1">({{ isMasked ? '***' : getStockProfitPercent(stock) }}%)</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div v-for="fund in funds" :key="fund.name" class="bg-white/60 backdrop-blur-sm p-4 rounded-2xl border border-white shadow-sm flex flex-col justify-between">
+                                        <div><h4 class="font-semibold text-gray-800 flex items-center">{{ fund.name }}</h4><p class="text-[10px] text-gray-500 mt-1"><span class="text-[9px] border px-1.5 py-0.5 rounded" :class="getOwnerTagClass(fund.owner)">{{ fund.owner }}</span></p></div>
+                                        <div class="text-right mt-3 border-t border-gray-200/50 pt-2"><span class="text-sm font-bold text-gray-800">{{ formatCurrency(fund.value) }}</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="max-w-6xl mx-auto px-4 mb-12 grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="glass-card rounded-3xl p-6">
+                                <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800"><i class="ph-fill ph-house mr-2 text-blue-500"></i> 固定与流动资产</h3>
+                                <div class="space-y-3 max-h-[300px] overflow-y-auto pr-2 modal-scroll">
+                                    <div v-for="asset in regularAssets" :key="asset.id" class="flex justify-between items-center text-sm border-b border-gray-200/30 pb-2">
+                                        <span class="text-gray-600 flex items-center"><span class="text-[9px] border px-1.5 py-0.5 rounded mr-2" :class="getOwnerTagClass(asset.owner)">{{ asset.owner }}</span>{{ asset.name }}</span>
+                                        <span class="font-medium text-gray-800">{{ formatCurrency(asset.value) }}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center text-sm pt-2">
+                                        <span class="text-gray-600 font-medium flex items-center"><i class="ph-fill ph-aperture text-red-500 mr-2"></i> HW 股权总本金</span>
+                                        <span class="font-medium text-gray-800">{{ formatCurrency(totalEquityPrincipal) }}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="glass-card rounded-3xl p-6 relative overflow-hidden">
+                                <div class="absolute top-0 right-0 w-24 h-24 bg-red-500/10 rounded-full blur-2xl transform translate-x-4 -translate-y-4"></div>
+                                <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800"><i class="ph-fill ph-aperture mr-2 text-red-500"></i> HW 家族股权大盘</h3>
+                                <div class="flex flex-wrap gap-x-4 gap-y-2 text-xs text-gray-600 mb-4 bg-white/50 p-3 rounded-xl border border-white shadow-sm">
+                                    <div class="w-full sm:w-auto"><span class="text-gray-400">每股价格:</span> <span class="font-medium text-gray-800">{{ isMasked ? '***' : equity.pricePerShare }} 元</span></div>
+                                    <div class="w-full sm:w-auto"><span class="text-gray-400">预测分红:</span> <span class="font-bold text-rose-500">{{ isMasked ? '***' : equity.dividendRate }} 元/股</span></div>
+                                    <div class="w-full sm:w-auto"><span class="text-gray-400">年收益率:</span> <span class="font-bold text-green-600">{{ isMasked ? '***' : equityYieldRate }}%</span></div>
+                                    <div class="w-full h-px bg-gray-200/50 my-0.5"></div>
+                                    <div class="w-full sm:w-auto"><span class="text-gray-400">总股本:</span> <span class="font-medium text-gray-800">{{ formatCurrencyInt(totalEquityPrincipal) }}</span></div>
+                                    <div class="w-full sm:w-auto"><span class="text-gray-400">总股数:</span> <span class="font-medium text-gray-800">{{ isMasked ? '***' : formatCurrencyIntNoSymbol(totalEquityShares) }} 股</span></div>
+                                </div>
+                                <div class="space-y-2 max-h-[200px] overflow-y-auto modal-scroll pr-2">
+                                    <div v-for="member in equity.members" :key="member.name" class="flex justify-between items-center bg-white/40 px-3 py-2.5 rounded-xl text-sm border border-white/50 shadow-sm transition hover:shadow-md">
+                                        <div class="flex flex-col w-1/3"><span class="text-gray-800 font-medium text-sm">{{ member.name }}</span><span class="text-[10px] text-gray-500 mt-0.5">本金: {{ formatCurrencyInt(member.principal) }}</span></div>
+                                        <div class="w-1/4 text-center"><span class="text-gray-500 text-[10px] bg-gray-100/50 px-2 py-1 rounded">{{ isMasked ? '***' : formatCurrencyIntNoSymbol(member.principal / equity.pricePerShare) }} 股</span></div>
+                                        <div class="flex flex-col items-end w-5/12"><span class="font-bold text-green-600 text-sm" title="扣除20%税率">+{{ formatCurrencyInt((member.principal / equity.pricePerShare) * equity.dividendRate * 0.8) }} <span class="text-[9px] font-normal text-green-600 border border-green-200 bg-green-50 px-1 rounded ml-1">税后</span></span><span class="text-[9px] text-gray-400 mt-0.5">税前: {{ formatCurrencyInt((member.principal / equity.pricePerShare) * equity.dividendRate) }}</span></div>
+                                    </div>
+                                </div>
+                                <div class="mt-4 pt-3 border-t border-gray-300/50 flex justify-between items-center">
+                                    <span class="text-sm font-semibold text-gray-800">家族年预期 <span class="text-green-600">税后</span> 总分红</span>
+                                    <span class="text-xl font-bold text-green-600">{{ formatCurrencyInt(totalDividendsPostTax) }}</span>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="max-w-6xl mx-auto px-4 mb-16">
+                            <h2 class="text-xl font-semibold mb-6 flex items-center"><i class="ph ph-notebook mr-2 text-apple-subtext"></i> 贷款月供分解</h2>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div v-for="loan in processedLoans" :key="loan.id" class="glass-card rounded-2xl p-5 hover:shadow-lg transition-shadow relative overflow-hidden">
+                                    <div v-if="loan.isAutoCalc" class="absolute -right-6 top-4 bg-blue-500/10 text-blue-600 text-[10px] py-0.5 px-8 transform rotate-45 flex items-center font-medium backdrop-blur-sm shadow-sm"><i class="ph-fill ph-magic-wand mr-1"></i> 精准引擎</div>
+                                    <div class="flex items-center space-x-3 mb-4">
+                                        <div class="w-8 h-8 rounded-full flex items-center justify-center text-white shadow-sm" :class="loan.type === '房贷' ? 'bg-blue-500/90' : 'bg-orange-500/90'">
+                                            <i :class="loan.type === '房贷' ? 'ph ph-house' : 'ph ph-credit-card'"></i>
+                                        </div>
+                                        <div>
+                                            <p class="text-sm font-semibold text-gray-800 flex items-center">
+                                                <span class="text-[9px] border px-1.5 py-0.5 rounded mr-2" :class="getOwnerTagClass(loan.owner)">{{ loan.owner }}</span>
+                                                {{ loan.bank }} <span class="text-[10px] text-gray-500 font-normal ml-1">({{ loan.type }})</span>
+                                            </p>
+                                            <p class="text-[10px] text-gray-500 mt-1">每月 {{ loan.day || '未定' }} 日 · 利率 {{ loan.rate }}%</p>
+                                        </div>
+                                    </div>
+                                    <div class="bg-white/50 p-4 rounded-xl border border-white space-y-3 shadow-sm">
+                                        <div class="flex justify-between items-center text-sm border-b border-gray-200/50 pb-2"><span class="text-gray-600 font-medium">剩余本金</span><span class="font-bold text-gray-800">{{ formatCurrency(loan.left) }}</span></div>
+                                        <div class="flex justify-between items-center text-sm"><span class="text-gray-600 font-medium">本月需还总额</span><span class="font-bold text-rose-500">{{ formatCurrency(loan.monthly) }}</span></div>
+                                        <div class="bg-white/60 rounded-lg p-2 flex justify-between text-xs text-gray-500 mt-2 border border-gray-100">
+                                            <span>还本金: {{ formatCurrency(loan.nextPrincipal) }}</span><span class="text-orange-500">还利息: {{ formatCurrency(loan.nextInterest) }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section id="flow" class="max-w-6xl mx-auto px-4 mb-20">
+                            <div class="flex justify-between items-end mb-4"><h2 class="text-xl font-semibold flex items-center"><i class="ph ph-git-branch mr-2 text-apple-subtext"></i> 资金自动化航线</h2></div>
+                            <div class="text-center text-[11px] text-gray-500 mb-3 md:hidden flex items-center justify-center bg-white/60 py-1.5 rounded-full border border-white shadow-sm"><i class="ph ph-arrows-out-line-horizontal mr-1 animate-pulse"></i> 左右滑动或双指缩放查看全貌</div>
+                            <div class="glass-card rounded-3xl p-6 md:p-10 overflow-x-auto border-white/60 flow-scroll relative shadow-inner">
+                                <div class="min-w-[800px] flex flex-col items-center justify-start pb-4">
+                                    <flow-node :node="flowTree" :root-salary-day="rootSalaryDay" :is-masked="isMasked"></flow-node>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+
+                <!-- ================= 空间 3：光影画廊 ================= -->
                 <div v-else key="gallery" class="pt-28 pb-20 min-h-screen">
                     <header class="px-4 text-center mb-12">
                         <div class="flex justify-center mb-4">
@@ -409,21 +431,17 @@
                             </span>
                         </div>
                         <h1 class="text-3xl md:text-5xl font-semibold tracking-tight text-apple-text mb-4">捕捉时光的切片</h1>
-                        <p class="text-gray-500 text-sm md:text-base max-w-2xl mx-auto font-light leading-relaxed">
-                            按下快门的瞬间，光影便成了永恒。欢迎来到我们的专属画廊。
-                        </p>
+                        <p class="text-gray-500 text-sm md:text-base max-w-2xl mx-auto font-light leading-relaxed">按下快门的瞬间，光影便成了永恒。欢迎来到我们的专属画廊。</p>
                     </header>
                     
                     <section class="max-w-6xl mx-auto px-4">
                         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8">
-                            <!-- 💡 修复点：调用 Vue 的 openImage 方法，解决点击放大镜无效的问题 -->
                             <div v-for="(photo, idx) in photos" :key="idx" @click="openImage(photo.url)" class="photo-card glass-card p-3 rounded-2xl relative group cursor-pointer" :style="{'transform': `rotate(${idx%2===0?-1.5:1.5}deg)`}">
                                 <div class="aspect-square md:aspect-[4/5] bg-gray-200/50 rounded-xl overflow-hidden relative shadow-inner border border-white/50 relative">
                                     <img 
                                         :src="photo.url.includes('myhuaweicloud.com') ? photo.url + '?x-image-process=image/resize,w_800/quality,q_80' : photo.url" 
                                         class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
-                                        alt="家庭回忆"
-                                        onerror="this.src='https://images.unsplash.com/photo-1511895426328-dc8714191300?w=500&q=80'"
+                                        alt="家庭回忆" onerror="this.src='https://images.unsplash.com/photo-1511895426328-dc8714191300?w=500&q=80'"
                                     >
                                     <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                         <i class="ph-fill ph-magnifying-glass-plus text-white text-3xl drop-shadow-md"></i>
@@ -434,7 +452,6 @@
                                 </div>
                             </div>
                         </div>
-                        
                         <div v-if="photos.length === 0" class="text-center py-20 text-gray-500">
                             <i class="ph-fill ph-camera text-4xl text-gray-300 mb-3"></i>
                             <p>相册里还是空的呢，去【配置 - 日常记录与相册】贴上第一张照片吧</p>
@@ -452,7 +469,7 @@
             </footer>
 
             <!-- ================= 控制中心 ================= -->
-            <div v-if="showConfig" class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div v-if="showConfig" class="fixed inset-0 z-[300] flex items-center justify-center p-4">
                 <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="showConfig = false"></div>
                 <div class="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col relative z-10 overflow-hidden">
                     <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 shrink-0">
@@ -461,27 +478,96 @@
                     </div>
                     
                     <div class="flex overflow-x-auto no-scrollbar border-b border-gray-200 px-6 bg-gray-50/50 shrink-0">
+                        <button @click="configTab = 'life'" :class="configTab === 'life' ? 'border-apple-blue text-apple-blue' : 'border-transparent text-gray-500'" class="px-4 py-3 border-b-2 text-sm font-medium whitespace-nowrap shrink-0">日常记录与相册</button>
                         <button @click="configTab = 'assets'" :class="configTab === 'assets' ? 'border-apple-blue text-apple-blue' : 'border-transparent text-gray-500'" class="px-4 py-3 border-b-2 text-sm font-medium whitespace-nowrap shrink-0">资产与股市</button>
                         <button @click="configTab = 'loans'" :class="configTab === 'loans' ? 'border-apple-blue text-apple-blue' : 'border-transparent text-gray-500'" class="px-4 py-3 border-b-2 text-sm font-medium whitespace-nowrap shrink-0">负债与转账</button>
-                        <button @click="configTab = 'life'" :class="configTab === 'life' ? 'border-apple-blue text-apple-blue' : 'border-transparent text-gray-500'" class="px-4 py-3 border-b-2 text-sm font-medium whitespace-nowrap shrink-0">日常记录与相册</button>
                     </div>
 
                     <div class="flex-1 overflow-y-auto modal-scroll p-4 md:p-6 bg-gray-50 relative">
-                        <!-- TAB 1: 资产 -->
-                        <div v-if="configTab === 'assets'" class="space-y-6">
-                            <!-- 股市模块 -->
+                        
+                        <!-- TAB 1: 日常记录与相册 (前置) -->
+                        <div v-if="configTab === 'life'" class="space-y-6">
+                            <!-- 习惯养成配置 -->
                             <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                                <div class="flex justify-between items-center mb-4">
-                                    <h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-trend-up mr-2 text-rose-500"></i> A股/美股配置</h4>
-                                    <button @click="addStock" class="text-[10px] bg-gray-100 px-2 py-1 rounded">新增股票</button>
+                                <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-potted-plant mr-2 text-green-500"></i> 习惯花园配置</h4><button @click="addHabit" class="text-[10px] bg-green-50 text-green-600 border border-green-200 px-2 py-1 rounded">种下新种子</button></div>
+                                <div class="space-y-4 border-b pb-6 border-gray-100">
+                                    <div v-for="(habit, idx) in habits" :key="idx" class="bg-gray-50 p-3 rounded-xl border border-gray-200 relative">
+                                        <button @click="habits.splice(idx,1)" class="text-red-500 absolute right-2 top-2"><i class="ph ph-x"></i></button>
+                                        <input v-model="habit.name" type="text" placeholder="习惯名称 (如: 每天共读30分钟)" class="w-[85%] border rounded px-2 py-1 text-xs mb-3">
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                            <div class="flex items-center text-[10px] bg-white border rounded px-1 overflow-hidden shadow-sm"><span class="w-10 text-center text-gray-500 bg-gray-100 py-1">目标1</span><input v-model.number="habit.stage1Days" type="number" class="w-10 border-x px-1 text-center py-1" placeholder="天数"><input v-model="habit.stage1Reward" type="text" class="flex-1 px-2 py-1" placeholder="阶段奖励 (如果实)"></div>
+                                            <div class="flex items-center text-[10px] bg-white border rounded px-1 overflow-hidden shadow-sm"><span class="w-10 text-center text-gray-500 bg-gray-100 py-1">目标2</span><input v-model.number="habit.stage2Days" type="number" class="w-10 border-x px-1 text-center py-1" placeholder="天数"><input v-model="habit.stage2Reward" type="text" class="flex-1 px-2 py-1" placeholder="进阶奖励"></div>
+                                            <div class="flex items-center text-[10px] bg-white border rounded px-1 overflow-hidden shadow-sm md:col-span-2"><span class="w-10 text-center text-rose-500 bg-rose-50 py-1">终极</span><input v-model.number="habit.stage3Days" type="number" class="w-10 border-x px-1 text-center py-1" placeholder="天数"><input v-model="habit.stage3Reward" type="text" class="flex-1 px-2 py-1" placeholder="终极奖励 (参天大树)"></div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="flex items-center gap-4 mb-4 text-xs bg-gray-50 p-2 rounded-lg">
-                                    <span class="text-gray-500">美元汇率设定 (算入净资产用):</span><input v-model.number="usdRate" type="number" step="0.01" class="border rounded px-2 py-1 w-16">
+                            </div>
+
+                            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                                <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph-fill ph-baby mr-2 text-rose-400"></i> 宝宝时光轴录入</h4><button @click="addMilestone" class="text-[10px] bg-rose-50 text-rose-600 px-2 py-1 rounded border border-rose-200">加记录</button></div>
+                                <div class="space-y-4">
+                                    <div v-for="(m, idx) in milestones" :key="idx" class="bg-gray-50 p-3 rounded-xl border border-gray-200 relative">
+                                        <button @click="milestones.splice(idx,1)" class="text-red-500 absolute right-2 top-2"><i class="ph ph-x"></i></button>
+                                        <div class="grid grid-cols-2 gap-2 mb-2 pr-6">
+                                            <input v-model="m.date" type="date" class="border rounded px-2 py-1 text-xs w-full">
+                                            <input v-model="m.title" type="text" placeholder="事件标题" class="border rounded px-2 py-1 text-xs w-full">
+                                        </div>
+                                        <textarea v-model="m.desc" placeholder="详细描述一下这个瞬间吧..." class="border rounded px-2 py-1 text-xs w-full h-16 resize-none"></textarea>
+                                    </div>
                                 </div>
+                            </div>
+
+                            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                                <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-camera mr-2 text-purple-500"></i> 光影相册墙</h4><button @click="addPhoto" class="text-[10px] bg-gray-100 px-2 py-1 rounded">贴一张照片</button></div>
+                                <div class="space-y-2">
+                                    <div v-for="(photo, idx) in photos" :key="idx" class="flex flex-wrap md:flex-nowrap gap-2 items-center relative pr-6">
+                                        <input v-model="photo.url" type="text" placeholder="图片链接 URL" class="w-full md:flex-1 border rounded px-2 py-1 text-xs">
+                                        <input v-model="photo.desc" type="text" placeholder="照片描述" class="w-[80%] md:w-32 border rounded px-2 py-1 text-xs">
+                                        <button @click="photos.splice(idx,1)" class="text-red-500 absolute right-0"><i class="ph ph-x"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                                <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-star mr-2 text-yellow-500"></i> 心愿单</h4><button @click="addGoal" class="text-[10px] bg-gray-100 px-2 py-1 rounded">加心愿</button></div>
+                                <div class="space-y-3 mb-6 border-b pb-6 border-gray-100">
+                                    <div v-for="(goal, idx) in goals" :key="idx" class="flex flex-wrap md:flex-nowrap gap-2 items-center relative pr-6">
+                                        <input v-model="goal.name" type="text" placeholder="名称" class="w-full md:flex-1 border rounded px-2 py-1 text-xs">
+                                        <input v-model.number="goal.target" type="number" placeholder="目标" class="w-[45%] md:w-24 border rounded px-2 py-1 text-xs">
+                                        <input v-model.number="goal.current" type="number" placeholder="已攒" class="w-[45%] md:w-24 border rounded px-2 py-1 text-xs text-apple-blue">
+                                        <button @click="goals.splice(idx,1)" class="text-red-500 absolute right-0"><i class="ph ph-x"></i></button>
+                                    </div>
+                                </div>
+                                <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-calendar-heart mr-2 text-rose-400"></i> 纪念日</h4><button @click="addDate" class="text-[10px] bg-gray-100 px-2 py-1 rounded">加日子</button></div>
+                                <div class="space-y-3">
+                                    <div v-for="(date, idx) in dates" :key="idx" class="flex flex-wrap md:flex-nowrap gap-2 items-center relative pr-6">
+                                        <input v-model="date.name" type="text" placeholder="名字" class="w-full md:flex-1 border rounded px-2 py-1 text-xs">
+                                        <input v-model="date.date" type="text" placeholder="YYYY-MM-DD" class="w-[50%] md:w-28 border rounded px-2 py-1 text-xs">
+                                        <select v-model="date.type" class="w-[40%] md:w-20 border rounded px-1 py-1 text-xs bg-white"><option value="birthday">生日</option><option value="anniversary">纪念日</option></select>
+                                        <button @click="dates.splice(idx,1)" class="text-red-500 absolute right-0"><i class="ph ph-x"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TAB 2: 资产 (包含二次密码修改) -->
+                        <div v-if="configTab === 'assets'" class="space-y-6">
+                            <!-- 财富二次密码修改 -->
+                            <div class="bg-blue-50 p-5 rounded-2xl shadow-sm border border-blue-100 flex items-center justify-between">
+                                <div>
+                                    <h4 class="text-sm font-semibold text-blue-800 flex items-center"><i class="ph-fill ph-shield-check mr-2"></i> 财富看板防窥密码</h4>
+                                    <p class="text-[10px] text-blue-600 mt-1">控制查阅核心家庭净资产的二次密码</p>
+                                </div>
+                                <input v-model="wealthPassword" type="password" placeholder="输入新密码" class="w-32 border border-blue-300 rounded px-2 py-1.5 text-sm text-center focus:ring-2 focus:ring-blue-400">
+                            </div>
+
+                            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                                <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-trend-up mr-2 text-rose-500"></i> A股/美股配置</h4><button @click="addStock" class="text-[10px] bg-gray-100 px-2 py-1 rounded">新增股票</button></div>
+                                <div class="flex items-center gap-4 mb-4 text-xs bg-gray-50 p-2 rounded-lg"><span class="text-gray-500">美元汇率:</span><input v-model.number="usdRate" type="number" step="0.01" class="border rounded px-2 py-1 w-16"></div>
                                 <div class="space-y-3">
                                     <div v-for="(stock, idx) in stocks" :key="idx" class="flex flex-wrap gap-2 items-center bg-gray-50 p-2 rounded-lg border border-gray-200 relative pr-6">
-                                        <input v-model="stock.name" type="text" placeholder="名称(如阿里巴巴)" class="w-24 border rounded px-1 py-1 text-xs">
-                                        <input v-model="stock.symbol" type="text" placeholder="代码(美股BABA/A股sh600519)" class="w-32 border rounded px-1 py-1 text-xs uppercase">
+                                        <input v-model="stock.name" type="text" placeholder="名称" class="w-24 border rounded px-1 py-1 text-xs">
+                                        <input v-model="stock.symbol" type="text" placeholder="代码" class="w-32 border rounded px-1 py-1 text-xs uppercase">
                                         <select v-model="stock.market" class="w-16 border rounded px-1 py-1 text-xs bg-white"><option value="US">美股</option><option value="CN">A股</option></select>
                                         <select v-model="stock.owner" class="w-16 border rounded px-1 py-1 text-xs bg-white"><option value="共同">共同</option><option value="Aosen">Aosen</option><option value="小悦">小悦</option></select>
                                         <div class="flex items-center text-[10px] text-gray-500 w-[45%] md:w-auto mt-1 md:mt-0"><span class="w-8">成本:</span><input v-model.number="stock.costPrice" type="number" step="0.01" class="w-16 border rounded px-1 py-1 text-xs"></div>
@@ -492,21 +578,19 @@
                                 </div>
                             </div>
                             
-                            <!-- 基础资产模块 -->
                             <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                                <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-house mr-2 text-blue-500"></i> 固定与基金等资产录入</h4><button @click="addRegularAsset" class="text-[10px] bg-gray-100 px-2 py-1 rounded">加资产</button></div>
+                                <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-house mr-2 text-blue-500"></i> 固定与基金资产</h4><button @click="addRegularAsset" class="text-[10px] bg-gray-100 px-2 py-1 rounded">加资产</button></div>
                                 <div class="space-y-2">
                                     <div v-for="(asset, idx) in regularAssets" :key="asset.id" class="flex flex-wrap md:flex-nowrap gap-2 items-center relative pr-6">
                                         <input v-model="asset.name" type="text" placeholder="资产名称" class="w-full md:flex-1 border rounded px-2 py-1 text-xs">
                                         <select v-model="asset.owner" class="w-[30%] md:w-20 border rounded px-1 py-1 text-xs bg-white"><option value="共同">共同</option><option value="Aosen">Aosen</option><option value="小悦">小悦</option></select>
                                         <select v-model="asset.type" class="w-[30%] md:w-20 border rounded px-1 py-1 text-xs bg-white"><option value="house">房产</option><option value="fund">基金/理财</option><option value="cash">存款</option><option value="other">其他</option></select>
-                                        <input v-model.number="asset.value" type="number" placeholder="当前估值(元)" class="w-[35%] md:w-28 border rounded px-2 py-1 text-xs font-medium text-green-600">
+                                        <input v-model.number="asset.value" type="number" placeholder="当前估值" class="w-[35%] md:w-28 border rounded px-2 py-1 text-xs font-medium text-green-600">
                                         <button @click="regularAssets.splice(idx, 1)" class="text-red-500 absolute right-0 top-1"><i class="ph ph-x"></i></button>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- 华为股权模块 -->
                             <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-aperture mr-2 text-red-500"></i> 家族股权 (HW)</h4><button @click="addEquityMember" class="text-[10px] bg-gray-100 px-2 py-1 rounded">加持股人</button></div>
                                 <div class="flex items-center gap-4 mb-4 text-xs bg-gray-50 p-2 rounded-lg">
@@ -516,15 +600,14 @@
                                 <div class="space-y-2">
                                     <div v-for="(member, idx) in equity.members" :key="idx" class="flex items-center space-x-2 relative pr-6">
                                         <input v-model="member.name" type="text" placeholder="持股人" class="w-1/3 border rounded-md px-2 py-1.5 text-xs">
-                                        <input v-model.number="member.principal" type="number" placeholder="投资本金(元)" class="flex-1 border rounded-md px-2 py-1.5 text-xs text-green-600">
+                                        <input v-model.number="member.principal" type="number" placeholder="投资本金" class="flex-1 border rounded-md px-2 py-1.5 text-xs text-green-600">
                                         <button @click="removeEquityMember(idx)" class="text-red-500 absolute right-0"><i class="ph ph-x"></i></button>
                                     </div>
-                                    <p class="text-[10px] text-gray-400 mt-2">* 股数将由系统自动根据本金计算 (本金 ÷ 每股价格)</p>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- TAB 2: 负债 -->
+                        <!-- TAB 3: 负债 -->
                         <div v-if="configTab === 'loans'" class="space-y-6">
                             <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-notebook mr-1 text-apple-blue"></i> 贷款明细</h4><button @click="addLoan" class="text-[10px] bg-gray-100 px-2 py-1 rounded">新增贷款</button></div>
@@ -541,17 +624,17 @@
                                         <div v-if="loan.type === '房贷'" class="grid grid-cols-1 md:grid-cols-3 gap-2 border-t pt-2 mt-2 border-gray-200">
                                             <div><label class="text-[10px] text-blue-500">数据快照年月</label><input v-model="loan.baseDate" type="text" placeholder="2026-05" class="w-full border border-blue-200 rounded px-1.5 py-1 text-xs"></div>
                                             <div><label class="text-[10px] text-blue-500">快照真实本金</label><input v-model.number="loan.baseLeft" type="number" class="w-full border border-blue-200 rounded px-1.5 py-1 text-xs"></div>
-                                            <div><label class="text-[10px] text-blue-600 font-bold">银行固定总月供金额</label><input v-model.number="loan.baseMonthly" type="number" class="w-full border border-blue-400 bg-blue-50 rounded px-1.5 py-1 text-xs text-blue-800 font-semibold" title="填入银行App显示的真实月供"></div>
+                                            <div><label class="text-[10px] text-blue-600 font-bold">银行固定月供</label><input v-model.number="loan.baseMonthly" type="number" class="w-full border border-blue-400 bg-blue-50 rounded px-1.5 py-1 text-xs text-blue-800 font-semibold"></div>
                                         </div>
                                         <div v-else class="grid grid-cols-2 gap-2 border-t pt-2 mt-2 border-gray-200">
-                                            <div><label class="text-[10px] text-orange-500">目前剩余本金</label><input v-model.number="loan.left" type="number" class="w-full border border-orange-200 rounded px-1.5 py-1 text-xs"></div>
-                                            <div><label class="text-[10px] text-orange-500">每月自己设定的总还款</label><input v-model.number="loan.monthly" type="number" class="w-full border border-orange-200 rounded px-1.5 py-1 text-xs"></div>
+                                            <div><label class="text-[10px] text-orange-500">剩余本金</label><input v-model.number="loan.left" type="number" class="w-full border border-orange-200 rounded px-1.5 py-1 text-xs"></div>
+                                            <div><label class="text-[10px] text-orange-500">每月设定总还款</label><input v-model.number="loan.monthly" type="number" class="w-full border border-orange-200 rounded px-1.5 py-1 text-xs"></div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                             
-                             <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <div class="flex items-center gap-4 mb-4 border-b pb-4"><div class="w-1/2"><label class="text-xs text-gray-500">主发薪卡</label><input v-model="salaryBank" type="text" class="w-full border rounded px-2 py-1 text-xs"></div><div class="w-1/2"><label class="text-xs text-gray-500">发薪日</label><input v-model.number="salaryDay" type="number" class="w-full border rounded px-2 py-1 text-xs"></div></div>
                                 <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-git-branch mr-1 text-purple-500"></i> 自动转账拓扑线</h4><button @click="addTransfer" class="text-[10px] bg-gray-100 px-2 py-1 rounded">添加路线</button></div>
                                 <div class="space-y-2">
@@ -562,60 +645,6 @@
                                         <div class="flex items-center text-xs text-gray-500 w-16"><input v-model.number="transfer.day" type="number" placeholder="日" class="w-8 border rounded px-1 py-1 text-center mr-1">日</div>
                                         <input v-model="transfer.expire" type="text" placeholder="到期日" class="w-24 border rounded px-1 py-1 text-[10px]">
                                         <button @click="removeTransfer(idx)" class="text-red-500 absolute right-1"><i class="ph ph-x"></i></button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- TAB 3: 日常记录与相册 -->
-                        <div v-if="configTab === 'life'" class="space-y-6">
-                            <!-- 宝宝里程碑配置 -->
-                            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                                <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph-fill ph-baby mr-2 text-rose-400"></i> 宝宝时光轴录入</h4><button @click="addMilestone" class="text-[10px] bg-rose-50 text-rose-600 px-2 py-1 rounded border border-rose-200">加记录</button></div>
-                                <div class="space-y-4">
-                                    <div v-for="(m, idx) in milestones" :key="idx" class="bg-gray-50 p-3 rounded-xl border border-gray-200 relative">
-                                        <button @click="milestones.splice(idx,1)" class="text-red-500 absolute right-2 top-2"><i class="ph ph-x"></i></button>
-                                        <div class="grid grid-cols-2 gap-2 mb-2 pr-6">
-                                            <input v-model="m.date" type="date" class="border rounded px-2 py-1 text-xs w-full">
-                                            <input v-model="m.title" type="text" placeholder="事件标题 (如: 第一次叫爸爸)" class="border rounded px-2 py-1 text-xs w-full">
-                                        </div>
-                                        <textarea v-model="m.desc" placeholder="详细描述一下这个瞬间吧..." class="border rounded px-2 py-1 text-xs w-full h-16 resize-none"></textarea>
-                                    </div>
-                                    <p class="text-[10px] text-gray-400">系统会自动按时间倒序排列展示在生活空间。</p>
-                                </div>
-                            </div>
-
-                            <!-- 光影志配置 -->
-                            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                                <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-camera mr-2 text-purple-500"></i> 光影相册墙</h4><button @click="addPhoto" class="text-[10px] bg-gray-100 px-2 py-1 rounded">贴一张照片</button></div>
-                                <div class="space-y-2">
-                                    <div v-for="(photo, idx) in photos" :key="idx" class="flex flex-wrap md:flex-nowrap gap-2 items-center relative pr-6">
-                                        <input v-model="photo.url" type="text" placeholder="图片链接 URL (或本地图片名)" class="w-full md:flex-1 border rounded px-2 py-1 text-xs">
-                                        <input v-model="photo.desc" type="text" placeholder="照片描述文字" class="w-[80%] md:w-32 border rounded px-2 py-1 text-xs">
-                                        <button @click="photos.splice(idx,1)" class="text-red-500 absolute right-0"><i class="ph ph-x"></i></button>
-                                    </div>
-                                    <p class="text-[10px] text-gray-400 mt-1">✨ 已开启 Lightroom 自动化监听。存入本地导出目录的照片会自动显示在这里，你可以随时在云端修改描述。</p>
-                                </div>
-                            </div>
-
-                            <!-- 心愿与日历 -->
-                            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                                <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-star mr-2 text-yellow-500"></i> 心愿单</h4><button @click="addGoal" class="text-[10px] bg-gray-100 px-2 py-1 rounded">加心愿</button></div>
-                                <div class="space-y-3 mb-6 border-b pb-6 border-gray-100">
-                                    <div v-for="(goal, idx) in goals" :key="idx" class="flex flex-wrap md:flex-nowrap gap-2 items-center relative pr-6">
-                                        <input v-model="goal.name" type="text" placeholder="心愿名称" class="w-full md:flex-1 border rounded px-2 py-1 text-xs">
-                                        <input v-model.number="goal.target" type="number" placeholder="目标额" class="w-[45%] md:w-24 border rounded px-2 py-1 text-xs">
-                                        <input v-model.number="goal.current" type="number" placeholder="已攒额" class="w-[45%] md:w-24 border rounded px-2 py-1 text-xs text-apple-blue">
-                                        <button @click="goals.splice(idx,1)" class="text-red-500 absolute right-0"><i class="ph ph-x"></i></button>
-                                    </div>
-                                </div>
-                                <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-calendar-heart mr-2 text-rose-400"></i> 纪念日</h4><button @click="addDate" class="text-[10px] bg-gray-100 px-2 py-1 rounded">加日子</button></div>
-                                <div class="space-y-3">
-                                    <div v-for="(date, idx) in dates" :key="idx" class="flex flex-wrap md:flex-nowrap gap-2 items-center relative pr-6">
-                                        <input v-model="date.name" type="text" placeholder="名字" class="w-full md:flex-1 border rounded px-2 py-1 text-xs">
-                                        <input v-model="date.date" type="text" placeholder="YYYY-MM-DD" class="w-[50%] md:w-28 border rounded px-2 py-1 text-xs">
-                                        <select v-model="date.type" class="w-[40%] md:w-20 border rounded px-1 py-1 text-xs bg-white"><option value="birthday">生日</option><option value="anniversary">纪念日</option></select>
-                                        <button @click="dates.splice(idx,1)" class="text-red-500 absolute right-0"><i class="ph ph-x"></i></button>
                                     </div>
                                 </div>
                             </div>
@@ -635,7 +664,7 @@
             </div>
         </div>
 
-        <!-- 递归组件模板：流转节点 -->
+        <!-- 递归组件模板 -->
         <script type="text/x-template" id="flow-node-template">
             <div class="flex flex-col items-center">
                 <div v-if="node.transfer" class="w-1 h-10 bg-blue-100/50 -mt-2 z-0 relative overflow-hidden rounded-full shadow-inner border border-blue-200/30">
@@ -676,68 +705,40 @@
             const { createApp } = Vue
 
             const defaultData = {
-                salaryBank: '工商银行', salaryDay: 15,
-                usdRate: 7.25,
+                wealthPassword: '1026',
+                salaryBank: '工商银行', salaryDay: 15, usdRate: 7.25,
                 loans: [
-                    { id: 1, owner: '共同', type: '房贷', bank: '中信银行', isAutoCalc: true, baseLeft: 1786921.68, baseMonthly: 8891, baseDate: '2026-04', rate: 3.2, day: 20, monthly: 0, left: 0 },
-                    { id: 2, owner: '共同', type: '房贷', bank: '浦发银行', isAutoCalc: true, baseLeft: 4625693.97, baseMonthly: 19647.28, baseDate: '2026-05', rate: 2.8, day: 10, monthly: 0, left: 0 },
-                    { id: 3, owner: 'Aosen', type: '消费贷', bank: '北京银行', isAutoCalc: false, left: 200000, monthly: 500, day: 2, rate: 3.0 },
-                    { id: 4, owner: '小悦', type: '消费贷', bank: '南京银行', isAutoCalc: false, left: 500000, monthly: 1250, day: 20, rate: 3.0 }
+                    { id: 1, owner: '共同', type: '房贷', bank: '中信银行', isAutoCalc: true, baseLeft: 1786921.68, baseMonthly: 8891, baseDate: '2026-04', rate: 3.2, day: 20, monthly: 0, left: 0 }
                 ],
-                transfers: [
-                    { from: '工商银行', to: '浦发银行', amount: 20000, day: 9, expire: '长期' },
-                    { from: '工商银行', to: '中信银行', amount: 15000, day: 16, expire: '长期' },
-                    { from: '工商银行', to: '中国银行', amount: 1300, day: 16, expire: '长期' },
-                    { from: '中信银行', to: '北京银行', amount: 600, day: 1, expire: '2028-06-10' },
-                    { from: '中国银行', to: '南京银行', amount: 1300, day: 16, expire: '2026-12-01' }
-                ],
-                assets: [
-                    { id: 1, owner: '共同', type: 'house', name: '小海房产估值', value: 7000000 }, { id: 2, owner: '共同', type: 'house', name: '小滨房产估值', value: 6000000 },
-                    { id: 5, owner: '共同', type: 'fund', name: '基金理财兜底', value: 200000 }, { id: 6, owner: '共同', type: 'cash', name: '活期存款', value: 200000 }, 
-                    { id: 7, owner: 'Aosen', type: 'other', name: '代步车估值', value: 200000 }
-                ],
-                stocks: [
-                    { symbol: 'BABA', name: '阿里巴巴', market: 'US', owner: 'Aosen', costPrice: 175.76, shares: 13, currentPrice: 115.04 }
-                ],
-                equity: {
-                    pricePerShare: 7.85, dividendRate: 1.06,
-                    members: [ {name: 'Aosen&小悦', principal: 1242097.6}, {name: '老李', principal: 516000}, {name: '老谢', principal: 750000}, {name: '周妈&外婆', principal: 700000} ]
-                },
-                photos: [
-                    { url: '合影.jpg', desc: '初见的那天' },
-                    { url: 'https://images.unsplash.com/photo-1506869640319-ce1a56065328?w=500&q=80', desc: '旅行记录' },
-                    { url: 'https://images.unsplash.com/photo-1473496169904-658ba7c44d8a?w=500&q=80', desc: '光影瞬间' },
-                    { url: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=500&q=80', desc: '山川湖海' }
-                ],
+                transfers: [],
+                assets: [ { id: 1, owner: '共同', type: 'house', name: '小海房产估值', value: 7000000 } ],
+                stocks: [],
+                equity: { pricePerShare: 7.85, dividendRate: 1.06, members: [ {name: 'Aosen&小悦', principal: 1242097.6} ] },
+                photos: [ { url: 'https://images.unsplash.com/photo-1506869640319-ce1a56065328?w=500&q=80', desc: '旅行记录' } ],
                 goals: [ { name: '欧洲10周年纪念游', target: 100000, current: 0 } ],
-                dates: [
-                    { name: '小悦生日', date: '1996-09-01', type: 'birthday' }, { name: '奥森生日', date: '1992-02-17', type: 'birthday' },
-                    { name: '李妈生日', date: '1966-09-18', type: 'birthday' }, { name: '李爸生日', date: '1964-11-27', type: 'birthday' },
-                    { name: '周妈生日', date: '1970-01-01', type: 'birthday' }, { name: '周爸生日', date: '1968-01-01', type: 'birthday' },
-                    { name: '领证纪念日', date: '2022-09-09', type: 'anniversary' }, { name: '婚礼纪念日', date: '2022-10-16', type: 'anniversary' }
-                ],
-                todos: [
-                    { id: 1, text: '周末一起去山姆买车厘子 🍒', completed: false }
-                ],
-                milestones: [
-                    { id: 1, date: '2026-06-01', title: '期待新生命的到来', desc: '这是我们建立宝宝档案的第一天，未来的每一天都充满期待。', icon: 'ph-baby' }
-                ]
+                dates: [ { name: '领证纪念日', date: '2022-09-09', type: 'anniversary' } ],
+                todos: [ { id: 1, text: '周末一起去山姆买车厘子 🍒', completed: false } ],
+                milestones: [ { id: 1, date: '2026-06-01', title: '期待新生命的到来', desc: '这是我们建立宝宝档案的第一天。', icon: 'ph-baby' } ],
+                habits: [ { id: 1, name: '每天亲子阅读 30 分钟', growthValue: 5, lastWatered: '', stage1Days: 7, stage1Reward: '家庭电影之夜 🍿', stage2Days: 21, stage2Reward: '买一件新玩具 🧸', stage3Days: 100, stage3Reward: '去迪士尼乐园玩一天 🎡' } ]
             };
 
             const app = createApp({
                 data() {
                     return {
                         auth: { isLoggedIn: false, inputPin: '', errorMsg: '', isAuthenticating: false },
-                        isMasked: true, showConfig: false, configTab: 'assets',
-                        currentSpace: 'wealth', // wealth | life | gallery
+                        isMasked: true, showConfig: false, configTab: 'life',
+                        currentSpace: 'life', // 默认打开生活面板
+                        
+                        wealthPassword: '', showWealthAuth: false, wealthInputPin: '', wealthErrorMsg: '',
                         
                         salaryBank: '', salaryDay: 15, usdRate: 7.25,
                         loans: [], transfers: [], assets: [], stocks: [], equity: {}, 
-                        goals: [], dates: [], photos: [], todos: [], milestones: [],
+                        goals: [], dates: [], photos: [], todos: [], milestones: [], habits: [],
                         
-                        newTodoText: '',
-                        currentDateStr: '', weather: '⛅ 晴朗无云', dailyQuote: '',
-                        isSyncing: false, syncStatus: '', isFetchingStocks: false
+                        newTodoText: '', currentDateStr: '', weather: '⛅ 晴朗无云', dailyQuote: '',
+                        isSyncing: false, syncStatus: '', isFetchingStocks: false,
+                        
+                        toastMsg: '', showToast: false, toastTimer: null
                     }
                 },
                 async created() {
@@ -747,8 +748,7 @@
                     const now = new Date();
                     this.currentDateStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
                     const quotes = [
-                        "只要一家人在一起，每一天都是财富的增值。", "慢慢变富，稳稳幸福。", "把生活过成诗，把账本理成画。",
-                        "合理的开销，是在为未来的生活投票。", "健康和快乐，才是这个家里最大的资产。"
+                        "只要一家人在一起，每一天都是财富的增值。", "慢慢变富，稳稳幸福。", "把生活过成诗，把账本理成画。"
                     ];
                     this.dailyQuote = quotes[now.getDate() % quotes.length];
                     
@@ -764,13 +764,11 @@
                         return this.loans.map(loan => {
                             let pLoan = { ...loan };
                             const r = (loan.rate / 100) / 12;
-                            
                             if (loan.isAutoCalc && loan.baseDate) {
                                 const [baseY, baseM] = loan.baseDate.split('-').map(Number);
                                 let elapsed = (currentYear - baseY) * 12 + (currentMonth - (baseM - 1));
                                 if (currentDate < loan.day) elapsed -= 1; 
                                 if (elapsed < 0) elapsed = 0;
-                                
                                 let currentLeft = loan.baseLeft;
                                 let fixedMonthly = loan.baseMonthly || 0;
                                 for(let i = 0; i < elapsed; i++) { currentLeft -= (fixedMonthly - currentLeft * r); }
@@ -795,54 +793,108 @@
                             return sum + val;
                         }, 0);
                     },
-                    totalAssets() { 
-                        const regularSum = this.assets.reduce((sum, a) => sum + Number(a.value), 0);
-                        return regularSum + this.totalEquityPrincipal + this.totalStockValue; 
-                    },
+                    totalAssets() { return this.assets.reduce((sum, a) => sum + Number(a.value), 0) + this.totalEquityPrincipal + this.totalStockValue; },
                     totalDebt() { return this.processedLoans.reduce((sum, loan) => sum + Number(loan.left || 0), 0); },
                     netWorth() { return this.totalAssets - this.totalDebt; },
                     debtRatio() { return this.totalAssets > 0 ? Math.round((this.totalDebt / this.totalAssets) * 100) : 0; },
-                    
                     totalDividends() { return this.equity.members.reduce((sum, m) => sum + ((m.principal / this.equity.pricePerShare) * this.equity.dividendRate), 0); },
                     totalDividendsPostTax() { return this.totalDividends * 0.8; },
                     
                     flowTree() {
                         const buildTree = (bankName) => {
-                            return {
-                                name: bankName, isRoot: bankName === this.salaryBank,
-                                loans: this.processedLoans.filter(l => l.bank === bankName),
-                                children: this.transfers.filter(t => t.from === bankName).map(t => ({ transfer: t, ...buildTree(t.to) }))
-                            };
+                            return { name: bankName, isRoot: bankName === this.salaryBank, loans: this.processedLoans.filter(l => l.bank === bankName), children: this.transfers.filter(t => t.from === bankName).map(t => ({ transfer: t, ...buildTree(t.to) })) };
                         }
                         return buildTree(this.salaryBank);
                     },
-
                     processedDates() {
                         const today = new Date(); today.setHours(0,0,0,0); const currentYear = today.getFullYear();
-                        let sorted = this.dates.map(item => {
+                        return this.dates.map(item => {
                             const [y, m, d] = item.date.split('-').map(Number);
                             let nextDate = new Date(currentYear, m - 1, d);
                             let yearsPassed = currentYear - y;
                             if (nextDate.getTime() < today.getTime()) { nextDate.setFullYear(currentYear + 1); yearsPassed += 1; }
                             const daysLeft = Math.ceil(Math.abs(nextDate - today) / (1000 * 60 * 60 * 24));
                             return { ...item, daysLeft, nextDateStr: `${nextDate.getMonth()+1}月${nextDate.getDate()}日`, yearsPassed, isMarriage: item.type === 'anniversary' };
-                        });
-                        return sorted.sort((a, b) => a.daysLeft - b.daysLeft);
+                        }).sort((a, b) => a.daysLeft - b.daysLeft);
                     },
-                    
-                    sortedTodos() {
-                        return [...this.todos].sort((a, b) => (a.completed === b.completed) ? 0 : a.completed ? 1 : -1);
-                    },
-                    
-                    sortedMilestones() {
-                        return [...this.milestones].sort((a, b) => new Date(b.date) - new Date(a.date));
-                    }
+                    sortedTodos() { return [...this.todos].sort((a, b) => (a.completed === b.completed) ? 0 : a.completed ? 1 : -1); },
+                    sortedMilestones() { return [...this.milestones].sort((a, b) => new Date(b.date) - new Date(a.date)); }
                 },
                 methods: {
-                    // 💡 修复点：新增专属的打开大图方法
-                    openImage(url) {
-                        window.open(url, '_blank');
+                    showNotification(msg) {
+                        this.toastMsg = msg; this.showToast = true;
+                        if(this.toastTimer) clearTimeout(this.toastTimer);
+                        this.toastTimer = setTimeout(() => { this.showToast = false; }, 3000);
                     },
+                    
+                    async triggerPushNotification(title, content) {
+                        if (!this.auth.isLoggedIn || this.auth.inputPin === '0000') return; 
+                        try {
+                            const token = sessionStorage.getItem('family_auth_token');
+                            await fetch('/api/sync', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': token },
+                                body: JSON.stringify({ action: 'notify', title, content })
+                            });
+                        } catch(e) { console.error('Push Notice Failed'); }
+                    },
+                    
+                    toggleMask() {
+                        if (this.isMasked) {
+                            this.showWealthAuth = true; this.wealthErrorMsg = ''; this.wealthInputPin = '';
+                        } else {
+                            this.isMasked = true;
+                        }
+                    },
+                    verifyWealthPassword() {
+                        if (this.wealthInputPin === this.wealthPassword) {
+                            this.isMasked = false; this.showWealthAuth = false;
+                            this.showNotification('✅ 隐私财务数据已解密');
+                        } else {
+                            this.wealthErrorMsg = '密码错误，无权查阅 🔒';
+                        }
+                    },
+
+                    isWateredToday(habit) { return habit.lastWatered === new Date().toISOString().split('T')[0]; },
+                    waterHabit(habit) {
+                        if (this.isWateredToday(habit)) return;
+                        habit.growthValue += 1;
+                        habit.lastWatered = new Date().toISOString().split('T')[0];
+                        
+                        const achievedReward = [
+                            {days: habit.stage1Days, name: habit.stage1Reward},
+                            {days: habit.stage2Days, name: habit.stage2Reward},
+                            {days: habit.stage3Days, name: habit.stage3Reward}
+                        ].find(r => r.days === habit.growthValue);
+
+                        if (achievedReward) {
+                            this.showNotification(`🎉 恭喜！小树结出了果实：<br><span class="text-yellow-300">${achievedReward.name}</span>`);
+                            this.triggerPushNotification('习惯养成里程碑！', `太棒啦！习惯【${habit.name}】已坚持 ${habit.growthValue} 天！<br>成功解锁阶段奖励：<b>${achievedReward.name}</b>`);
+                        } else {
+                            this.showNotification('💧 浇水成功！小树吸收了营养。');
+                            this.triggerPushNotification('习惯成长通知', `给习惯【${habit.name}】浇水啦！当前已累计培育 ${habit.growthValue} 滴雨露。`);
+                        }
+                        this.saveConfig();
+                    },
+                    getNextReward(habit) {
+                        if (habit.growthValue < habit.stage1Days) return { days: habit.stage1Days, name: habit.stage1Reward };
+                        if (habit.growthValue < habit.stage2Days) return { days: habit.stage2Days, name: habit.stage2Reward };
+                        if (habit.growthValue < habit.stage3Days) return { days: habit.stage3Days, name: habit.stage3Reward };
+                        return null; 
+                    },
+                    getHabitProgress(habit) {
+                        const nextReward = this.getNextReward(habit);
+                        if (!nextReward) return 100;
+                        return Math.min(100, (habit.growthValue / nextReward.days) * 100);
+                    },
+                    getHabitIcon(value) {
+                        if (value < 7) return 'ph-fill ph-seedling';
+                        if (value < 21) return 'ph-fill ph-plant';
+                        if (value < 100) return 'ph-fill ph-tree';
+                        return 'ph-fill ph-tree-evergreen';
+                    },
+                    
+                    openImage(url) { window.open(url, '_blank'); },
                     
                     getOwnerTagClass(owner) {
                         if (owner === 'Aosen') return 'bg-blue-50 text-blue-600 border-blue-200';
@@ -856,84 +908,58 @@
                         this.isFetchingStocks = true;
                         for (let stock of this.stocks) {
                             try {
-                                const market = stock.market;
-                                const symbol = stock.symbol.toUpperCase();
+                                const market = stock.market; const symbol = stock.symbol.toUpperCase();
                                 const query = market === 'US' ? `us${symbol}` : symbol.toLowerCase(); 
-                                
                                 await new Promise((resolve) => {
-                                    const script = document.createElement('script');
-                                    script.src = `https://qt.gtimg.cn/q=${query}`;
-                                    window[`v_${query}`] = "";
+                                    const script = document.createElement('script'); script.src = `https://qt.gtimg.cn/q=${query}`; window[`v_${query}`] = "";
                                     script.onload = () => {
                                         const res = window[`v_${query}`];
-                                        if (res && res.length > 10) {
-                                            const parts = res.split('~');
-                                            if (parts.length > 3) {
-                                                stock.currentPrice = parseFloat(parts[3]);
-                                            }
-                                        }
-                                        document.body.removeChild(script);
-                                        resolve();
+                                        if (res && res.length > 10) { const parts = res.split('~'); if (parts.length > 3) stock.currentPrice = parseFloat(parts[3]); }
+                                        document.body.removeChild(script); resolve();
                                     };
                                     script.onerror = () => { document.body.removeChild(script); resolve(); };
                                     document.body.appendChild(script);
                                 });
-                            } catch(e) { console.error('Fetch err', e); }
+                            } catch(e) { }
                         }
                         setTimeout(() => { this.isFetchingStocks = false; }, 800);
                     },
 
-                    checkAuthStatus() { 
-                        if (sessionStorage.getItem('family_auth_token')) { 
-                            this.auth.isLoggedIn = true; 
-                        } 
-                    },
+                    checkAuthStatus() { if (sessionStorage.getItem('family_auth_token')) this.auth.isLoggedIn = true; },
                     
-                    // 本地智能自适应降级：拦截 404
                     async handleLogin() {
-                        if (!this.auth.inputPin) {
-                            this.auth.errorMsg = '请输入密码';
-                            return;
-                        }
-                        this.auth.isAuthenticating = true;
-                        this.auth.errorMsg = '';
+                        if (!this.auth.inputPin) { this.auth.errorMsg = '请输入密码'; return; }
+                        this.auth.isAuthenticating = true; this.auth.errorMsg = '';
                         
                         try {
-                            const res = await fetch('/api/sync', {
-                                headers: { 'Authorization': this.auth.inputPin }
-                            });
-                            
+                            const res = await fetch('/api/sync', { headers: { 'Authorization': this.auth.inputPin } });
                             if (res.ok) {
                                 sessionStorage.setItem('family_auth_token', this.auth.inputPin);
                                 this.auth.isLoggedIn = true; 
-                                
                                 const json = await res.json();
-                            // 由于之前 api/sync 会返回包含数据的对象，此处防御性读取
-                            const recordData = json.record ? json.record : json;
-                            
-                            // 💡 修复点 2：放宽数据校验，只要云端有数据就接纳，不再强制要求必须有 salaryBank
-                            if(recordData && Object.keys(recordData).length > 0) {
-                                this.applyData(recordData);
-                                localStorage.setItem('cashflow_family_v9', JSON.stringify(recordData));
-                            } else {
-                                this.applyData(defaultData);
-                            }
-                            if(this.stocks && this.stocks.length > 0) this.fetchStocks();
-                        } else if (res.status === 404) {
+                                const recordData = json.record ? json.record : json;
+                                
+                                if(recordData && Object.keys(recordData).length > 0) {
+                                    this.applyData(recordData);
+                                    localStorage.setItem('cashflow_family_v9', JSON.stringify(recordData));
+                                } else {
+                                    this.applyData(defaultData);
+                                }
+                                if(this.stocks && this.stocks.length > 0) this.fetchStocks();
+                            } else if (res.status === 404) {
                                 throw new Error('LocalMode');
                             } else {
                                 this.auth.errorMsg = '密码好像不对哦，家门紧闭 🔒';
                             }
                         } catch(e) {
-                            // 降级到本地离线模式：仅使用假密码 '0000' 供右侧预览测试使用
                             if (this.auth.inputPin === '0000') {
                                 sessionStorage.setItem('family_auth_token', 'local_dummy_token');
                                 this.auth.isLoggedIn = true;
                                 const saved = localStorage.getItem('cashflow_family_v9');
-                                if (saved) this.applyData(JSON.parse(saved));
-                                else this.applyData(defaultData);
+                                if (saved) this.applyData(JSON.parse(saved)); else this.applyData(defaultData);
                                 if(this.stocks && this.stocks.length > 0) this.fetchStocks();
                                 this.syncStatus = '本地预览模式 (未连接云端)';
+                                this.showNotification('👋 欢迎来到本地预览模式！');
                             } else {
                                 this.auth.errorMsg = '本地预览密码错误 🔒 (提示: 预览请输 0000)';
                             }
@@ -942,18 +968,14 @@
                         }
                     },
                     
-                    logout() { 
-                        this.auth.isLoggedIn = false; 
-                        this.auth.inputPin = ''; 
-                        this.showConfig = false; 
-                        sessionStorage.removeItem('family_auth_token'); 
-                    },
+                    logout() { this.auth.isLoggedIn = false; this.auth.inputPin = ''; this.showConfig = false; sessionStorage.removeItem('family_auth_token'); },
 
                     formatCurrency(value) { return this.isMasked ? '¥ ***' : new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value); },
                     formatCurrencyInt(value) { return this.isMasked ? '¥ ***' : new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(value); },
                     formatCurrencyIntNoSymbol(value) { return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 }).format(value); },
                     
                     applyData(data) {
+                        this.wealthPassword = data.wealthPassword || '1026';
                         this.salaryBank = data.salaryBank || '工商银行'; this.salaryDay = data.salaryDay || 15;
                         this.usdRate = data.usdRate || 7.25;
                         this.loans = (data.loans || []).map(l => ({...l, owner: l.owner || '共同'})); 
@@ -963,12 +985,10 @@
                         this.stocks = data.stocks || defaultData.stocks;
                         this.todos = data.todos || defaultData.todos;
                         this.milestones = data.milestones || defaultData.milestones;
+                        this.habits = data.habits || defaultData.habits;
                         
-                        if (data.assets && !Array.isArray(data.assets)) { this.assets = defaultData.assets; } 
-                        else { this.assets = (data.assets || defaultData.assets).map(a => ({...a, owner: a.owner || '共同'})); }
-                        
-                        if (data.equity && data.equity.members && data.equity.members[0].shares) { this.equity = defaultData.equity; } 
-                        else { this.equity = data.equity || defaultData.equity; }
+                        if (data.assets && !Array.isArray(data.assets)) { this.assets = defaultData.assets; } else { this.assets = (data.assets || defaultData.assets).map(a => ({...a, owner: a.owner || '共同'})); }
+                        if (data.equity && data.equity.members && data.equity.members[0].shares) { this.equity = defaultData.equity; } else { this.equity = data.equity || defaultData.equity; }
                     },
 
                     async loadConfig() {
@@ -981,35 +1001,26 @@
                             try {
                                 const res = await fetch('/api/sync', { headers: { 'Authorization': token } });
                                 if (res.ok) {
-                                    const json = await res.json();
-                                    const recordData = json.record ? json.record : json;
-                                    
-                                    // 💡 修复点 2：放宽数据校验
+                                    const json = await res.json(); const recordData = json.record ? json.record : json;
                                     if (recordData && Object.keys(recordData).length > 0) {
-                                        this.applyData(recordData);
-                                        localStorage.setItem('cashflow_family_v9', JSON.stringify(recordData));
-                                        this.syncStatus = '已与云端对齐';
+                                        this.applyData(recordData); localStorage.setItem('cashflow_family_v9', JSON.stringify(recordData)); this.syncStatus = '已与云端对齐';
                                     } else {
                                         this.syncStatus = '初始化云盒子...'; await this.saveConfig();
                                     }
-                                } else if (res.status === 404) {
-                                    throw new Error('LocalMode');
-                                } else if (res.status === 401) {
-                                    this.logout();
-                                }
-                            } catch (err) { 
-                                this.syncStatus = '本地预览模式 (离线)'; 
-                            } 
+                                } else if (res.status === 404) throw new Error('LocalMode');
+                                else if (res.status === 401) this.logout();
+                            } catch (err) { this.syncStatus = '本地预览模式 (离线)'; } 
                             finally { setTimeout(() => this.syncStatus = '', 3000); this.isSyncing = false; }
                         }
                     },
                     
                     async saveConfig() {
                         const dataToSave = {
+                            wealthPassword: this.wealthPassword,
                             salaryBank: this.salaryBank, salaryDay: this.salaryDay, usdRate: this.usdRate,
                             loans: this.loans, transfers: this.transfers, assets: this.assets, stocks: this.stocks,
                             equity: this.equity, goals: this.goals, dates: this.dates, photos: this.photos,
-                            todos: this.todos, milestones: this.milestones
+                            todos: this.todos, milestones: this.milestones, habits: this.habits
                         };
                         localStorage.setItem('cashflow_family_v9', JSON.stringify(dataToSave));
                         
@@ -1017,45 +1028,40 @@
                         if (token) {
                             this.isSyncing = true; this.syncStatus = '正在保存至云端...';
                             try {
-                                const res = await fetch('/api/sync', {
-                                    method: 'POST', 
-                                    headers: { 'Content-Type': 'application/json', 'Authorization': token },
-                                    body: JSON.stringify(dataToSave)
-                                });
-                                if(res.ok) {
-                                    this.syncStatus = '保存成功！';
-                                } else if (res.status === 404) {
-                                    throw new Error('LocalMode');
-                                } else {
-                                    this.syncStatus = '权限验证失败';
-                                }
-                            } catch(e) { 
-                                this.syncStatus = '已存本地 (预览模式无云端)'; 
-                            } 
+                                const res = await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': token }, body: JSON.stringify(dataToSave) });
+                                if(res.ok) this.syncStatus = '保存成功！';
+                                else if (res.status === 404) throw new Error('LocalMode');
+                                else this.syncStatus = '权限验证失败';
+                            } catch(e) { this.syncStatus = '已存本地 (预览模式无云端)'; } 
                             finally { setTimeout(() => this.syncStatus = '', 3000); this.isSyncing = false; }
                         }
                     },
-                    openConfig() { this.showConfig = true; this.configTab = 'assets'; },
+                    openConfig() { this.showConfig = true; this.configTab = 'life'; },
                     async saveAndCloseConfig() { await this.saveConfig(); this.showConfig = false; },
                     resetData() { if(confirm('警告：确定清除您修改过的数据并恢复初始模板吗？')) { localStorage.removeItem('cashflow_family_v9'); window.location.reload(); } },
                     
-                    // === 面板内直接操作方法（无需进配置中心） ===
                     addTodo() {
                         if(this.newTodoText.trim() === '') return;
-                        this.todos.push({ id: Date.now(), text: this.newTodoText.trim(), completed: false });
+                        const text = this.newTodoText.trim();
+                        this.todos.push({ id: Date.now(), text: text, completed: false });
                         this.newTodoText = '';
-                        this.saveConfig(); // 添加完直接触发云同步
+                        
+                        this.showNotification('📝 已记录新待办');
+                        this.triggerPushNotification('📅 新增家庭待办', `叮咚！家里新增了一条待办事项：<br><br><b>${text}</b><br><br>记得抽空去看看哦！`);
+                        this.saveConfig();
                     },
                     toggleTodo(todo) {
                         todo.completed = !todo.completed;
-                        this.saveConfig(); // 勾选完直接触发云同步
-                    },
-                    deleteTodo(id) {
-                        this.todos = this.todos.filter(t => t.id !== id);
+                        if(todo.completed) {
+                            this.showNotification('✅ 滴！待办任务搞定！');
+                            this.triggerPushNotification('✅ 待办完成通知', `太棒啦！刚才顺利完成了一项家庭待办：<br><br><del>${todo.text}</del><br><br>继续保持哦！`);
+                        } else {
+                            this.triggerPushNotification('🔄 待办重新开启', `注意啦！一项原本已完成的待办被重新标记为未完成：<br><br><b>${todo.text}</b>`);
+                        }
                         this.saveConfig();
                     },
+                    deleteTodo(id) { this.todos = this.todos.filter(t => t.id !== id); this.saveConfig(); },
                     
-                    // === 配置中心操作方法 ===
                     addAsset() { this.assets.push({ id: Date.now(), owner: '共同', type: 'house', name: '', value: 0 }); },
                     removeAsset(idx) { this.assets.splice(idx, 1); },
                     addStock() { this.stocks.push({ symbol: '', name: '', market: 'CN', owner: 'Aosen', costPrice: 0, shares: 0, currentPrice: 0 }); },
@@ -1070,14 +1076,15 @@
                     addDate() { this.dates.push({ name: '', date: '2000-01-01', type: 'birthday' }); },
                     removeDate(idx) { this.dates.splice(idx, 1); },
                     addPhoto() { this.photos.push({ url: '', desc: '' }); },
-                    addMilestone() { const now = new Date(); this.milestones.push({ id: Date.now(), date: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`, title: '', desc: '', icon: 'ph-star' }); }
+                    addMilestone() { const now = new Date(); this.milestones.push({ id: Date.now(), date: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`, title: '', desc: '', icon: 'ph-star' }); },
+                    addHabit() { this.habits.push({ id: Date.now(), name: '', growthValue: 0, lastWatered: '', stage1Days: 7, stage1Reward: '小星星', stage2Days: 21, stage2Reward: '神秘小礼物', stage3Days: 100, stage3Reward: '实现一个大愿望' }); }
                 }
             })
 
             app.component('flow-node', {
                 props: ['node', 'rootSalaryDay', 'isMasked'],
                 template: '#flow-node-template',
-                methods: { formatCurrencyInt(v) { return this.isMasked ? '¥ ***' : new Intl.NumberFormat('zh-CN', {style:'currency', maximumFractionDigits: 0}).format(v); } }
+                methods: { formatCurrencyInt(v) { return this.isMasked ? '¥ ***' : new Intl.NumberFormat('zh-CN', {style:'currency', currency:'CNY', maximumFractionDigits: 0}).format(v); } }
             });
             app.mount('#app')
         </script>
