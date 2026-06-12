@@ -121,8 +121,13 @@
                             <i class="ph ph-cloud-arrows mr-1" :class="{'animate-pulse': isSyncing}"></i> {{ syncStatus }}
                         </span>
                         <!-- 仅在财富看板显示脱敏/解密按钮 -->
-                        <button v-if="currentSpace === 'wealth'" @click="toggleMask" class="flex items-center text-gray-600 hover:text-apple-blue bg-white/50 px-2 py-1.5 rounded-full border border-white shadow-sm transition-colors"><i class="ph text-lg md:mr-1" :class="isMasked ? 'ph-eye-closed' : 'ph-eye'"></i><span class="hidden md:inline">{{ isMasked ? '显示金额' : '隐藏金额' }}</span></button>
-                        <button @click="openConfig" class="flex items-center bg-gray-800 text-white hover:bg-gray-700 px-2 sm:px-3 py-1.5 rounded-full shadow-sm transition-colors"><i class="ph ph-gear md:mr-1"></i> <span class="hidden md:inline">配置</span></button>
+                        <button v-if="currentSpace === 'wealth'" @click="toggleMask" class="flex items-center text-gray-600 hover:text-apple-blue bg-white/50 px-2 py-1.5 rounded-full border border-white shadow-sm transition-colors">
+                            <i class="ph text-lg md:mr-1" :class="isMasked ? 'ph-eye-closed' : 'ph-eye'"></i>
+                            <span class="hidden md:inline">{{ isMasked ? '显示金额' : '隐藏金额' }}</span>
+                        </button>
+                        <button @click="openConfig" class="flex items-center bg-gray-800 text-white hover:bg-gray-700 px-2 sm:px-3 py-1.5 rounded-full shadow-sm transition-colors">
+                            <i class="ph ph-gear md:mr-1"></i> <span class="hidden md:inline">配置</span>
+                        </button>
                     </div>
                 </div>
             </nav>
@@ -666,7 +671,7 @@
     </div>
 
     <!-- 递归组件模板 -->
-    <script type="text/x-template" id="flow-node-template">
+    <template id="flow-node-template">
         <div class="flex flex-col items-center">
             <div v-if="node.transfer" class="w-1 h-10 bg-blue-100/50 -mt-2 z-0 relative overflow-hidden rounded-full shadow-inner border border-blue-200/30">
                 <div class="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-transparent via-blue-500 to-transparent animate-flow-current opacity-90 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div>
@@ -699,7 +704,7 @@
                 </div>
             </div>
         </div>
-    </script>
+    </template>
 
     <!-- Vue 应用逻辑 -->
     <script>
@@ -709,15 +714,54 @@
             wealthPassword: '1026',
             salaryBank: '工商银行', salaryDay: 15, usdRate: 7.25,
             loans: [
-                { id: 1, owner: '共同', type: '房贷', bank: '中信银行', isAutoCalc: true, baseLeft: 1786921.68, baseMonthly: 8891, baseDate: '2026-04', rate: 3.2, day: 20, monthly: 0, left: 0 }
+                { id: 1, owner: '共同', type: '房贷', bank: '中信银行', isAutoCalc: true, baseLeft: 1786921.68, baseMonthly: 8891, baseDate: '2026-04', rate: 3.2, day: 20, monthly: 0, left: 0 },
+                { id: 2, owner: '共同', type: '房贷', bank: '浦发银行', isAutoCalc: true, baseLeft: 4625693.97, baseMonthly: 19647.28, baseDate: '2026-05', rate: 2.8, day: 10, monthly: 0, left: 0 },
+                { id: 3, owner: 'Aosen', type: '消费贷', bank: '北京银行', isAutoCalc: false, left: 200000, monthly: 500, day: 2, rate: 3.0 },
+                { id: 4, owner: '小悦', type: '消费贷', bank: '南京银行', isAutoCalc: false, left: 500000, monthly: 1250, day: 20, rate: 3.0 }
             ],
-            transfers: [],
-            assets: [ { id: 1, owner: '共同', type: 'house', name: '小海房产估值', value: 7000000 } ],
-            stocks: [],
-            equity: { pricePerShare: 7.85, dividendRate: 1.06, members: [ {name: 'Aosen&小悦', principal: 1242097.6} ] },
-            photos: [ { url: 'https://images.unsplash.com/photo-1506869640319-ce1a56065328?w=500&q=80', desc: '旅行记录' } ],
+            transfers: [
+                { from: '工商银行', to: '浦发银行', amount: 20000, day: 9, expire: '长期' },
+                { from: '工商银行', to: '中信银行', amount: 15000, day: 16, expire: '长期' },
+                { from: '工商银行', to: '中国银行', amount: 1300, day: 16, expire: '长期' },
+                { from: '中信银行', to: '北京银行', amount: 600, day: 1, expire: '2028-06-10' },
+                { from: '中国银行', to: '南京银行', amount: 1300, day: 16, expire: '2026-12-01' }
+            ],
+            assets: [
+                { id: 1, owner: '共同', type: 'house', name: '小海房产估值', value: 7000000 },
+                { id: 2, owner: '共同', type: 'house', name: '小滨房产估值', value: 6000000 },
+                { id: 5, owner: '共同', type: 'fund', name: '基金理财兜底', value: 200000 },
+                { id: 6, owner: '共同', type: 'cash', name: '活期存款', value: 200000 }, 
+                { id: 7, owner: 'Aosen', type: 'other', name: '代步车估值', value: 200000 }
+            ],
+            stocks: [
+                { symbol: 'BABA', name: '阿里巴巴', market: 'US', owner: 'Aosen', costPrice: 175.76, shares: 13, currentPrice: 115.04 }
+            ],
+            equity: { 
+                pricePerShare: 7.85, dividendRate: 1.06, 
+                members: [ 
+                    {name: 'Aosen&小悦', principal: 1242097.6},
+                    {name: '老李', principal: 516000}, 
+                    {name: '老谢', principal: 750000}, 
+                    {name: '周妈&外婆', principal: 700000} 
+                ] 
+            },
+            photos: [
+                { url: '合影.jpg', desc: '初见的那天' },
+                { url: 'https://images.unsplash.com/photo-1506869640319-ce1a56065328?w=500&q=80', desc: '旅行记录' },
+                { url: 'https://images.unsplash.com/photo-1473496169904-658ba7c44d8a?w=500&q=80', desc: '光影瞬间' },
+                { url: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=500&q=80', desc: '山川湖海' }
+            ],
             goals: [ { name: '欧洲10周年纪念游', target: 100000, current: 0 } ],
-            dates: [ { name: '领证纪念日', date: '2022-09-09', type: 'anniversary' } ],
+            dates: [
+                { name: '小悦生日', date: '1996-09-01', type: 'birthday' }, 
+                { name: '奥森生日', date: '1992-02-17', type: 'birthday' },
+                { name: '李妈生日', date: '1966-09-18', type: 'birthday' }, 
+                { name: '李爸生日', date: '1964-11-27', type: 'birthday' },
+                { name: '周妈生日', date: '1970-01-01', type: 'birthday' }, 
+                { name: '周爸生日', date: '1968-01-01', type: 'birthday' },
+                { name: '领证纪念日', date: '2022-09-09', type: 'anniversary' }, 
+                { name: '婚礼纪念日', date: '2022-10-16', type: 'anniversary' }
+            ],
             todos: [ { id: 1, text: '周末一起去山姆买车厘子 🍒', completed: false } ],
             milestones: [ { id: 1, date: '2026-06-01', title: '期待新生命的到来', desc: '这是我们建立宝宝档案的第一天。', icon: 'ph-baby' } ],
             habits: [ { id: 1, name: '每天亲子阅读 30 分钟', growthValue: 5, lastWatered: '', stage1Days: 7, stage1Reward: '家庭电影之夜 🍿', stage2Days: 21, stage2Reward: '买一件新玩具 🧸', stage3Days: 100, stage3Reward: '去迪士尼乐园玩一天 🎡' } ]
@@ -803,7 +847,12 @@
                 
                 flowTree() {
                     const buildTree = (bankName) => {
-                        return { name: bankName, isRoot: bankName === this.salaryBank, loans: this.processedLoans.filter(l => l.bank === bankName), children: this.transfers.filter(t => t.from === bankName).map(t => ({ transfer: t, ...buildTree(t.to) })) };
+                        return { 
+                            name: bankName, 
+                            isRoot: bankName === this.salaryBank, 
+                            loans: this.processedLoans.filter(l => l.bank === bankName), 
+                            children: this.transfers.filter(t => t.from === bankName).map(t => ({ transfer: t, ...buildTree(t.to) })) 
+                        };
                     }
                     return buildTree(this.salaryBank);
                 },
@@ -976,12 +1025,13 @@
                 formatCurrencyIntNoSymbol(value) { return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 }).format(value); },
                 
                 applyData(data) {
+                    // 防御性赋值，如果数据为空数组则启用默认数据兜底
                     this.wealthPassword = data.wealthPassword || defaultData.wealthPassword;
                     this.salaryBank = data.salaryBank || defaultData.salaryBank; 
                     this.salaryDay = data.salaryDay || defaultData.salaryDay;
                     this.usdRate = data.usdRate || defaultData.usdRate;
                     
-                    this.loans = (data.loans || defaultData.loans).map(l => ({...l, owner: l.owner || '共同'})); 
+                    this.loans = data.loans && data.loans.length > 0 ? data.loans.map(l => ({...l, owner: l.owner || '共同'})) : defaultData.loans; 
                     
                     this.transfers = data.transfers && data.transfers.length > 0 ? data.transfers : defaultData.transfers;
                     this.goals = data.goals && data.goals.length > 0 ? data.goals : defaultData.goals; 
@@ -997,6 +1047,7 @@
                     } else { 
                         this.assets = defaultData.assets; 
                     }
+                    
                     if (data.equity && data.equity.members && data.equity.members.length > 0) { 
                         this.equity = data.equity; 
                     } else { 
