@@ -463,7 +463,7 @@
             <!-- 页脚 -->
             <footer class="border-t border-white/40 backdrop-blur-sm pb-12 pt-8">
                 <div class="max-w-6xl mx-auto px-4 flex flex-col items-center text-xs text-gray-500">
-                    <p>Aosen & 小悦的家庭空间。Vercel 云端驱动 & 银行级加密路由。</p>
+                    <p>Aosen & 小悦的家庭空间。Vercel 云端驱动 & 本地加密。</p>
                     <button @click="resetData" class="mt-4 text-gray-400 hover:text-rose-400 transition-colors">⚠️ 恢复初始模板数据</button>
                 </div>
             </footer>
@@ -663,430 +663,447 @@
                 </div>
             </div>
         </div>
+    </div>
 
-        <!-- 递归组件模板 -->
-        <script type="text/x-template" id="flow-node-template">
-            <div class="flex flex-col items-center">
-                <div v-if="node.transfer" class="w-1 h-10 bg-blue-100/50 -mt-2 z-0 relative overflow-hidden rounded-full shadow-inner border border-blue-200/30">
-                    <div class="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-transparent via-blue-500 to-transparent animate-flow-current opacity-90 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div>
+    <!-- 递归组件模板 -->
+    <script type="text/x-template" id="flow-node-template">
+        <div class="flex flex-col items-center">
+            <div v-if="node.transfer" class="w-1 h-10 bg-blue-100/50 -mt-2 z-0 relative overflow-hidden rounded-full shadow-inner border border-blue-200/30">
+                <div class="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-transparent via-blue-500 to-transparent animate-flow-current opacity-90 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div>
+            </div>
+            
+            <div class="bg-white/90 backdrop-blur-xl border border-white px-5 py-3 rounded-2xl shadow-sm text-center relative min-w-[140px] transition-all z-10" :class="{'border-b-4 border-b-apple-blue bg-white shadow-md': node.isRoot}">
+                <div v-if="node.transfer" class="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white text-[9px] px-2 py-0.5 rounded-full shadow-md whitespace-nowrap z-20">
+                    {{node.transfer.day}}日送达 {{formatCurrencyInt(node.transfer.amount)}}
                 </div>
+
+                <div class="font-semibold text-sm text-gray-800 flex justify-center items-center mt-1">
+                    <i v-if="node.isRoot" class="ph-fill ph-bank mr-1 text-apple-blue"></i>{{ node.name }}
+                </div>
+                <div v-if="node.isRoot" class="text-[10px] text-blue-500 mt-0.5 font-medium">发薪日: {{rootSalaryDay}}日</div>
+                <div v-if="node.transfer && node.transfer.expire" class="text-[8px] text-gray-400 mt-0.5">到期: {{node.transfer.expire}}</div>
                 
-                <div class="bg-white/90 backdrop-blur-xl border border-white px-5 py-3 rounded-2xl shadow-sm text-center relative min-w-[140px] transition-all z-10" :class="{'border-b-4 border-b-apple-blue bg-white shadow-md': node.isRoot}">
-                    <div v-if="node.transfer" class="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white text-[9px] px-2 py-0.5 rounded-full shadow-md whitespace-nowrap z-20">
-                        {{node.transfer.day}}日送达 {{formatCurrencyInt(node.transfer.amount)}}
-                    </div>
-
-                    <div class="font-semibold text-sm text-gray-800 flex justify-center items-center mt-1">
-                        <i v-if="node.isRoot" class="ph-fill ph-bank mr-1 text-apple-blue"></i>{{ node.name }}
-                    </div>
-                    <div v-if="node.isRoot" class="text-[10px] text-blue-500 mt-0.5 font-medium">发薪日: {{rootSalaryDay}}日</div>
-                    <div v-if="node.transfer && node.transfer.expire" class="text-[8px] text-gray-400 mt-0.5">到期: {{node.transfer.expire}}</div>
-                    
-                    <div v-if="node.loans && node.loans.length" class="mt-2 pt-2 border-t border-gray-200/50 flex flex-col gap-1">
-                        <div v-for="loan in node.loans" class="text-[10px] text-gray-600 bg-gray-50/80 rounded px-2 py-1 flex justify-between items-center shadow-sm">
-                            <span>{{loan.type}}({{loan.day}}日)</span>
-                            <span class="text-rose-500 font-semibold ml-2">{{formatCurrencyInt(loan.monthly)}}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div v-if="node.children && node.children.length" class="flex mt-2 relative pt-2">
-                    <div v-if="node.children.length > 1" class="absolute top-0 h-[2px] bg-blue-100/50 z-0" style="left: 20%; right: 20%;"></div>
-                    <div v-for="(child, index) in node.children" :key="index" class="flex flex-col items-center px-4 relative pt-2">
-                        <div class="absolute top-0 w-[2px] h-2 bg-blue-100/50 z-0"></div>
-                        <flow-node :node="child" :root-salary-day="rootSalaryDay" :is-masked="isMasked"></flow-node>
+                <div v-if="node.loans && node.loans.length" class="mt-2 pt-2 border-t border-gray-200/50 flex flex-col gap-1">
+                    <div v-for="loan in node.loans" class="text-[10px] text-gray-600 bg-gray-50/80 rounded px-2 py-1 flex justify-between items-center shadow-sm">
+                        <span>{{loan.type}}({{loan.day}}日)</span>
+                        <span class="text-rose-500 font-semibold ml-2">{{formatCurrencyInt(loan.monthly)}}</span>
                     </div>
                 </div>
             </div>
-        </script>
 
-        <!-- Vue 应用逻辑 -->
-        <script>
-            const { createApp } = Vue
+            <div v-if="node.children && node.children.length" class="flex mt-2 relative pt-2">
+                <div v-if="node.children.length > 1" class="absolute top-0 h-[2px] bg-blue-100/50 z-0" style="left: 20%; right: 20%;"></div>
+                <div v-for="(child, index) in node.children" :key="index" class="flex flex-col items-center px-4 relative pt-2">
+                    <div class="absolute top-0 w-[2px] h-2 bg-blue-100/50 z-0"></div>
+                    <flow-node :node="child" :root-salary-day="rootSalaryDay" :is-masked="isMasked"></flow-node>
+                </div>
+            </div>
+        </div>
+    </script>
 
-            const defaultData = {
-                wealthPassword: '1026',
-                salaryBank: '工商银行', salaryDay: 15, usdRate: 7.25,
-                loans: [
-                    { id: 1, owner: '共同', type: '房贷', bank: '中信银行', isAutoCalc: true, baseLeft: 1786921.68, baseMonthly: 8891, baseDate: '2026-04', rate: 3.2, day: 20, monthly: 0, left: 0 }
-                ],
-                transfers: [],
-                assets: [ { id: 1, owner: '共同', type: 'house', name: '小海房产估值', value: 7000000 } ],
-                stocks: [],
-                equity: { pricePerShare: 7.85, dividendRate: 1.06, members: [ {name: 'Aosen&小悦', principal: 1242097.6} ] },
-                photos: [ { url: 'https://images.unsplash.com/photo-1506869640319-ce1a56065328?w=500&q=80', desc: '旅行记录' } ],
-                goals: [ { name: '欧洲10周年纪念游', target: 100000, current: 0 } ],
-                dates: [ { name: '领证纪念日', date: '2022-09-09', type: 'anniversary' } ],
-                todos: [ { id: 1, text: '周末一起去山姆买车厘子 🍒', completed: false } ],
-                milestones: [ { id: 1, date: '2026-06-01', title: '期待新生命的到来', desc: '这是我们建立宝宝档案的第一天。', icon: 'ph-baby' } ],
-                habits: [ { id: 1, name: '每天亲子阅读 30 分钟', growthValue: 5, lastWatered: '', stage1Days: 7, stage1Reward: '家庭电影之夜 🍿', stage2Days: 21, stage2Reward: '买一件新玩具 🧸', stage3Days: 100, stage3Reward: '去迪士尼乐园玩一天 🎡' } ]
-            };
+    <!-- Vue 应用逻辑 -->
+    <script>
+        const { createApp } = Vue
 
-            const app = createApp({
-                data() {
-                    return {
-                        auth: { isLoggedIn: false, inputPin: '', errorMsg: '', isAuthenticating: false },
-                        isMasked: true, showConfig: false, configTab: 'life',
-                        currentSpace: 'life', // 默认打开生活面板
-                        
-                        wealthPassword: '', showWealthAuth: false, wealthInputPin: '', wealthErrorMsg: '',
-                        
-                        salaryBank: '', salaryDay: 15, usdRate: 7.25,
-                        loans: [], transfers: [], assets: [], stocks: [], equity: {}, 
-                        goals: [], dates: [], photos: [], todos: [], milestones: [], habits: [],
-                        
-                        newTodoText: '', currentDateStr: '', weather: '⛅ 晴朗无云', dailyQuote: '',
-                        isSyncing: false, syncStatus: '', isFetchingStocks: false,
-                        
-                        toastMsg: '', showToast: false, toastTimer: null
+        const defaultData = {
+            wealthPassword: '1026',
+            salaryBank: '工商银行', salaryDay: 15, usdRate: 7.25,
+            loans: [
+                { id: 1, owner: '共同', type: '房贷', bank: '中信银行', isAutoCalc: true, baseLeft: 1786921.68, baseMonthly: 8891, baseDate: '2026-04', rate: 3.2, day: 20, monthly: 0, left: 0 }
+            ],
+            transfers: [],
+            assets: [ { id: 1, owner: '共同', type: 'house', name: '小海房产估值', value: 7000000 } ],
+            stocks: [],
+            equity: { pricePerShare: 7.85, dividendRate: 1.06, members: [ {name: 'Aosen&小悦', principal: 1242097.6} ] },
+            photos: [ { url: 'https://images.unsplash.com/photo-1506869640319-ce1a56065328?w=500&q=80', desc: '旅行记录' } ],
+            goals: [ { name: '欧洲10周年纪念游', target: 100000, current: 0 } ],
+            dates: [ { name: '领证纪念日', date: '2022-09-09', type: 'anniversary' } ],
+            todos: [ { id: 1, text: '周末一起去山姆买车厘子 🍒', completed: false } ],
+            milestones: [ { id: 1, date: '2026-06-01', title: '期待新生命的到来', desc: '这是我们建立宝宝档案的第一天。', icon: 'ph-baby' } ],
+            habits: [ { id: 1, name: '每天亲子阅读 30 分钟', growthValue: 5, lastWatered: '', stage1Days: 7, stage1Reward: '家庭电影之夜 🍿', stage2Days: 21, stage2Reward: '买一件新玩具 🧸', stage3Days: 100, stage3Reward: '去迪士尼乐园玩一天 🎡' } ]
+        };
+
+        const app = createApp({
+            data() {
+                return {
+                    auth: { isLoggedIn: false, inputPin: '', errorMsg: '', isAuthenticating: false },
+                    isMasked: true, showConfig: false, configTab: 'life',
+                    currentSpace: 'life', // 默认打开生活面板
+                    
+                    wealthPassword: '', showWealthAuth: false, wealthInputPin: '', wealthErrorMsg: '',
+                    
+                    salaryBank: '', salaryDay: 15, usdRate: 7.25,
+                    loans: [], transfers: [], assets: [], stocks: [], equity: {}, 
+                    goals: [], dates: [], photos: [], todos: [], milestones: [], habits: [],
+                    
+                    newTodoText: '', currentDateStr: '', weather: '⛅ 晴朗无云', dailyQuote: '',
+                    isSyncing: false, syncStatus: '', isFetchingStocks: false,
+                    
+                    toastMsg: '', showToast: false, toastTimer: null
+                }
+            },
+            async created() {
+                this.checkAuthStatus();
+                await this.loadConfig();
+                
+                const now = new Date();
+                this.currentDateStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
+                const quotes = [
+                    "只要一家人在一起，每一天都是财富的增值。", "慢慢变富，稳稳幸福。", "把生活过成诗，把账本理成画。"
+                ];
+                this.dailyQuote = quotes[now.getDate() % quotes.length];
+                
+                if(this.stocks && this.stocks.length > 0 && this.auth.isLoggedIn) this.fetchStocks();
+            },
+            computed: {
+                rootSalaryDay() { return this.salaryDay; },
+                regularAssets() { return this.assets.filter(a => a.type !== 'stock'); },
+                funds() { return this.assets.filter(a => a.type === 'fund' || a.type === 'cash'); },
+                
+                processedLoans() {
+                    const now = new Date(); const currentYear = now.getFullYear(); const currentMonth = now.getMonth(); const currentDate = now.getDate();
+                    return this.loans.map(loan => {
+                        let pLoan = { ...loan };
+                        const r = (loan.rate / 100) / 12;
+                        if (loan.isAutoCalc && loan.baseDate) {
+                            const [baseY, baseM] = loan.baseDate.split('-').map(Number);
+                            let elapsed = (currentYear - baseY) * 12 + (currentMonth - (baseM - 1));
+                            if (currentDate < loan.day) elapsed -= 1; 
+                            if (elapsed < 0) elapsed = 0;
+                            let currentLeft = loan.baseLeft;
+                            let fixedMonthly = loan.baseMonthly || 0;
+                            for(let i = 0; i < elapsed; i++) { currentLeft -= (fixedMonthly - currentLeft * r); }
+                            pLoan.left = currentLeft; pLoan.monthly = fixedMonthly;
+                            pLoan.nextInterest = currentLeft * r;
+                            pLoan.nextPrincipal = fixedMonthly - pLoan.nextInterest;
+                        } else if (loan.type === '消费贷') {
+                            pLoan.nextInterest = pLoan.left * r; 
+                        }
+                        return pLoan;
+                    });
+                },
+                
+                totalEquityPrincipal() { return this.equity.members.reduce((sum, m) => sum + Number(m.principal), 0); },
+                totalEquityShares() { return this.totalEquityPrincipal / this.equity.pricePerShare; },
+                equityYieldRate() { return ((this.equity.dividendRate / this.equity.pricePerShare) * 100).toFixed(2); },
+                
+                totalStockValue() { 
+                    return this.stocks.reduce((sum, s) => {
+                        let val = s.currentPrice * s.shares;
+                        if(s.market === 'US') val = val * this.usdRate;
+                        return sum + val;
+                    }, 0);
+                },
+                totalAssets() { return this.assets.reduce((sum, a) => sum + Number(a.value), 0) + this.totalEquityPrincipal + this.totalStockValue; },
+                totalDebt() { return this.processedLoans.reduce((sum, loan) => sum + Number(loan.left || 0), 0); },
+                netWorth() { return this.totalAssets - this.totalDebt; },
+                debtRatio() { return this.totalAssets > 0 ? Math.round((this.totalDebt / this.totalAssets) * 100) : 0; },
+                totalDividends() { return this.equity.members.reduce((sum, m) => sum + ((m.principal / this.equity.pricePerShare) * this.equity.dividendRate), 0); },
+                totalDividendsPostTax() { return this.totalDividends * 0.8; },
+                
+                flowTree() {
+                    const buildTree = (bankName) => {
+                        return { name: bankName, isRoot: bankName === this.salaryBank, loans: this.processedLoans.filter(l => l.bank === bankName), children: this.transfers.filter(t => t.from === bankName).map(t => ({ transfer: t, ...buildTree(t.to) })) };
+                    }
+                    return buildTree(this.salaryBank);
+                },
+                processedDates() {
+                    const today = new Date(); today.setHours(0,0,0,0); const currentYear = today.getFullYear();
+                    return this.dates.map(item => {
+                        const [y, m, d] = item.date.split('-').map(Number);
+                        let nextDate = new Date(currentYear, m - 1, d);
+                        let yearsPassed = currentYear - y;
+                        if (nextDate.getTime() < today.getTime()) { nextDate.setFullYear(currentYear + 1); yearsPassed += 1; }
+                        const daysLeft = Math.ceil(Math.abs(nextDate - today) / (1000 * 60 * 60 * 24));
+                        return { ...item, daysLeft, nextDateStr: `${nextDate.getMonth()+1}月${nextDate.getDate()}日`, yearsPassed, isMarriage: item.type === 'anniversary' };
+                    }).sort((a, b) => a.daysLeft - b.daysLeft);
+                },
+                sortedTodos() { return [...this.todos].sort((a, b) => (a.completed === b.completed) ? 0 : a.completed ? 1 : -1); },
+                sortedMilestones() { return [...this.milestones].sort((a, b) => new Date(b.date) - new Date(a.date)); }
+            },
+            methods: {
+                showNotification(msg) {
+                    this.toastMsg = msg; this.showToast = true;
+                    if(this.toastTimer) clearTimeout(this.toastTimer);
+                    this.toastTimer = setTimeout(() => { this.showToast = false; }, 3000);
+                },
+                
+                async triggerPushNotification(title, content) {
+                    if (!this.auth.isLoggedIn || this.auth.inputPin === '0000') return; 
+                    try {
+                        const token = sessionStorage.getItem('family_auth_token');
+                        await fetch('/api/sync', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': token },
+                            body: JSON.stringify({ action: 'notify', title, content })
+                        });
+                    } catch(e) { console.error('Push Notice Failed'); }
+                },
+                
+                toggleMask() {
+                    if (this.isMasked) {
+                        this.showWealthAuth = true; this.wealthErrorMsg = ''; this.wealthInputPin = '';
+                    } else {
+                        this.isMasked = true;
                     }
                 },
-                async created() {
-                    this.checkAuthStatus();
-                    await this.loadConfig();
-                    
-                    const now = new Date();
-                    this.currentDateStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
-                    const quotes = [
-                        "只要一家人在一起，每一天都是财富的增值。", "慢慢变富，稳稳幸福。", "把生活过成诗，把账本理成画。"
-                    ];
-                    this.dailyQuote = quotes[now.getDate() % quotes.length];
-                    
-                    if(this.stocks && this.stocks.length > 0 && this.auth.isLoggedIn) this.fetchStocks();
+                verifyWealthPassword() {
+                    if (this.wealthInputPin === this.wealthPassword) {
+                        this.isMasked = false; this.showWealthAuth = false;
+                        this.showNotification('✅ 隐私财务数据已解密');
+                    } else {
+                        this.wealthErrorMsg = '密码错误，无权查阅 🔒';
+                    }
                 },
-                computed: {
-                    rootSalaryDay() { return this.salaryDay; },
-                    regularAssets() { return this.assets.filter(a => a.type !== 'stock'); },
-                    funds() { return this.assets.filter(a => a.type === 'fund' || a.type === 'cash'); },
+
+                isWateredToday(habit) { return habit.lastWatered === new Date().toISOString().split('T')[0]; },
+                waterHabit(habit) {
+                    if (this.isWateredToday(habit)) return;
+                    habit.growthValue += 1;
+                    habit.lastWatered = new Date().toISOString().split('T')[0];
                     
-                    processedLoans() {
-                        const now = new Date(); const currentYear = now.getFullYear(); const currentMonth = now.getMonth(); const currentDate = now.getDate();
-                        return this.loans.map(loan => {
-                            let pLoan = { ...loan };
-                            const r = (loan.rate / 100) / 12;
-                            if (loan.isAutoCalc && loan.baseDate) {
-                                const [baseY, baseM] = loan.baseDate.split('-').map(Number);
-                                let elapsed = (currentYear - baseY) * 12 + (currentMonth - (baseM - 1));
-                                if (currentDate < loan.day) elapsed -= 1; 
-                                if (elapsed < 0) elapsed = 0;
-                                let currentLeft = loan.baseLeft;
-                                let fixedMonthly = loan.baseMonthly || 0;
-                                for(let i = 0; i < elapsed; i++) { currentLeft -= (fixedMonthly - currentLeft * r); }
-                                pLoan.left = currentLeft; pLoan.monthly = fixedMonthly;
-                                pLoan.nextInterest = currentLeft * r;
-                                pLoan.nextPrincipal = fixedMonthly - pLoan.nextInterest;
-                            } else if (loan.type === '消费贷') {
-                                pLoan.nextInterest = pLoan.left * r; 
-                            }
-                            return pLoan;
-                        });
-                    },
-                    
-                    totalEquityPrincipal() { return this.equity.members.reduce((sum, m) => sum + Number(m.principal), 0); },
-                    totalEquityShares() { return this.totalEquityPrincipal / this.equity.pricePerShare; },
-                    equityYieldRate() { return ((this.equity.dividendRate / this.equity.pricePerShare) * 100).toFixed(2); },
-                    
-                    totalStockValue() { 
-                        return this.stocks.reduce((sum, s) => {
-                            let val = s.currentPrice * s.shares;
-                            if(s.market === 'US') val = val * this.usdRate;
-                            return sum + val;
-                        }, 0);
-                    },
-                    totalAssets() { return this.assets.reduce((sum, a) => sum + Number(a.value), 0) + this.totalEquityPrincipal + this.totalStockValue; },
-                    totalDebt() { return this.processedLoans.reduce((sum, loan) => sum + Number(loan.left || 0), 0); },
-                    netWorth() { return this.totalAssets - this.totalDebt; },
-                    debtRatio() { return this.totalAssets > 0 ? Math.round((this.totalDebt / this.totalAssets) * 100) : 0; },
-                    totalDividends() { return this.equity.members.reduce((sum, m) => sum + ((m.principal / this.equity.pricePerShare) * this.equity.dividendRate), 0); },
-                    totalDividendsPostTax() { return this.totalDividends * 0.8; },
-                    
-                    flowTree() {
-                        const buildTree = (bankName) => {
-                            return { name: bankName, isRoot: bankName === this.salaryBank, loans: this.processedLoans.filter(l => l.bank === bankName), children: this.transfers.filter(t => t.from === bankName).map(t => ({ transfer: t, ...buildTree(t.to) })) };
-                        }
-                        return buildTree(this.salaryBank);
-                    },
-                    processedDates() {
-                        const today = new Date(); today.setHours(0,0,0,0); const currentYear = today.getFullYear();
-                        return this.dates.map(item => {
-                            const [y, m, d] = item.date.split('-').map(Number);
-                            let nextDate = new Date(currentYear, m - 1, d);
-                            let yearsPassed = currentYear - y;
-                            if (nextDate.getTime() < today.getTime()) { nextDate.setFullYear(currentYear + 1); yearsPassed += 1; }
-                            const daysLeft = Math.ceil(Math.abs(nextDate - today) / (1000 * 60 * 60 * 24));
-                            return { ...item, daysLeft, nextDateStr: `${nextDate.getMonth()+1}月${nextDate.getDate()}日`, yearsPassed, isMarriage: item.type === 'anniversary' };
-                        }).sort((a, b) => a.daysLeft - b.daysLeft);
-                    },
-                    sortedTodos() { return [...this.todos].sort((a, b) => (a.completed === b.completed) ? 0 : a.completed ? 1 : -1); },
-                    sortedMilestones() { return [...this.milestones].sort((a, b) => new Date(b.date) - new Date(a.date)); }
+                    const achievedReward = [
+                        {days: habit.stage1Days, name: habit.stage1Reward},
+                        {days: habit.stage2Days, name: habit.stage2Reward},
+                        {days: habit.stage3Days, name: habit.stage3Reward}
+                    ].find(r => r.days === habit.growthValue);
+
+                    if (achievedReward) {
+                        this.showNotification(`🎉 恭喜！小树结出了果实：<br><span class="text-yellow-300">${achievedReward.name}</span>`);
+                        this.triggerPushNotification('习惯养成里程碑！', `太棒啦！习惯【${habit.name}】已坚持 ${habit.growthValue} 天！<br>成功解锁阶段奖励：<b>${achievedReward.name}</b>`);
+                    } else {
+                        this.showNotification('💧 浇水成功！小树吸收了营养。');
+                        this.triggerPushNotification('习惯成长通知', `给习惯【${habit.name}】浇水啦！当前已累计培育 ${habit.growthValue} 滴雨露。`);
+                    }
+                    this.saveConfig();
                 },
-                methods: {
-                    showNotification(msg) {
-                        this.toastMsg = msg; this.showToast = true;
-                        if(this.toastTimer) clearTimeout(this.toastTimer);
-                        this.toastTimer = setTimeout(() => { this.showToast = false; }, 3000);
-                    },
-                    
-                    async triggerPushNotification(title, content) {
-                        if (!this.auth.isLoggedIn || this.auth.inputPin === '0000') return; 
+                getNextReward(habit) {
+                    if (habit.growthValue < habit.stage1Days) return { days: habit.stage1Days, name: habit.stage1Reward };
+                    if (habit.growthValue < habit.stage2Days) return { days: habit.stage2Days, name: habit.stage2Reward };
+                    if (habit.growthValue < habit.stage3Days) return { days: habit.stage3Days, name: habit.stage3Reward };
+                    return null; 
+                },
+                getHabitProgress(habit) {
+                    const nextReward = this.getNextReward(habit);
+                    if (!nextReward) return 100;
+                    return Math.min(100, (habit.growthValue / nextReward.days) * 100);
+                },
+                getHabitIcon(value) {
+                    if (value < 7) return 'ph-fill ph-seedling';
+                    if (value < 21) return 'ph-fill ph-plant';
+                    if (value < 100) return 'ph-fill ph-tree';
+                    return 'ph-fill ph-tree-evergreen';
+                },
+                
+                openImage(url) { window.open(url, '_blank'); },
+                
+                getOwnerTagClass(owner) {
+                    if (owner === 'Aosen') return 'bg-blue-50 text-blue-600 border-blue-200';
+                    if (owner === '小悦') return 'bg-rose-50 text-rose-600 border-rose-200';
+                    return 'bg-purple-50 text-purple-600 border-purple-200';
+                },
+                getStockProfit(stock) { return (stock.currentPrice - stock.costPrice) * stock.shares; },
+                getStockProfitPercent(stock) { return stock.costPrice > 0 ? ((stock.currentPrice - stock.costPrice) / stock.costPrice * 100).toFixed(2) : 0; },
+
+                async fetchStocks() {
+                    this.isFetchingStocks = true;
+                    for (let stock of this.stocks) {
                         try {
-                            const token = sessionStorage.getItem('family_auth_token');
-                            await fetch('/api/sync', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': token },
-                                body: JSON.stringify({ action: 'notify', title, content })
+                            const market = stock.market; const symbol = stock.symbol.toUpperCase();
+                            const query = market === 'US' ? `gb_${symbol}` : symbol; 
+                            await new Promise((resolve) => {
+                                const script = document.createElement('script'); script.src = `https://hq.sinajs.cn/list=${query}`; window[`hq_str_${query}`] = "";
+                                script.onload = () => {
+                                    const res = window[`hq_str_${query}`];
+                                    if (res && res.length > 10) { const parts = res.split(','); if (parts.length > 3) stock.currentPrice = parseFloat(parts[3]); }
+                                    document.body.removeChild(script); resolve();
+                                };
+                                script.onerror = () => { document.body.removeChild(script); resolve(); };
+                                document.body.appendChild(script);
                             });
-                        } catch(e) { console.error('Push Notice Failed'); }
-                    },
+                        } catch(e) { }
+                    }
+                    setTimeout(() => { this.isFetchingStocks = false; }, 800);
+                },
+
+                checkAuthStatus() { if (sessionStorage.getItem('family_auth_token')) this.auth.isLoggedIn = true; },
+                
+                async handleLogin() {
+                    if (!this.auth.inputPin) { this.auth.errorMsg = '请输入密码'; return; }
+                    this.auth.isAuthenticating = true; this.auth.errorMsg = '';
                     
-                    toggleMask() {
-                        if (this.isMasked) {
-                            this.showWealthAuth = true; this.wealthErrorMsg = ''; this.wealthInputPin = '';
+                    try {
+                        const res = await fetch('/api/sync', { headers: { 'Authorization': this.auth.inputPin } });
+                        if (res.ok) {
+                            sessionStorage.setItem('family_auth_token', this.auth.inputPin);
+                            this.auth.isLoggedIn = true; 
+                            const json = await res.json();
+                            const recordData = json.record ? json.record : json;
+                            
+                            if(recordData && Object.keys(recordData).length > 0) {
+                                this.applyData(recordData);
+                                localStorage.setItem('cashflow_family_v9', JSON.stringify(recordData));
+                            } else {
+                                this.applyData(defaultData);
+                            }
+                            if(this.stocks && this.stocks.length > 0) this.fetchStocks();
+                        } else if (res.status === 404) {
+                            throw new Error('LocalMode');
                         } else {
-                            this.isMasked = true;
+                            this.auth.errorMsg = '密码好像不对哦，家门紧闭 🔒';
                         }
-                    },
-                    verifyWealthPassword() {
-                        if (this.wealthInputPin === this.wealthPassword) {
-                            this.isMasked = false; this.showWealthAuth = false;
-                            this.showNotification('✅ 隐私财务数据已解密');
+                    } catch(e) {
+                        if (this.auth.inputPin === '0000') {
+                            sessionStorage.setItem('family_auth_token', 'local_dummy_token');
+                            this.auth.isLoggedIn = true;
+                            const saved = localStorage.getItem('cashflow_family_v9');
+                            if (saved) this.applyData(JSON.parse(saved)); else this.applyData(defaultData);
+                            if(this.stocks && this.stocks.length > 0) this.fetchStocks();
+                            this.syncStatus = '本地预览模式 (未连接云端)';
+                            this.showNotification('👋 欢迎来到本地预览模式！');
                         } else {
-                            this.wealthErrorMsg = '密码错误，无权查阅 🔒';
+                            this.auth.errorMsg = '本地预览密码错误 🔒 (提示: 预览请输 0000)';
                         }
-                    },
+                    } finally {
+                        this.auth.isAuthenticating = false;
+                    }
+                },
+                
+                logout() { this.auth.isLoggedIn = false; this.auth.inputPin = ''; this.showConfig = false; sessionStorage.removeItem('family_auth_token'); },
 
-                    isWateredToday(habit) { return habit.lastWatered === new Date().toISOString().split('T')[0]; },
-                    waterHabit(habit) {
-                        if (this.isWateredToday(habit)) return;
-                        habit.growthValue += 1;
-                        habit.lastWatered = new Date().toISOString().split('T')[0];
-                        
-                        const achievedReward = [
-                            {days: habit.stage1Days, name: habit.stage1Reward},
-                            {days: habit.stage2Days, name: habit.stage2Reward},
-                            {days: habit.stage3Days, name: habit.stage3Reward}
-                        ].find(r => r.days === habit.growthValue);
-
-                        if (achievedReward) {
-                            this.showNotification(`🎉 恭喜！小树结出了果实：<br><span class="text-yellow-300">${achievedReward.name}</span>`);
-                            this.triggerPushNotification('习惯养成里程碑！', `太棒啦！习惯【${habit.name}】已坚持 ${habit.growthValue} 天！<br>成功解锁阶段奖励：<b>${achievedReward.name}</b>`);
-                        } else {
-                            this.showNotification('💧 浇水成功！小树吸收了营养。');
-                            this.triggerPushNotification('习惯成长通知', `给习惯【${habit.name}】浇水啦！当前已累计培育 ${habit.growthValue} 滴雨露。`);
-                        }
-                        this.saveConfig();
-                    },
-                    getNextReward(habit) {
-                        if (habit.growthValue < habit.stage1Days) return { days: habit.stage1Days, name: habit.stage1Reward };
-                        if (habit.growthValue < habit.stage2Days) return { days: habit.stage2Days, name: habit.stage2Reward };
-                        if (habit.growthValue < habit.stage3Days) return { days: habit.stage3Days, name: habit.stage3Reward };
-                        return null; 
-                    },
-                    getHabitProgress(habit) {
-                        const nextReward = this.getNextReward(habit);
-                        if (!nextReward) return 100;
-                        return Math.min(100, (habit.growthValue / nextReward.days) * 100);
-                    },
-                    getHabitIcon(value) {
-                        if (value < 7) return 'ph-fill ph-seedling';
-                        if (value < 21) return 'ph-fill ph-plant';
-                        if (value < 100) return 'ph-fill ph-tree';
-                        return 'ph-fill ph-tree-evergreen';
-                    },
+                formatCurrency(value) { return this.isMasked ? '¥ ***' : new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value); },
+                formatCurrencyInt(value) { return this.isMasked ? '¥ ***' : new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(value); },
+                formatCurrencyIntNoSymbol(value) { return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 }).format(value); },
+                
+                applyData(data) {
+                    this.wealthPassword = data.wealthPassword || defaultData.wealthPassword;
+                    this.salaryBank = data.salaryBank || defaultData.salaryBank; 
+                    this.salaryDay = data.salaryDay || defaultData.salaryDay;
+                    this.usdRate = data.usdRate || defaultData.usdRate;
                     
-                    openImage(url) { window.open(url, '_blank'); },
+                    this.loans = (data.loans || defaultData.loans).map(l => ({...l, owner: l.owner || '共同'})); 
                     
-                    getOwnerTagClass(owner) {
-                        if (owner === 'Aosen') return 'bg-blue-50 text-blue-600 border-blue-200';
-                        if (owner === '小悦') return 'bg-rose-50 text-rose-600 border-rose-200';
-                        return 'bg-purple-50 text-purple-600 border-purple-200';
-                    },
-                    getStockProfit(stock) { return (stock.currentPrice - stock.costPrice) * stock.shares; },
-                    getStockProfitPercent(stock) { return stock.costPrice > 0 ? ((stock.currentPrice - stock.costPrice) / stock.costPrice * 100).toFixed(2) : 0; },
-
-                    async fetchStocks() {
-                        this.isFetchingStocks = true;
-                        for (let stock of this.stocks) {
-                            try {
-                                const market = stock.market; const symbol = stock.symbol.toUpperCase();
-                                const query = market === 'US' ? `us${symbol}` : symbol.toLowerCase(); 
-                                await new Promise((resolve) => {
-                                    const script = document.createElement('script'); script.src = `https://qt.gtimg.cn/q=${query}`; window[`v_${query}`] = "";
-                                    script.onload = () => {
-                                        const res = window[`v_${query}`];
-                                        if (res && res.length > 10) { const parts = res.split('~'); if (parts.length > 3) stock.currentPrice = parseFloat(parts[3]); }
-                                        document.body.removeChild(script); resolve();
-                                    };
-                                    script.onerror = () => { document.body.removeChild(script); resolve(); };
-                                    document.body.appendChild(script);
-                                });
-                            } catch(e) { }
-                        }
-                        setTimeout(() => { this.isFetchingStocks = false; }, 800);
-                    },
-
-                    checkAuthStatus() { if (sessionStorage.getItem('family_auth_token')) this.auth.isLoggedIn = true; },
+                    this.transfers = data.transfers && data.transfers.length > 0 ? data.transfers : defaultData.transfers;
+                    this.goals = data.goals && data.goals.length > 0 ? data.goals : defaultData.goals; 
+                    this.dates = data.dates && data.dates.length > 0 ? data.dates : defaultData.dates;
+                    this.photos = data.photos && data.photos.length > 0 ? data.photos : defaultData.photos;
+                    this.stocks = data.stocks && data.stocks.length > 0 ? data.stocks : defaultData.stocks;
+                    this.todos = data.todos && data.todos.length > 0 ? data.todos : defaultData.todos;
+                    this.milestones = data.milestones && data.milestones.length > 0 ? data.milestones : defaultData.milestones;
+                    this.habits = data.habits && data.habits.length > 0 ? data.habits : defaultData.habits;
                     
-                    async handleLogin() {
-                        if (!this.auth.inputPin) { this.auth.errorMsg = '请输入密码'; return; }
-                        this.auth.isAuthenticating = true; this.auth.errorMsg = '';
-                        
+                    if (data.assets && Array.isArray(data.assets) && data.assets.length > 0) { 
+                        this.assets = data.assets.map(a => ({...a, owner: a.owner || '共同'})); 
+                    } else { 
+                        this.assets = defaultData.assets; 
+                    }
+                    if (data.equity && data.equity.members && data.equity.members.length > 0) { 
+                        this.equity = data.equity; 
+                    } else { 
+                        this.equity = defaultData.equity; 
+                    }
+                },
+
+                async loadConfig() {
+                    const saved = localStorage.getItem('cashflow_family_v9');
+                    this.applyData(saved ? JSON.parse(saved) : defaultData);
+                    
+                    const token = sessionStorage.getItem('family_auth_token');
+                    if (token) {
+                        this.isSyncing = true; this.syncStatus = '云端同步中...';
                         try {
-                            const res = await fetch('/api/sync', { headers: { 'Authorization': this.auth.inputPin } });
+                            const res = await fetch('/api/sync', { headers: { 'Authorization': token } });
                             if (res.ok) {
-                                sessionStorage.setItem('family_auth_token', this.auth.inputPin);
-                                this.auth.isLoggedIn = true; 
-                                const json = await res.json();
+                                const json = await res.json(); 
                                 const recordData = json.record ? json.record : json;
                                 
-                                if(recordData && Object.keys(recordData).length > 0) {
-                                    this.applyData(recordData);
-                                    localStorage.setItem('cashflow_family_v9', JSON.stringify(recordData));
+                                if (recordData && Object.keys(recordData).length > 0) {
+                                    this.applyData(recordData); 
+                                    localStorage.setItem('cashflow_family_v9', JSON.stringify(recordData)); 
+                                    this.syncStatus = '已与云端对齐';
                                 } else {
-                                    this.applyData(defaultData);
+                                    this.syncStatus = '初始化云盒子...'; await this.saveConfig();
                                 }
-                                if(this.stocks && this.stocks.length > 0) this.fetchStocks();
-                            } else if (res.status === 404) {
-                                throw new Error('LocalMode');
-                            } else {
-                                this.auth.errorMsg = '密码好像不对哦，家门紧闭 🔒';
-                            }
-                        } catch(e) {
-                            if (this.auth.inputPin === '0000') {
-                                sessionStorage.setItem('family_auth_token', 'local_dummy_token');
-                                this.auth.isLoggedIn = true;
-                                const saved = localStorage.getItem('cashflow_family_v9');
-                                if (saved) this.applyData(JSON.parse(saved)); else this.applyData(defaultData);
-                                if(this.stocks && this.stocks.length > 0) this.fetchStocks();
-                                this.syncStatus = '本地预览模式 (未连接云端)';
-                                this.showNotification('👋 欢迎来到本地预览模式！');
-                            } else {
-                                this.auth.errorMsg = '本地预览密码错误 🔒 (提示: 预览请输 0000)';
-                            }
-                        } finally {
-                            this.auth.isAuthenticating = false;
-                        }
-                    },
+                            } else if (res.status === 404) throw new Error('LocalMode');
+                            else if (res.status === 401) this.logout();
+                        } catch (err) { this.syncStatus = '本地预览模式 (离线)'; } 
+                        finally { setTimeout(() => this.syncStatus = '', 3000); this.isSyncing = false; }
+                    }
+                },
+                
+                async saveConfig() {
+                    const dataToSave = {
+                        wealthPassword: this.wealthPassword,
+                        salaryBank: this.salaryBank, salaryDay: this.salaryDay, usdRate: this.usdRate,
+                        loans: this.loans, transfers: this.transfers, assets: this.assets, stocks: this.stocks,
+                        equity: this.equity, goals: this.goals, dates: this.dates, photos: this.photos,
+                        todos: this.todos, milestones: this.milestones, habits: this.habits
+                    };
+                    localStorage.setItem('cashflow_family_v9', JSON.stringify(dataToSave));
                     
-                    logout() { this.auth.isLoggedIn = false; this.auth.inputPin = ''; this.showConfig = false; sessionStorage.removeItem('family_auth_token'); },
+                    const token = sessionStorage.getItem('family_auth_token');
+                    if (token) {
+                        this.isSyncing = true; this.syncStatus = '正在保存至云端...';
+                        try {
+                            const res = await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': token }, body: JSON.stringify(dataToSave) });
+                            if(res.ok) this.syncStatus = '保存成功！';
+                            else if (res.status === 404) throw new Error('LocalMode');
+                            else this.syncStatus = '权限验证失败';
+                        } catch(e) { this.syncStatus = '已存本地 (预览模式无云端)'; } 
+                        finally { setTimeout(() => this.syncStatus = '', 3000); this.isSyncing = false; }
+                    }
+                },
+                openConfig() { this.showConfig = true; this.configTab = 'life'; },
+                async saveAndCloseConfig() { await this.saveConfig(); this.showConfig = false; },
+                resetData() { if(confirm('警告：确定清除您修改过的数据并恢复初始模板吗？')) { localStorage.removeItem('cashflow_family_v9'); window.location.reload(); } },
+                
+                addTodo() {
+                    if(this.newTodoText.trim() === '') return;
+                    const text = this.newTodoText.trim();
+                    this.todos.push({ id: Date.now(), text: text, completed: false });
+                    this.newTodoText = '';
+                    
+                    this.showNotification('📝 已记录新待办');
+                    this.triggerPushNotification('📅 新增家庭待办', `叮咚！家里新增了一条待办事项：<br><br><b>${text}</b><br><br>记得抽空去看看哦！`);
+                    this.saveConfig();
+                },
+                toggleTodo(todo) {
+                    todo.completed = !todo.completed;
+                    if(todo.completed) {
+                        this.showNotification('✅ 滴！待办任务搞定！');
+                        this.triggerPushNotification('✅ 待办完成通知', `太棒啦！刚才顺利完成了一项家庭待办：<br><br><del>${todo.text}</del><br><br>继续保持哦！`);
+                    } else {
+                        this.triggerPushNotification('🔄 待办重新开启', `注意啦！一项原本已完成的待办被重新标记为未完成：<br><br><b>${todo.text}</b>`);
+                    }
+                    this.saveConfig();
+                },
+                deleteTodo(id) { this.todos = this.todos.filter(t => t.id !== id); this.saveConfig(); },
+                
+                addAsset() { this.assets.push({ id: Date.now(), owner: '共同', type: 'house', name: '', value: 0 }); },
+                removeAsset(idx) { this.assets.splice(idx, 1); },
+                addStock() { this.stocks.push({ symbol: '', name: '', market: 'CN', owner: 'Aosen', costPrice: 0, shares: 0, currentPrice: 0 }); },
+                addEquityMember() { this.equity.members.push({ name: '', principal: 0 }); },
+                removeEquityMember(idx) { this.equity.members.splice(idx, 1); },
+                addLoan() { this.loans.push({ id: Date.now(), owner: '共同', type: '消费贷', bank: '', left: 0, monthly: 0, rate: 3.0, isAutoCalc: false }); },
+                removeLoan(index) { this.loans.splice(index, 1); },
+                addTransfer() { this.transfers.push({ from: '', to: '', amount: 0, day: 1, expire: '长期' }); },
+                removeTransfer(index) { this.transfers.splice(index, 1); },
+                addGoal() { this.goals.push({ name: '', target: 10000, current: 0 }); },
+                removeGoal(idx) { this.goals.splice(idx, 1); },
+                addDate() { this.dates.push({ name: '', date: '2000-01-01', type: 'birthday' }); },
+                removeDate(idx) { this.dates.splice(idx, 1); },
+                addPhoto() { this.photos.push({ url: '', desc: '' }); },
+                addMilestone() { const now = new Date(); this.milestones.push({ id: Date.now(), date: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`, title: '', desc: '', icon: 'ph-star' }); },
+                addHabit() { this.habits.push({ id: Date.now(), name: '', growthValue: 0, lastWatered: '', stage1Days: 7, stage1Reward: '小星星', stage2Days: 21, stage2Reward: '神秘小礼物', stage3Days: 100, stage3Reward: '实现一个大愿望' }); }
+            }
+        })
 
-                    formatCurrency(value) { return this.isMasked ? '¥ ***' : new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value); },
-                    formatCurrencyInt(value) { return this.isMasked ? '¥ ***' : new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 0 }).format(value); },
-                    formatCurrencyIntNoSymbol(value) { return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 }).format(value); },
-                    
-                    applyData(data) {
-                        this.wealthPassword = data.wealthPassword || '1026';
-                        this.salaryBank = data.salaryBank || '工商银行'; this.salaryDay = data.salaryDay || 15;
-                        this.usdRate = data.usdRate || 7.25;
-                        this.loans = (data.loans || []).map(l => ({...l, owner: l.owner || '共同'})); 
-                        this.transfers = data.transfers || [];
-                        this.goals = data.goals || defaultData.goals; this.dates = data.dates || defaultData.dates;
-                        this.photos = data.photos || defaultData.photos;
-                        this.stocks = data.stocks || defaultData.stocks;
-                        this.todos = data.todos || defaultData.todos;
-                        this.milestones = data.milestones || defaultData.milestones;
-                        this.habits = data.habits || defaultData.habits;
-                        
-                        if (data.assets && !Array.isArray(data.assets)) { this.assets = defaultData.assets; } else { this.assets = (data.assets || defaultData.assets).map(a => ({...a, owner: a.owner || '共同'})); }
-                        if (data.equity && data.equity.members && data.equity.members[0].shares) { this.equity = defaultData.equity; } else { this.equity = data.equity || defaultData.equity; }
-                    },
-
-                    async loadConfig() {
-                        const saved = localStorage.getItem('cashflow_family_v9');
-                        this.applyData(saved ? JSON.parse(saved) : defaultData);
-                        
-                        const token = sessionStorage.getItem('family_auth_token');
-                        if (token) {
-                            this.isSyncing = true; this.syncStatus = '云端同步中...';
-                            try {
-                                const res = await fetch('/api/sync', { headers: { 'Authorization': token } });
-                                if (res.ok) {
-                                    const json = await res.json(); const recordData = json.record ? json.record : json;
-                                    if (recordData && Object.keys(recordData).length > 0) {
-                                        this.applyData(recordData); localStorage.setItem('cashflow_family_v9', JSON.stringify(recordData)); this.syncStatus = '已与云端对齐';
-                                    } else {
-                                        this.syncStatus = '初始化云盒子...'; await this.saveConfig();
-                                    }
-                                } else if (res.status === 404) throw new Error('LocalMode');
-                                else if (res.status === 401) this.logout();
-                            } catch (err) { this.syncStatus = '本地预览模式 (离线)'; } 
-                            finally { setTimeout(() => this.syncStatus = '', 3000); this.isSyncing = false; }
-                        }
-                    },
-                    
-                    async saveConfig() {
-                        const dataToSave = {
-                            wealthPassword: this.wealthPassword,
-                            salaryBank: this.salaryBank, salaryDay: this.salaryDay, usdRate: this.usdRate,
-                            loans: this.loans, transfers: this.transfers, assets: this.assets, stocks: this.stocks,
-                            equity: this.equity, goals: this.goals, dates: this.dates, photos: this.photos,
-                            todos: this.todos, milestones: this.milestones, habits: this.habits
-                        };
-                        localStorage.setItem('cashflow_family_v9', JSON.stringify(dataToSave));
-                        
-                        const token = sessionStorage.getItem('family_auth_token');
-                        if (token) {
-                            this.isSyncing = true; this.syncStatus = '正在保存至云端...';
-                            try {
-                                const res = await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': token }, body: JSON.stringify(dataToSave) });
-                                if(res.ok) this.syncStatus = '保存成功！';
-                                else if (res.status === 404) throw new Error('LocalMode');
-                                else this.syncStatus = '权限验证失败';
-                            } catch(e) { this.syncStatus = '已存本地 (预览模式无云端)'; } 
-                            finally { setTimeout(() => this.syncStatus = '', 3000); this.isSyncing = false; }
-                        }
-                    },
-                    openConfig() { this.showConfig = true; this.configTab = 'life'; },
-                    async saveAndCloseConfig() { await this.saveConfig(); this.showConfig = false; },
-                    resetData() { if(confirm('警告：确定清除您修改过的数据并恢复初始模板吗？')) { localStorage.removeItem('cashflow_family_v9'); window.location.reload(); } },
-                    
-                    addTodo() {
-                        if(this.newTodoText.trim() === '') return;
-                        const text = this.newTodoText.trim();
-                        this.todos.push({ id: Date.now(), text: text, completed: false });
-                        this.newTodoText = '';
-                        
-                        this.showNotification('📝 已记录新待办');
-                        this.triggerPushNotification('📅 新增家庭待办', `叮咚！家里新增了一条待办事项：<br><br><b>${text}</b><br><br>记得抽空去看看哦！`);
-                        this.saveConfig();
-                    },
-                    toggleTodo(todo) {
-                        todo.completed = !todo.completed;
-                        if(todo.completed) {
-                            this.showNotification('✅ 滴！待办任务搞定！');
-                            this.triggerPushNotification('✅ 待办完成通知', `太棒啦！刚才顺利完成了一项家庭待办：<br><br><del>${todo.text}</del><br><br>继续保持哦！`);
-                        } else {
-                            this.triggerPushNotification('🔄 待办重新开启', `注意啦！一项原本已完成的待办被重新标记为未完成：<br><br><b>${todo.text}</b>`);
-                        }
-                        this.saveConfig();
-                    },
-                    deleteTodo(id) { this.todos = this.todos.filter(t => t.id !== id); this.saveConfig(); },
-                    
-                    addAsset() { this.assets.push({ id: Date.now(), owner: '共同', type: 'house', name: '', value: 0 }); },
-                    removeAsset(idx) { this.assets.splice(idx, 1); },
-                    addStock() { this.stocks.push({ symbol: '', name: '', market: 'CN', owner: 'Aosen', costPrice: 0, shares: 0, currentPrice: 0 }); },
-                    addEquityMember() { this.equity.members.push({ name: '', principal: 0 }); },
-                    removeEquityMember(idx) { this.equity.members.splice(idx, 1); },
-                    addLoan() { this.loans.push({ id: Date.now(), owner: '共同', type: '消费贷', bank: '', left: 0, monthly: 0, rate: 3.0, isAutoCalc: false }); },
-                    removeLoan(index) { this.loans.splice(index, 1); },
-                    addTransfer() { this.transfers.push({ from: '', to: '', amount: 0, day: 1, expire: '长期' }); },
-                    removeTransfer(index) { this.transfers.splice(index, 1); },
-                    addGoal() { this.goals.push({ name: '', target: 10000, current: 0 }); },
-                    removeGoal(idx) { this.goals.splice(idx, 1); },
-                    addDate() { this.dates.push({ name: '', date: '2000-01-01', type: 'birthday' }); },
-                    removeDate(idx) { this.dates.splice(idx, 1); },
-                    addPhoto() { this.photos.push({ url: '', desc: '' }); },
-                    addMilestone() { const now = new Date(); this.milestones.push({ id: Date.now(), date: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`, title: '', desc: '', icon: 'ph-star' }); },
-                    addHabit() { this.habits.push({ id: Date.now(), name: '', growthValue: 0, lastWatered: '', stage1Days: 7, stage1Reward: '小星星', stage2Days: 21, stage2Reward: '神秘小礼物', stage3Days: 100, stage3Reward: '实现一个大愿望' }); }
-                }
-            })
-
-            app.component('flow-node', {
-                props: ['node', 'rootSalaryDay', 'isMasked'],
-                template: '#flow-node-template',
-                methods: { formatCurrencyInt(v) { return this.isMasked ? '¥ ***' : new Intl.NumberFormat('zh-CN', {style:'currency', currency:'CNY', maximumFractionDigits: 0}).format(v); } }
-            });
-            app.mount('#app')
-        </script>
-    </body>
+        app.component('flow-node', {
+            props: ['node', 'rootSalaryDay', 'isMasked'],
+            template: '#flow-node-template',
+            methods: { formatCurrencyInt(v) { return this.isMasked ? '¥ ***' : new Intl.NumberFormat('zh-CN', {style:'currency', currency:'CNY', maximumFractionDigits: 0}).format(v); } }
+        });
+        app.mount('#app')
+    </script>
+</body>
 </html>
