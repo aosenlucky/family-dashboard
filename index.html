@@ -2,7 +2,6 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="referrer" content="never">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>Aosen & 小悦的家庭空间</title>
     
@@ -417,17 +416,15 @@
                     
                     <section class="max-w-6xl mx-auto px-4">
                         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8">
-                            <!-- 💡 修复点：给整个卡片区域加上了光标指针，点击直接弹出原图 -->
-                            <div v-for="(photo, idx) in photos" :key="idx" @click="window.open(photo.url, '_blank')" class="photo-card glass-card p-3 rounded-2xl relative group cursor-pointer" :style="{'transform': `rotate(${idx%2===0?-1.5:1.5}deg)`}">
+                            <!-- 💡 修复点：调用 Vue 的 openImage 方法，解决点击放大镜无效的问题 -->
+                            <div v-for="(photo, idx) in photos" :key="idx" @click="openImage(photo.url)" class="photo-card glass-card p-3 rounded-2xl relative group cursor-pointer" :style="{'transform': `rotate(${idx%2===0?-1.5:1.5}deg)`}">
                                 <div class="aspect-square md:aspect-[4/5] bg-gray-200/50 rounded-xl overflow-hidden relative shadow-inner border border-white/50 relative">
-                                    <!-- 华为云 OBS 智能缩放处理 (w_800) 保证手机端列表秒开 -->
                                     <img 
                                         :src="photo.url.includes('myhuaweicloud.com') ? photo.url + '?x-image-process=image/resize,w_800/quality,q_80' : photo.url" 
                                         class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
                                         alt="家庭回忆"
                                         onerror="this.src='https://images.unsplash.com/photo-1511895426328-dc8714191300?w=500&q=80'"
                                     >
-                                    <!-- 悬浮提示放大图标 -->
                                     <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                         <i class="ph-fill ph-magnifying-glass-plus text-white text-3xl drop-shadow-md"></i>
                                     </div>
@@ -438,7 +435,6 @@
                             </div>
                         </div>
                         
-                        <!-- 画廊为空时的提示 -->
                         <div v-if="photos.length === 0" class="text-center py-20 text-gray-500">
                             <i class="ph-fill ph-camera text-4xl text-gray-300 mb-3"></i>
                             <p>相册里还是空的呢，去【配置 - 日常记录与相册】贴上第一张照片吧</p>
@@ -843,6 +839,11 @@
                     }
                 },
                 methods: {
+                    // 💡 修复点：新增专属的打开大图方法
+                    openImage(url) {
+                        window.open(url, '_blank');
+                    },
+                    
                     getOwnerTagClass(owner) {
                         if (owner === 'Aosen') return 'bg-blue-50 text-blue-600 border-blue-200';
                         if (owner === '小悦') return 'bg-rose-50 text-rose-600 border-rose-200';
@@ -907,17 +908,18 @@
                                 this.auth.isLoggedIn = true; 
                                 
                                 const json = await res.json();
-                                // 由于之前 api/sync 会返回包含数据的对象，此处防御性读取
-                                const recordData = json.record ? json.record : json;
-                                
-                                if(recordData && Object.keys(recordData).length > 0 && recordData.salaryBank) {
-                                    this.applyData(recordData);
-                                    localStorage.setItem('cashflow_family_v9', JSON.stringify(recordData));
-                                } else {
-                                    this.applyData(defaultData);
-                                }
-                                if(this.stocks && this.stocks.length > 0) this.fetchStocks();
-                            } else if (res.status === 404) {
+                            // 由于之前 api/sync 会返回包含数据的对象，此处防御性读取
+                            const recordData = json.record ? json.record : json;
+                            
+                            // 💡 修复点 2：放宽数据校验，只要云端有数据就接纳，不再强制要求必须有 salaryBank
+                            if(recordData && Object.keys(recordData).length > 0) {
+                                this.applyData(recordData);
+                                localStorage.setItem('cashflow_family_v9', JSON.stringify(recordData));
+                            } else {
+                                this.applyData(defaultData);
+                            }
+                            if(this.stocks && this.stocks.length > 0) this.fetchStocks();
+                        } else if (res.status === 404) {
                                 throw new Error('LocalMode');
                             } else {
                                 this.auth.errorMsg = '密码好像不对哦，家门紧闭 🔒';
@@ -982,7 +984,8 @@
                                     const json = await res.json();
                                     const recordData = json.record ? json.record : json;
                                     
-                                    if (recordData && recordData.salaryBank) {
+                                    // 💡 修复点 2：放宽数据校验
+                                    if (recordData && Object.keys(recordData).length > 0) {
                                         this.applyData(recordData);
                                         localStorage.setItem('cashflow_family_v9', JSON.stringify(recordData));
                                         this.syncStatus = '已与云端对齐';
