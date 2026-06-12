@@ -27,7 +27,6 @@
 
     <style>
         body { margin: 0; color: #1d1d1f; -webkit-font-smoothing: antialiased; position: relative; min-height: 100vh; }
-        /* 渐变色兜底，防止图片丢失时白屏 */
         .bg-image-layer { 
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; 
             background: linear-gradient(135deg, #e0f2fe 0%, #fae8ff 100%);
@@ -108,7 +107,6 @@
                         <i class="ph-fill ph-heart text-xl text-rose-500"></i><span class="hidden sm:inline">Aosen & 小悦</span>
                     </div>
                     
-                    <!-- 空间切换器：生活优先排序 -->
                     <div class="absolute left-1/2 transform -translate-x-1/2 flex items-center bg-white/40 p-1 rounded-full border border-white/60 shadow-sm z-10">
                         <button @click="currentSpace = 'life'" :class="currentSpace === 'life' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-800'" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium transition-all">生活</button>
                         <button @click="currentSpace = 'wealth'" :class="currentSpace === 'wealth' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-800'" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium transition-all">财富</button>
@@ -119,7 +117,6 @@
                         <span v-if="syncStatus" class="hidden lg:flex items-center text-[10px] text-apple-blue bg-blue-50 px-2 py-1 rounded-full border border-blue-100 transition-all">
                             <i class="ph ph-cloud-arrows mr-1" :class="{'animate-pulse': isSyncing}"></i> {{ syncStatus }}
                         </span>
-                        <!-- 仅在财富看板显示脱敏/解密按钮 -->
                         <button v-if="currentSpace === 'wealth'" @click="toggleMask" class="flex items-center text-gray-600 hover:text-apple-blue bg-white/50 px-2 py-1.5 rounded-full border border-white shadow-sm transition-colors">
                             <i class="ph text-lg md:mr-1" :class="isMasked ? 'ph-eye-closed' : 'ph-eye'"></i>
                             <span class="hidden md:inline">{{ isMasked ? '显示金额' : '隐藏金额' }}</span>
@@ -132,7 +129,6 @@
             </nav>
 
             <transition name="fade" mode="out-in">
-                
                 <!-- ================= 空间 1：生活与协作 ================= -->
                 <div v-if="currentSpace === 'life'" key="life" class="pt-28 pb-20 min-h-screen">
                     <header class="px-4 text-center mb-12">
@@ -269,14 +265,13 @@
                         </div>
                         <p class="text-gray-500 text-xs md:text-sm max-w-2xl mx-auto font-light leading-relaxed">"{{ dailyQuote }}"</p>
                         
-                        <!-- 模糊覆盖层提示 (当处于加密状态时) -->
+                        <!-- 模糊覆盖层提示 -->
                         <div v-if="isMasked" class="absolute top-44 left-1/2 transform -translate-x-1/2 flex flex-col items-center z-50">
                             <i class="ph ph-lock-key text-4xl text-gray-400 mb-2 animate-bounce"></i>
                             <span class="text-xs text-gray-500 bg-white/80 px-4 py-1.5 rounded-full border border-gray-200 shadow-sm">点击右上角「显示金额」查阅隐私资产</span>
                         </div>
                     </header>
 
-                    <!-- 当且仅当 isMasked 时整体页面处于模糊状态 -->
                     <div :class="isMasked ? 'blur-md opacity-60 pointer-events-none select-none transition-all duration-500' : 'transition-all duration-500'">
                         <section class="max-w-6xl mx-auto px-4 mb-12">
                             <div class="glass-card rounded-3xl p-6 md:p-8 flex flex-col items-center justify-center text-center shadow-lg border-2 border-white/80 relative overflow-hidden">
@@ -745,19 +740,12 @@
                 ] 
             },
             photos: [
-                { url: '合影.jpg', desc: '初见的那天' },
-                { url: 'https://images.unsplash.com/photo-1506869640319-ce1a56065328?w=500&q=80', desc: '旅行记录' },
-                { url: 'https://images.unsplash.com/photo-1473496169904-658ba7c44d8a?w=500&q=80', desc: '光影瞬间' },
-                { url: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=500&q=80', desc: '山川湖海' }
+                { url: '合影.jpg', desc: '初见的那天' }
             ],
             goals: [ { name: '欧洲10周年纪念游', target: 100000, current: 0 } ],
             dates: [
                 { name: '小悦生日', date: '1996-09-01', type: 'birthday' }, 
                 { name: '奥森生日', date: '1992-02-17', type: 'birthday' },
-                { name: '李妈生日', date: '1966-09-18', type: 'birthday' }, 
-                { name: '李爸生日', date: '1964-11-27', type: 'birthday' },
-                { name: '周妈生日', date: '1970-01-01', type: 'birthday' }, 
-                { name: '周爸生日', date: '1968-01-01', type: 'birthday' },
                 { name: '领证纪念日', date: '2022-09-09', type: 'anniversary' }, 
                 { name: '婚礼纪念日', date: '2022-10-16', type: 'anniversary' }
             ],
@@ -771,7 +759,7 @@
                 return {
                     auth: { isLoggedIn: false, inputPin: '', errorMsg: '', isAuthenticating: false },
                     isMasked: true, showConfig: false, configTab: 'life',
-                    currentSpace: 'life', // 默认打开生活面板
+                    currentSpace: 'life', 
                     
                     wealthPassword: '', showWealthAuth: false, wealthInputPin: '', wealthErrorMsg: '',
                     
@@ -872,15 +860,30 @@
                 },
                 
                 async triggerPushNotification(title, content) {
+                    console.log("【调试雷达】准备发送微信推送:", title);
                     const token = sessionStorage.getItem('family_auth_token');
-                    if (!this.auth.isLoggedIn || token === 'local_dummy_token') return; 
+                    
+                    if (!this.auth.isLoggedIn) return; 
+                    
+                    // 💡 安全拦截：如果使用了 0000 登录，强制静音推送，防止本地测试轰炸微信
+                    if (token === 'local_dummy_token' || token === '0000') {
+                        console.log("【调试雷达】当前处于本地预览模式，微信推送已被安全拦截！");
+                        this.showNotification("⚠️ 预览模式下不会触发真实的微信推送");
+                        return;
+                    }
+                    
                     try {
-                        await fetch('/api/sync', {
+                        const res = await fetch('/api/sync', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'Authorization': token },
                             body: JSON.stringify({ action: 'notify', title, content })
                         });
-                    } catch(e) { console.error('Push Notice Failed'); }
+                        if (res.ok) {
+                            console.log("【调试雷达】云端邮递员已成功转发推送指令！");
+                        } else {
+                            console.error("【调试雷达】推送接口报错，状态码:", res.status);
+                        }
+                    } catch(e) { console.error('【调试雷达】推送请求网络失败:', e); }
                 },
                 
                 toggleMask() {
