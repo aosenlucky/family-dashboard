@@ -1,10 +1,11 @@
 export default async function handler(req, res) {
   const { method, headers, body } = req;
   
+  // 从 Vercel 环境变量中读取配置
   const PIN = process.env.SYSTEM_PASSWORD;
   const API_KEY = process.env.JSONBIN_API_KEY;
   const BIN_ID = process.env.JSONBIN_BIN_ID;
-  const PUSHPLUS_TOKEN = process.env.PUSHPLUS_TOKEN; // 新增的推送 Token
+  const PUSHPLUS_TOKENS = process.env.PUSHPLUS_TOKEN; // 支持多个Token，用英文逗号隔开
 
   const authHeader = headers.authorization || '';
   if (authHeader !== PIN) {
@@ -13,7 +14,9 @@ export default async function handler(req, res) {
 
   if (method === 'GET') {
     try {
-      const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, { headers: { 'X-Master-Key': API_KEY } });
+      const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, { 
+        headers: { 'X-Master-Key': API_KEY } 
+      });
       const data = await response.json();
       return res.status(200).json(data.record || {});
     } catch (error) {
@@ -23,19 +26,25 @@ export default async function handler(req, res) {
 
   if (method === 'POST') {
     try {
-      // 💡 新增：拦截前台发来的“推送通知”请求
+      // 💡 拦截前台发来的“推送通知”请求，并执行微信群发
       if (body && body.action === 'notify') {
-        if (PUSHPLUS_TOKEN) {
-          await fetch('http://www.pushplus.plus/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              token: PUSHPLUS_TOKEN,
-              title: body.title,
-              content: body.content,
-              template: 'html'
+        if (PUSHPLUS_TOKENS) {
+          // 将逗号隔开的 token 拆分成数组，去除多余空格和空值
+          const tokens = PUSHPLUS_TOKENS.split(',').map(t => t.trim()).filter(Boolean);
+          
+          // 并发向所有用户发送微信推送
+          await Promise.all(tokens.map(token => 
+            fetch('http://www.pushplus.plus/send', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                token: token,
+                title: body.title,
+                content: body.content,
+                template: 'html'
+              })
             })
-          });
+          ));
         }
         return res.status(200).json({ success: true });
       }
