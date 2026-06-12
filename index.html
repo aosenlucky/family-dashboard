@@ -2,7 +2,6 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="referrer" content="never">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>Aosen & 小悦的家庭空间</title>
     
@@ -847,12 +846,7 @@
                 
                 flowTree() {
                     const buildTree = (bankName) => {
-                        return { 
-                            name: bankName, 
-                            isRoot: bankName === this.salaryBank, 
-                            loans: this.processedLoans.filter(l => l.bank === bankName), 
-                            children: this.transfers.filter(t => t.from === bankName).map(t => ({ transfer: t, ...buildTree(t.to) })) 
-                        };
+                        return { name: bankName, isRoot: bankName === this.salaryBank, loans: this.processedLoans.filter(l => l.bank === bankName), children: this.transfers.filter(t => t.from === bankName).map(t => ({ transfer: t, ...buildTree(t.to) })) };
                     }
                     return buildTree(this.salaryBank);
                 },
@@ -878,9 +872,9 @@
                 },
                 
                 async triggerPushNotification(title, content) {
-                    if (!this.auth.isLoggedIn || this.auth.inputPin === '0000') return; 
+                    const token = sessionStorage.getItem('family_auth_token');
+                    if (!this.auth.isLoggedIn || token === 'local_dummy_token') return; 
                     try {
-                        const token = sessionStorage.getItem('family_auth_token');
                         await fetch('/api/sync', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'Authorization': token },
@@ -961,7 +955,10 @@
                             const market = stock.market; const symbol = stock.symbol.toUpperCase();
                             const query = market === 'US' ? `gb_${symbol}` : symbol; 
                             await new Promise((resolve) => {
-                                const script = document.createElement('script'); script.src = `https://hq.sinajs.cn/list=${query}`; window[`hq_str_${query}`] = "";
+                                const script = document.createElement('script'); 
+                                script.src = `https://hq.sinajs.cn/list=${query}`; 
+                                script.referrerPolicy = "no-referrer"; // 💡 专门为新浪股票API配置不发送 Referer
+                                window[`hq_str_${query}`] = "";
                                 script.onload = () => {
                                     const res = window[`hq_str_${query}`];
                                     if (res && res.length > 10) { const parts = res.split(','); if (parts.length > 3) stock.currentPrice = parseFloat(parts[3]); }
