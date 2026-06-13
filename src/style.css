@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body { margin: 0; color: #1d1d1f; -webkit-font-smoothing: antialiased; position: relative; min-height: 100vh; }
+.bg-image-layer { 
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; 
+    background: linear-gradient(135deg, #e0f2fe 0%, #fae8ff 100%);
+    background-image: url('/合影.jpg'); background-size: cover; background-position: center; 
+    filter: blur(12px) brightness(1.1); z-index: -2; transform: scale(1.05); 
+}
+.bg-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(245, 245, 247, 0.75); z-index: -1; }
+.glass-card { background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.8); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04); }
+.glass-nav { background-color: rgba(255, 255, 255, 0.6); backdrop-filter: saturate(180%) blur(20px); }
+input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; }
+.flow-scroll::-webkit-scrollbar { height: 6px; }
+.flow-scroll::-webkit-scrollbar-track { background: rgba(255,255,255,0.3); border-radius: 10px; }
+.flow-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 10px; }
+.modal-scroll::-webkit-scrollbar { width: 6px; }
+.modal-scroll::-webkit-scrollbar-track { background: transparent; }
+.modal-scroll::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+.photo-card { transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); }
+.photo-card:hover { transform: translateY(-5px) scale(1.02) rotate(1deg); box-shadow: 0 15px 30px rgba(0,0,0,0.1); z-index: 10; }
+.fade-enter-active, .fade-leave-active { transition: opacity 0.4s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+.toast-enter-active, .toast-leave-active { transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); }
+.toast-enter-from, .toast-leave-to { opacity: 0; transform: translate(-50%, -100%) scale(0.9); }
+.apple-checkbox { appearance: none; width: 1.25rem; height: 1.25rem; border: 1px solid #d1d5db; border-radius: 50%; outline: none; cursor: pointer; position: relative; transition: all 0.2s; background: white; }
+.apple-checkbox:checked { background-color: #0066cc; border-color: #0066cc; }
+.apple-checkbox:checked::after { content: ''; position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%) rotate(45deg); width: 4px; height: 9px; border: solid white; border-width: 0 2px 2px 0; }
