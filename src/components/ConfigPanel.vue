@@ -145,8 +145,9 @@
                         </div>
                         <div class="space-y-3">
                             <div v-for="(stock, idx) in familyData.stocks" :key="idx" class="flex flex-wrap gap-2 items-center bg-gray-50 p-2 rounded-lg border border-gray-200 relative pr-6">
-                                <input v-model="stock.name" type="text" placeholder="名称" class="w-24 border rounded px-1 py-1 text-xs">
-                                <input v-model="stock.symbol" type="text" placeholder="代码" class="w-16 border rounded px-1 py-1 text-xs uppercase">
+                                <input v-model="stock.name" type="text" placeholder="名称" class="w-20 border rounded px-1 py-1 text-xs">
+                                <!-- 💡 修复：加宽代码框，加入明确格式提示 -->
+                                <input v-model="stock.symbol" type="text" placeholder="如:BABA / 002230" class="w-28 border rounded px-1 py-1 text-xs uppercase" title="美股填代码，A股可直接填数字">
                                 <select v-model="stock.market" class="w-16 border rounded px-1 py-1 text-xs bg-white"><option value="US">美股</option><option value="CN">A股</option></select>
                                 <select v-model="stock.owner" class="w-16 border rounded px-1 py-1 text-xs bg-white"><option value="共同">共同</option><option value="Aosen">Aosen</option><option value="小悦">小悦</option></select>
                                 <div class="flex items-center text-[10px] text-gray-500 w-[45%] md:w-auto mt-1 md:mt-0"><span class="w-8">成本:</span><input v-model.number="stock.costPrice" type="number" step="0.01" class="w-16 border rounded px-1 py-1 text-xs"></div>

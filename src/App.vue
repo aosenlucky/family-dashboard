@@ -193,20 +193,41 @@ const loadConfig = async () => {
 const fetchStocks = async () => {
     for (let stock of familyData.value.stocks) {
         try {
-            const query = stock.market === 'US' ? `gb_${stock.symbol.toLowerCase()}` : stock.symbol.toLowerCase(); 
+            let symbol = stock.symbol.toLowerCase().trim();
+            
+            // 💡 智能补全核心：如果你选了A股，但只填了6位数字(如 002230)，自动补全 sh 或 sz
+            if (stock.market === 'CN' && /^\d{6}$/.test(symbol)) {
+                symbol = symbol.startsWith('6') ? `sh${symbol}` : `sz${symbol}`;
+            }
+
+            const query = stock.market === 'US' ? `gb_${symbol}` : symbol; 
+            
             await new Promise((resolve) => {
                 const script = document.createElement('script'); 
-                script.src = `https://hq.sinajs.cn/list=${query}`; script.referrerPolicy = "no-referrer"; 
+                script.src = `https://hq.sinajs.cn/list=${query}`; 
+                script.referrerPolicy = "no-referrer"; 
                 window[`hq_str_${query}`] = "";
+                
                 script.onload = () => {
                     const res = window[`hq_str_${query}`];
-                    if (res && res.length > 10) { const parts = res.split(','); if (parts.length > 3) stock.currentPrice = parseFloat(parts[3]); }
-                    document.body.removeChild(script); resolve();
+                    if (res && res.length > 10) { 
+                        const parts = res.split(','); 
+                        // 💡 错位修复核心：美股现价在第2个位置(parts[1])，A股现价在第4个位置(parts[3])
+                        if (stock.market === 'US' && parts.length > 1) {
+                            stock.currentPrice = parseFloat(parts[1]);
+                        } else if (stock.market === 'CN' && parts.length > 3) {
+                            stock.currentPrice = parseFloat(parts[3]);
+                        }
+                    }
+                    document.body.removeChild(script); 
+                    resolve();
                 };
                 script.onerror = () => { document.body.removeChild(script); resolve(); };
                 document.body.appendChild(script);
             });
-        } catch(e) {}
+        } catch(e) {
+            console.error('抓取股票失败:', e);
+        }
     }
 }
 
