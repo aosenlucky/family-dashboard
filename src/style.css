@@ -2,26 +2,40 @@
 @tailwind components;
 @tailwind utilities;
 
-body { margin: 0; color: #1d1d1f; -webkit-font-smoothing: antialiased; position: relative; min-height: 100vh; }
+body { 
+    margin: 0; 
+    color: #1d1d1f; 
+    -webkit-font-smoothing: antialiased; 
+    position: relative; 
+    min-height: 100vh; 
+    /* 💡 修复1：兜底背景色改为黑色。如果图片没加载出来网页变黑了，说明纯粹是图片链接没写对或被拦截！ */
+    background-color: #1a1a1a; 
+}
 
-/* 💡 修复1：使用你的真实 OBS 链接，并微调亮度与模糊度，让画质更清晰 */
-.bg-image-layer { 
+/* 💡 修复2：终极架构改造！使用 body::before 强制全局渲染背景，彻底摆脱 App.vue 中的节点丢失问题 */
+body::before { 
+    content: '';
     position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; 
-    background-color: #f5f5f7; 
-    background-image: url('https://senyuefamily.obs.cn-east-3.myhuaweicloud.com/photos/DSC00687..JPG'); 
+    background-image: url('https://senyuefamily.obs.cn-east-3.myhuaweicloud.com/photos/bg.jpg'); 
     background-size: cover; 
     background-position: center; 
+    background-repeat: no-repeat;
     filter: blur(8px) brightness(1.05); 
     z-index: -2; 
     transform: scale(1.05); 
 }
 
-/* 💡 修复2：大幅降低白底遮罩的厚度（从 0.75 降到 0.4），让光影和背景完美透射出来 */
-.bg-overlay { 
+/* 💡 修复3：光影遮罩层也改用 body::after 强制挂载，0.4 是既能透出背景又能看清文字的完美厚度 */
+body::after { 
+    content: '';
     position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; 
-    background-color: rgba(255, 255, 255, 0.1); 
+    background-color: rgba(255, 255, 255, 0.4); 
     z-index: -1; 
 }
+
+/* 隐藏旧版遗留的无用类名，防止冲突 */
+.bg-image-layer { display: none; }
+.bg-overlay { display: none; }
 
 .glass-card { background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.8); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04); }
 .glass-nav { background-color: rgba(255, 255, 255, 0.6); backdrop-filter: saturate(180%) blur(20px); }
