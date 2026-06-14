@@ -8,7 +8,7 @@
             </div>
             
             <div class="flex overflow-x-auto no-scrollbar border-b border-gray-200 px-6 bg-gray-50/50 shrink-0">
-                <button @click="configTab = 'life'" :class="configTab === 'life' ? 'border-apple-blue text-apple-blue' : 'border-transparent text-gray-500'" class="px-4 py-3 border-b-2 text-sm font-medium whitespace-nowrap shrink-0">日常记录与相册</button>
+                <button @click="configTab = 'life'" :class="configTab === 'life' ? 'border-apple-blue text-apple-blue' : 'border-transparent text-gray-500'" class="px-4 py-3 border-b-2 text-sm font-medium whitespace-nowrap shrink-0">日常与相册</button>
                 <button @click="configTab = 'assets'" :class="configTab === 'assets' ? 'border-apple-blue text-apple-blue' : 'border-transparent text-gray-500'" class="px-4 py-3 border-b-2 text-sm font-medium whitespace-nowrap shrink-0">资产与股市</button>
                 <button @click="configTab = 'loans'" :class="configTab === 'loans' ? 'border-apple-blue text-apple-blue' : 'border-transparent text-gray-500'" class="px-4 py-3 border-b-2 text-sm font-medium whitespace-nowrap shrink-0">负债与转账</button>
             </div>
@@ -17,6 +17,41 @@
                 
                 <!-- ================= TAB 1: 日常记录与相册 ================= -->
                 <div v-if="configTab === 'life'" class="space-y-6">
+                    
+                    <!-- 💡 核心更新：光影相册墙增加“类型”与“地点” -->
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                        <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph-fill ph-camera mr-2 text-purple-500"></i> 光影相册地图</h4><button @click="addPhoto" class="text-[10px] bg-gray-100 px-2 py-1 rounded hover:bg-gray-200 transition">贴一张照片</button></div>
+                        <div class="space-y-4">
+                            <div v-for="(photo, idx) in familyData.photos" :key="idx" class="flex flex-col bg-gray-50 p-3 rounded-lg border border-gray-200 relative">
+                                <button @click="familyData.photos.splice(idx,1)" class="text-red-500 absolute right-2 top-2 hover:text-red-700 transition"><i class="ph ph-x text-sm"></i></button>
+                                <div class="flex gap-2 w-full pr-6 mb-2">
+                                    <input v-model="photo.url" type="text" placeholder="图片链接 URL (或本地图片名)" class="flex-1 border rounded px-2 py-1.5 text-xs">
+                                    <input v-model="photo.desc" type="text" placeholder="照片描述" class="w-1/3 border rounded px-2 py-1.5 text-xs">
+                                </div>
+                                <div class="flex flex-col md:flex-row gap-2 mt-1 w-full">
+                                    <!-- 城市填写 -->
+                                    <div class="flex items-center flex-1">
+                                        <span class="text-[10px] text-gray-500 w-10 shrink-0">地点:</span>
+                                        <input v-model="photo.tempCity" type="text" placeholder="输入城市或景点 (如: 巴黎)" class="flex-1 border rounded px-2 py-1.5 text-xs focus:ring-1">
+                                    </div>
+                                    <!-- 💡 照片类型选择 -->
+                                    <div class="flex items-center flex-1">
+                                        <span class="text-[10px] text-gray-500 w-10 shrink-0">类型:</span>
+                                        <select v-model="photo.type" class="flex-1 border rounded px-2 py-1.5 text-xs focus:ring-1 bg-white">
+                                            <option value="自然风景">自然风景 (Nature)</option>
+                                            <option value="城市建筑">城市建筑 (Architecture)</option>
+                                            <option value="浪漫旅行">浪漫旅行 (Travel)</option>
+                                            <option value="人物写真">人物写真 (Portraits)</option>
+                                            <option value="美食探店">美食探店 (Food)</option>
+                                            <option value="日常记录">日常记录 (Daily)</option>
+                                            <option value="可爱萌宠">可爱萌宠 (Pets)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- 习惯花园 -->
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                         <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-potted-plant mr-2 text-green-500"></i> 习惯花园配置</h4><button @click="addHabit" class="text-[10px] bg-green-50 text-green-600 border border-green-200 px-2 py-1 rounded">种下新种子</button></div>
@@ -28,39 +63,6 @@
                                     <div class="flex items-center text-[10px] bg-white border rounded px-1 overflow-hidden shadow-sm"><span class="w-10 text-center text-gray-500 bg-gray-100 py-1">目标1</span><input v-model.number="habit.stage1Days" type="number" class="w-10 border-x px-1 text-center py-1"><input v-model="habit.stage1Reward" type="text" class="flex-1 px-2 py-1" placeholder="阶段奖励"></div>
                                     <div class="flex items-center text-[10px] bg-white border rounded px-1 overflow-hidden shadow-sm"><span class="w-10 text-center text-gray-500 bg-gray-100 py-1">目标2</span><input v-model.number="habit.stage2Days" type="number" class="w-10 border-x px-1 text-center py-1"><input v-model="habit.stage2Reward" type="text" class="flex-1 px-2 py-1" placeholder="阶段奖励"></div>
                                     <div class="flex items-center text-[10px] bg-white border rounded px-1 overflow-hidden shadow-sm md:col-span-2"><span class="w-10 text-center text-rose-500 bg-rose-50 py-1">终极</span><input v-model.number="habit.stage3Days" type="number" class="w-10 border-x px-1 text-center py-1"><input v-model="habit.stage3Reward" type="text" class="flex-1 px-2 py-1" placeholder="终极奖励"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- 光影相册墙 -->
-                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                        <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-camera mr-2 text-purple-500"></i> 光影相册地图</h4><button @click="addPhoto" class="text-[10px] bg-gray-100 px-2 py-1 rounded hover:bg-gray-200 transition">贴一张照片</button></div>
-                        <div class="space-y-4">
-                            <div v-for="(photo, idx) in familyData.photos" :key="idx" class="flex flex-col bg-gray-50 p-3 rounded-lg border border-gray-200 relative">
-                                <button @click="familyData.photos.splice(idx,1)" class="text-red-500 absolute right-2 top-2 hover:text-red-700 transition"><i class="ph ph-x text-sm"></i></button>
-                                <div class="flex gap-2 w-full pr-6 mb-2">
-                                    <input v-model="photo.url" type="text" placeholder="图片链接 URL (或本地图片名)" class="flex-1 border rounded px-2 py-1.5 text-xs">
-                                    <input v-model="photo.desc" type="text" placeholder="照片描述" class="w-1/3 border rounded px-2 py-1.5 text-xs">
-                                </div>
-                                <!-- 💡 核心升级：城市/地址 智能转坐标 -->
-                                <div class="flex items-center gap-2 mt-1 w-full">
-                                    <span class="text-[11px] font-medium text-gray-500 w-12 shrink-0">地图位置:</span>
-                                    
-                                    <template v-if="photo.location && photo.location.length === 2">
-                                        <div class="flex items-center bg-green-50 border border-green-200 text-green-700 px-2 py-1 rounded text-xs flex-1">
-                                            <i class="ph-fill ph-check-circle mr-1"></i> 已定位: {{ photo.location[0].toFixed(3) }}, {{ photo.location[1].toFixed(3) }}
-                                        </div>
-                                        <button @click="photo.location = null" class="text-xs text-red-500 hover:text-red-700 ml-2 bg-red-50 px-2 py-1 rounded border border-red-100">重置</button>
-                                    </template>
-                                    
-                                    <template v-else>
-                                        <input v-model="photo.tempCity" type="text" placeholder="输入城市或景点 (如: 巴黎 / 三亚)" class="flex-1 border rounded px-2 py-1 text-xs focus:ring-1 focus:ring-blue-400" @keyup.enter="searchCity(photo)">
-                                        <button @click="searchCity(photo)" :disabled="photo.isSearching" class="text-[10px] bg-blue-50 text-blue-600 px-3 py-1 rounded border border-blue-200 hover:bg-blue-100 transition flex items-center disabled:opacity-50">
-                                            <i class="ph ph-magnifying-glass mr-1" :class="{'animate-spin': photo.isSearching}"></i> 
-                                            {{ photo.isSearching ? '查找中...' : '一键定位' }}
-                                        </button>
-                                    </template>
                                 </div>
                             </div>
                         </div>
@@ -89,8 +91,7 @@
                     </div>
                 </div>
 
-                <!-- ================= TAB 2 & TAB 3 保持原有功能 ================= -->
-                <!-- 资产与股市 -->
+                <!-- ================= TAB 2: 资产与股市 ================= -->
                 <div v-if="configTab === 'assets'" class="space-y-6">
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                         <div class="flex justify-between items-center mb-4">
@@ -143,7 +144,7 @@
                     </div>
                 </div>
 
-                <!-- 负债与转账 -->
+                <!-- ================= TAB 3: 负债与转账 ================= -->
                 <div v-if="configTab === 'loans'" class="space-y-6">
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                         <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-notebook mr-1 text-apple-blue"></i> 贷款明细</h4><button @click="addLoan" class="text-[10px] bg-gray-100 px-2 py-1 rounded">新增贷款</button></div>
@@ -205,10 +206,10 @@ import { ref, inject } from 'vue'
 const emit = defineEmits(['close'])
 const familyData = inject('familyData')
 const saveConfig = inject('saveConfig')
-const showNotification = inject('showNotification')
 
 const configTab = ref('life')
 
+// 各模块新增项的默认数据结构
 const addHabit = () => { familyData.value.habits.push({ id: Date.now(), name: '', growthValue: 0, lastWatered: '', stage1Days: 7, stage1Reward: '小星星', stage2Days: 21, stage2Reward: '神秘小礼物', stage3Days: 100, stage3Reward: '实现大愿望' }) }
 const addGoal = () => { familyData.value.goals.push({ name: '', target: 10000, current: 0 }) }
 const addDate = () => { familyData.value.dates.push({ name: '', date: '2000-01-01', type: 'birthday' }) }
@@ -217,34 +218,9 @@ const addRegularAsset = () => { familyData.value.assets.push({ id: Date.now(), o
 const addEquityMember = () => { familyData.value.equity.members.push({ name: '', principal: 0 }) }
 const addLoan = () => { familyData.value.loans.push({ id: Date.now(), owner: '共同', type: '消费贷', bank: '', left: 0, monthly: 0, rate: 3.0, isAutoCalc: false }) }
 const addTransfer = () => { familyData.value.transfers.push({ from: '', to: '', amount: 0, day: 1, expire: '长期' }) }
-const addPhoto = () => { familyData.value.photos.unshift({ url: '', desc: '', location: null, tempCity: '', isSearching: false }) }
 
-// 💡 城市搜索 -> 经纬度转换引擎 (无需任何 API Key)
-const searchCity = async (photo) => {
-    if (!photo.tempCity) {
-        showNotification('⚠️ 请先输入城市名');
-        return;
-    }
-    photo.isSearching = true;
-    try {
-        // 调用免费的 OpenStreetMap 地理编码接口
-        const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(photo.tempCity)}&limit=1`);
-        const data = await response.json();
-        
-        if (data && data.length > 0) {
-            // 获取并保存精确的纬度和经度
-            photo.location = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
-            const shortName = data[0].display_name.split(',')[0]; // 取简短地名
-            showNotification(`📍 成功定位于: ${shortName}`);
-        } else {
-            showNotification('❌ 未找到该地点，请尝试加上省份或国家');
-        }
-    } catch (e) {
-        showNotification('❌ 网络请求失败，请稍后再试');
-    } finally {
-        photo.isSearching = false;
-    }
-}
+// 光影画廊：新增项带上 type 和 tempCity 字段
+const addPhoto = () => { familyData.value.photos.unshift({ url: '', desc: '', tempCity: '', type: '日常记录' }) }
 
 const logout = () => { sessionStorage.removeItem('family_auth_token'); window.location.reload(); }
 const saveAndClose = async () => { await saveConfig(); emit('close'); }
