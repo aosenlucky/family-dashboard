@@ -6,7 +6,7 @@ body { margin: 0; color: #1d1d1f; -webkit-font-smoothing: antialiased; position:
 .bg-image-layer { 
     position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; 
     background: linear-gradient(135deg, #e0f2fe 0%, #fae8ff 100%);
-    background-image: url('/bg.jpg'); /* 💡 修复为英文名称，解决本地找不到图的问题 */
+    background-image: url('https://senyuefamily.obs.cn-east-3.myhuaweicloud.com/photos/bg.jpg'); /* 💡 修复为英文名称，解决本地找不到图的问题 */
     background-size: cover; background-position: center; 
     filter: blur(12px) brightness(1.1); z-index: -2; transform: scale(1.05); 
 }
