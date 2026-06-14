@@ -18,48 +18,76 @@
                 <!-- ================= TAB 1: 日常记录与相册 ================= -->
                 <div v-if="configTab === 'life'" class="space-y-6">
                     
-                    <!-- 💡 核心更新：光影相册墙增加“类型”与“地点” -->
+                    <!-- 💡 核心模块：原图直传与相册管理 -->
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                        <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph-fill ph-camera mr-2 text-purple-500"></i> 光影相册地图</h4><button @click="addPhoto" class="text-[10px] bg-gray-100 px-2 py-1 rounded hover:bg-gray-200 transition">贴一张照片</button></div>
+                        <div class="flex justify-between items-center mb-4">
+                            <h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph-fill ph-camera mr-2 text-purple-500"></i> 光影相册管理</h4>
+                            <button @click="addPhoto" class="text-[10px] bg-gray-100 px-2 py-1 rounded hover:bg-gray-200 transition">新增外部链接</button>
+                        </div>
                         
-                        <!-- 💡 新增：全局预设的照片类型列表，方便自动补全 -->
+                        <!-- 🌟 智能直传控制台 -->
+                        <div class="bg-blue-50/50 border border-blue-100 rounded-xl p-4 mb-6">
+                            <h5 class="text-xs font-semibold text-apple-blue mb-3 flex items-center"><i class="ph-bold ph-cloud-arrow-up mr-1"></i> 本地原图直传 (自动入库 OBS)</h5>
+                            
+                            <!-- 拖拽上传区 -->
+                            <div v-if="!uploadFile" @click="$refs.fileInput.click()" class="border-2 border-dashed border-blue-200 bg-white rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer hover:bg-blue-50 transition">
+                                <i class="ph-duotone ph-upload-simple text-4xl text-blue-300 mb-2"></i>
+                                <p class="text-sm text-gray-600 font-medium">点击上传高清原图</p>
+                                <p class="text-[10px] text-gray-400 mt-1">支持无损直连华为云</p>
+                                <input type="file" ref="fileInput" class="hidden" accept="image/*" @change="handleFileSelect">
+                            </div>
+
+                            <!-- 预览与元数据填写区 -->
+                            <div v-else class="flex flex-col md:flex-row gap-5 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                                <div class="w-full md:w-32 aspect-square rounded-lg overflow-hidden bg-gray-100 relative shrink-0 border border-gray-200">
+                                    <img :src="uploadPreview" class="w-full h-full object-cover">
+                                    <button @click="cancelUpload" class="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1 hover:bg-black/70 backdrop-blur-sm"><i class="ph ph-x text-xs"></i></button>
+                                </div>
+                                <div class="flex-1 space-y-3">
+                                    <div>
+                                        <input v-model="uploadMeta.desc" type="text" placeholder="写一句照片描述吧..." class="w-full border-b border-gray-200 px-1 py-1 text-sm focus:border-blue-400 outline-none bg-transparent">
+                                    </div>
+                                    <div class="flex gap-3">
+                                        <div class="flex-1">
+                                            <span class="text-[10px] text-gray-400 block mb-0.5">拍摄地点</span>
+                                            <input v-model="uploadMeta.city" type="text" placeholder="如: 三亚" class="w-full border rounded-lg px-2 py-1.5 text-xs focus:ring-1 focus:ring-blue-400 outline-none">
+                                        </div>
+                                        <div class="flex-1">
+                                            <span class="text-[10px] text-gray-400 block mb-0.5">照片类型</span>
+                                            <input v-model="uploadMeta.type" list="photo-types" type="text" placeholder="选择或自定义" class="w-full border rounded-lg px-2 py-1.5 text-xs focus:ring-1 focus:ring-blue-400 outline-none">
+                                        </div>
+                                    </div>
+                                    <button @click="submitDirectUpload" :disabled="isUploading" class="w-full bg-apple-blue text-white font-medium py-2 rounded-lg hover:bg-blue-600 shadow-sm transition disabled:bg-gray-400 flex justify-center items-center text-sm">
+                                        <i v-if="isUploading" class="ph ph-spinner animate-spin mr-2"></i>
+                                        {{ isUploading ? '正在极速直传华为云...' : '一键归档至画廊' }}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 预设类别 -->
                         <datalist id="photo-types">
-                            <option value="自然风景"></option>
-                            <option value="城市建筑"></option>
-                            <option value="浪漫旅行"></option>
-                            <option value="人物写真"></option>
-                            <option value="美食探店"></option>
-                            <option value="日常记录"></option>
-                            <option value="可爱萌宠"></option>
+                            <option value="自然风景"></option><option value="城市建筑"></option><option value="浪漫旅行"></option><option value="人物写真"></option><option value="日常记录"></option>
                         </datalist>
 
-                        <div class="space-y-4">
-                            <div v-for="(photo, idx) in familyData.photos" :key="idx" class="flex gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200 relative transition-colors hover:bg-white hover:shadow-sm">
+                        <!-- 历史图库管理 -->
+                        <div class="space-y-3">
+                            <div v-for="(photo, idx) in familyData.photos" :key="idx" class="flex gap-3 md:gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200 relative transition-colors hover:bg-white hover:shadow-sm">
                                 <button @click="familyData.photos.splice(idx,1)" class="text-red-500 absolute right-2 top-2 hover:text-red-700 transition z-10"><i class="ph ph-x text-sm"></i></button>
                                 
-                                <!-- 💡 照片直观小缩略图预览区 -->
-                                <div class="w-16 h-16 md:w-20 md:h-20 shrink-0 rounded-lg overflow-hidden bg-gray-200 border border-gray-300 shadow-inner flex items-center justify-center relative">
-                                    <div class="absolute inset-0 bg-gradient-to-tr from-gray-100 via-gray-50 to-gray-100 animate-pulse z-0" v-if="photo.url && !photo.loaded"></div>
-                                    <img v-if="photo.url" :src="getThumbUrl(photo.url)" class="w-full h-full object-cover relative z-10" onload="this.previousElementSibling.style.display='none'" onerror="this.src='https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=200&q=80'">
+                                <div class="w-14 h-14 md:w-20 md:h-20 shrink-0 rounded-lg overflow-hidden bg-gray-200 border border-gray-300 shadow-inner flex items-center justify-center relative">
+                                    <img v-if="photo.url" :src="getThumbUrl(photo.url)" class="w-full h-full object-cover relative z-10" onerror="this.src='https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=200&q=80'">
                                     <i v-else class="ph-duotone ph-image text-gray-400 text-2xl"></i>
                                 </div>
-
-                                <!-- 右侧：表单输入区 -->
+                                
                                 <div class="flex-1 flex flex-col justify-center space-y-2 pr-6">
                                     <div class="flex gap-2 w-full">
-                                        <input v-model="photo.url" type="text" placeholder="图片链接 URL (或本地图片名)" class="flex-1 border rounded px-2 py-1.5 text-xs">
-                                        <input v-model="photo.desc" type="text" placeholder="照片描述" class="w-1/3 border rounded px-2 py-1.5 text-xs">
+                                        <input v-model="photo.url" type="text" placeholder="图片URL" class="flex-1 border rounded px-2 py-1 text-xs text-gray-500 bg-gray-100" readonly>
+                                        <input v-model="photo.desc" type="text" placeholder="描述" class="w-1/3 border rounded px-2 py-1 text-xs">
                                     </div>
-                                    <div class="flex flex-col md:flex-row gap-2 mt-1 w-full">
-                                        <div class="flex items-center flex-1">
-                                            <span class="text-[10px] text-gray-500 w-10 shrink-0">地点:</span>
-                                            <input v-model="photo.tempCity" type="text" placeholder="输入城市或景点 (如: 巴黎)" class="flex-1 border rounded px-2 py-1.5 text-xs focus:ring-1">
-                                        </div>
-                                        <!-- 💡 照片类型选择 (已升级为支持自定义输入的神奇输入框) -->
-                                        <div class="flex items-center flex-1">
-                                            <span class="text-[10px] text-gray-500 w-10 shrink-0">类型:</span>
-                                            <input v-model="photo.type" list="photo-types" type="text" placeholder="选择或输入新类型" class="flex-1 border rounded px-2 py-1.5 text-xs focus:ring-1 bg-white transition-colors">
-                                        </div>
+                                    <div class="flex gap-2 w-full">
+                                        <div class="flex items-center flex-1"><span class="text-[10px] text-gray-500 w-8 shrink-0">地点</span><input v-model="photo.tempCity" type="text" class="flex-1 border rounded px-2 py-1 text-xs"></div>
+                                        <div class="flex items-center flex-1"><span class="text-[10px] text-gray-500 w-8 shrink-0">类型</span><input v-model="photo.type" list="photo-types" type="text" class="flex-1 border rounded px-2 py-1 text-xs bg-white"></div>
                                     </div>
                                 </div>
                             </div>
@@ -117,8 +145,8 @@
                         </div>
                         <div class="space-y-3">
                             <div v-for="(stock, idx) in familyData.stocks" :key="idx" class="flex flex-wrap gap-2 items-center bg-gray-50 p-2 rounded-lg border border-gray-200 relative pr-6">
-                                <input v-model="stock.name" type="text" placeholder="名称(如阿里巴巴)" class="w-24 border rounded px-1 py-1 text-xs">
-                                <input v-model="stock.symbol" type="text" placeholder="代码(如BABA)" class="w-16 border rounded px-1 py-1 text-xs uppercase">
+                                <input v-model="stock.name" type="text" placeholder="名称" class="w-24 border rounded px-1 py-1 text-xs">
+                                <input v-model="stock.symbol" type="text" placeholder="代码" class="w-16 border rounded px-1 py-1 text-xs uppercase">
                                 <select v-model="stock.market" class="w-16 border rounded px-1 py-1 text-xs bg-white"><option value="US">美股</option><option value="CN">A股</option></select>
                                 <select v-model="stock.owner" class="w-16 border rounded px-1 py-1 text-xs bg-white"><option value="共同">共同</option><option value="Aosen">Aosen</option><option value="小悦">小悦</option></select>
                                 <div class="flex items-center text-[10px] text-gray-500 w-[45%] md:w-auto mt-1 md:mt-0"><span class="w-8">成本:</span><input v-model.number="stock.costPrice" type="number" step="0.01" class="w-16 border rounded px-1 py-1 text-xs"></div>
@@ -179,7 +207,7 @@
                                 </div>
                                 <div v-else class="grid grid-cols-2 gap-2 border-t pt-2 mt-2 border-gray-200">
                                     <div><label class="text-[10px] text-orange-500">剩余本金</label><input v-model.number="loan.left" type="number" class="w-full border border-orange-200 rounded px-1.5 py-1 text-xs"></div>
-                                    <div><label class="text-[10px] text-orange-500">每月自己设定还款</label><input v-model.number="loan.monthly" type="number" class="w-full border border-orange-200 rounded px-1.5 py-1 text-xs"></div>
+                                    <div><label class="text-[10px] text-orange-500">每月设定还款</label><input v-model.number="loan.monthly" type="number" class="w-full border border-orange-200 rounded px-1.5 py-1 text-xs"></div>
                                 </div>
                             </div>
                         </div>
@@ -220,18 +248,82 @@ import { ref, inject } from 'vue'
 const emit = defineEmits(['close'])
 const familyData = inject('familyData')
 const saveConfig = inject('saveConfig')
+const showNotification = inject('showNotification')
 
 const configTab = ref('life')
 
-// 各模块新增项的默认数据结构
+// === Web 原图直传引擎逻辑 ===
+const fileInput = ref(null)
+const uploadFile = ref(null)
+const uploadPreview = ref('')
+const isUploading = ref(false)
+const uploadMeta = ref({ desc: '', city: '', type: '日常记录' })
+
+const handleFileSelect = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    uploadFile.value = file;
+    uploadPreview.value = URL.createObjectURL(file);
+}
+
+const cancelUpload = () => {
+    uploadFile.value = null; uploadPreview.value = '';
+    uploadMeta.value = { desc: '', city: '', type: '日常记录' };
+}
+
+const submitDirectUpload = async () => {
+    if (!uploadFile.value) return;
+    isUploading.value = true;
+    const token = sessionStorage.getItem('family_auth_token');
+
+    try {
+        // 1. 向 Vercel 申请华为云单次上传通行证
+        const authRes = await fetch(`/api/get-upload-url?filename=${encodeURIComponent(uploadFile.value.name)}`, {
+            headers: { 'Authorization': token }
+        });
+        
+        if (!authRes.ok) throw new Error('通行证获取失败，请检查 Vercel 环境变量');
+        const { uploadUrl, finalUrl } = await authRes.json();
+
+        // 2. 拿到通行证，脱离 Vercel，浏览器直接把几十MB原图塞入华为云
+        const uploadRes = await fetch(uploadUrl, {
+            method: 'PUT',
+            body: uploadFile.value,
+            headers: { 'Content-Type': uploadFile.value.type }
+        });
+
+        if (!uploadRes.ok) throw new Error('上传华为云失败，请检查 OBS CORS 跨域设置');
+
+        // 3. 上传成功，将数据注入全局变量并保存
+        familyData.value.photos.unshift({
+            url: finalUrl,
+            desc: uploadMeta.value.desc || `上传于 ${new Date().toLocaleDateString()}`,
+            tempCity: uploadMeta.value.city,
+            type: uploadMeta.value.type || '日常记录'
+        });
+
+        showNotification('🎉 高清原图已成功上云归档！');
+        cancelUpload();
+        await saveConfig();
+
+    } catch (e) {
+        alert("上传失败: " + e.message);
+    } finally {
+        isUploading.value = false;
+    }
+}
+
+// === 各模块新增项操作 ===
 const addHabit = () => { familyData.value.habits.push({ id: Date.now(), name: '', growthValue: 0, lastWatered: '', stage1Days: 7, stage1Reward: '小星星', stage2Days: 21, stage2Reward: '神秘小礼物', stage3Days: 100, stage3Reward: '实现大愿望' }) }
 const addGoal = () => { familyData.value.goals.push({ name: '', target: 10000, current: 0 }) }
 const addDate = () => { familyData.value.dates.push({ name: '', date: '2000-01-01', type: 'birthday' }) }
 const addStock = () => { familyData.value.stocks.push({ symbol: '', name: '', market: 'CN', owner: 'Aosen', costPrice: 0, shares: 0, currentPrice: 0 }) }
 const addRegularAsset = () => { familyData.value.assets.push({ id: Date.now(), owner: '共同', type: 'house', name: '', value: 0 }) }
-const addPhoto = () => { familyData.value.photos.unshift({ url: '', desc: '', location: null, tempCity: '', type: '日常记录' }) }
+const addEquityMember = () => { familyData.value.equity.members.push({ name: '', principal: 0 }) }
+const addLoan = () => { familyData.value.loans.push({ id: Date.now(), owner: '共同', type: '消费贷', bank: '', left: 0, monthly: 0, rate: 3.0, isAutoCalc: false }) }
+const addTransfer = () => { familyData.value.transfers.push({ from: '', to: '', amount: 0, day: 1, expire: '长期' }) }
+const addPhoto = () => { familyData.value.photos.unshift({ url: '', desc: '', tempCity: '', type: '日常记录' }) }
 
-// 💡 新增：配置面板专用的极速缩略图解析器 (把参数压到 w_200，保证配置台秒开不卡顿)
 const getThumbUrl = (url) => {
     if (!url) return '';
     return url.includes('myhuaweicloud.com') ? url + '?x-image-process=image/resize,w_200/quality,q_60' : url;
