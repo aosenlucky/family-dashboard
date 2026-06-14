@@ -21,18 +21,30 @@
                     <!-- 💡 核心更新：光影相册墙增加“类型”与“地点” -->
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                         <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph-fill ph-camera mr-2 text-purple-500"></i> 光影相册地图</h4><button @click="addPhoto" class="text-[10px] bg-gray-100 px-2 py-1 rounded hover:bg-gray-200 transition">贴一张照片</button></div>
+                        
+                        <!-- 💡 新增：全局预设的照片类型列表，方便自动补全 -->
+                        <datalist id="photo-types">
+                            <option value="自然风景"></option>
+                            <option value="城市建筑"></option>
+                            <option value="浪漫旅行"></option>
+                            <option value="人物写真"></option>
+                            <option value="美食探店"></option>
+                            <option value="日常记录"></option>
+                            <option value="可爱萌宠"></option>
+                        </datalist>
+
                         <div class="space-y-4">
                             <div v-for="(photo, idx) in familyData.photos" :key="idx" class="flex gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200 relative transition-colors hover:bg-white hover:shadow-sm">
                                 <button @click="familyData.photos.splice(idx,1)" class="text-red-500 absolute right-2 top-2 hover:text-red-700 transition z-10"><i class="ph ph-x text-sm"></i></button>
                                 
-                                <!-- 💡 新增：照片直观小缩略图预览区 -->
+                                <!-- 💡 照片直观小缩略图预览区 -->
                                 <div class="w-16 h-16 md:w-20 md:h-20 shrink-0 rounded-lg overflow-hidden bg-gray-200 border border-gray-300 shadow-inner flex items-center justify-center relative">
                                     <div class="absolute inset-0 bg-gradient-to-tr from-gray-100 via-gray-50 to-gray-100 animate-pulse z-0" v-if="photo.url && !photo.loaded"></div>
                                     <img v-if="photo.url" :src="getThumbUrl(photo.url)" class="w-full h-full object-cover relative z-10" onload="this.previousElementSibling.style.display='none'" onerror="this.src='https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=200&q=80'">
                                     <i v-else class="ph-duotone ph-image text-gray-400 text-2xl"></i>
                                 </div>
 
-                                <!-- 右侧：原有表单输入区 -->
+                                <!-- 右侧：表单输入区 -->
                                 <div class="flex-1 flex flex-col justify-center space-y-2 pr-6">
                                     <div class="flex gap-2 w-full">
                                         <input v-model="photo.url" type="text" placeholder="图片链接 URL (或本地图片名)" class="flex-1 border rounded px-2 py-1.5 text-xs">
@@ -43,17 +55,10 @@
                                             <span class="text-[10px] text-gray-500 w-10 shrink-0">地点:</span>
                                             <input v-model="photo.tempCity" type="text" placeholder="输入城市或景点 (如: 巴黎)" class="flex-1 border rounded px-2 py-1.5 text-xs focus:ring-1">
                                         </div>
+                                        <!-- 💡 照片类型选择 (已升级为支持自定义输入的神奇输入框) -->
                                         <div class="flex items-center flex-1">
                                             <span class="text-[10px] text-gray-500 w-10 shrink-0">类型:</span>
-                                            <select v-model="photo.type" class="flex-1 border rounded px-2 py-1.5 text-xs focus:ring-1 bg-white">
-                                                <option value="自然风景">自然风景 (Nature)</option>
-                                                <option value="城市建筑">城市建筑 (Architecture)</option>
-                                                <option value="浪漫旅行">浪漫旅行 (Travel)</option>
-                                                <option value="人物写真">人物写真 (Portraits)</option>
-                                                <option value="美食探店">美食探店 (Food)</option>
-                                                <option value="日常记录">日常记录 (Daily)</option>
-                                                <option value="可爱萌宠">可爱萌宠 (Pets)</option>
-                                            </select>
+                                            <input v-model="photo.type" list="photo-types" type="text" placeholder="选择或输入新类型" class="flex-1 border rounded px-2 py-1.5 text-xs focus:ring-1 bg-white transition-colors">
                                         </div>
                                     </div>
                                 </div>
