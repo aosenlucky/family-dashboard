@@ -22,30 +22,39 @@
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                         <div class="flex justify-between items-center mb-4"><h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph-fill ph-camera mr-2 text-purple-500"></i> 光影相册地图</h4><button @click="addPhoto" class="text-[10px] bg-gray-100 px-2 py-1 rounded hover:bg-gray-200 transition">贴一张照片</button></div>
                         <div class="space-y-4">
-                            <div v-for="(photo, idx) in familyData.photos" :key="idx" class="flex flex-col bg-gray-50 p-3 rounded-lg border border-gray-200 relative">
-                                <button @click="familyData.photos.splice(idx,1)" class="text-red-500 absolute right-2 top-2 hover:text-red-700 transition"><i class="ph ph-x text-sm"></i></button>
-                                <div class="flex gap-2 w-full pr-6 mb-2">
-                                    <input v-model="photo.url" type="text" placeholder="图片链接 URL (或本地图片名)" class="flex-1 border rounded px-2 py-1.5 text-xs">
-                                    <input v-model="photo.desc" type="text" placeholder="照片描述" class="w-1/3 border rounded px-2 py-1.5 text-xs">
+                            <div v-for="(photo, idx) in familyData.photos" :key="idx" class="flex gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200 relative transition-colors hover:bg-white hover:shadow-sm">
+                                <button @click="familyData.photos.splice(idx,1)" class="text-red-500 absolute right-2 top-2 hover:text-red-700 transition z-10"><i class="ph ph-x text-sm"></i></button>
+                                
+                                <!-- 💡 新增：照片直观小缩略图预览区 -->
+                                <div class="w-16 h-16 md:w-20 md:h-20 shrink-0 rounded-lg overflow-hidden bg-gray-200 border border-gray-300 shadow-inner flex items-center justify-center relative">
+                                    <div class="absolute inset-0 bg-gradient-to-tr from-gray-100 via-gray-50 to-gray-100 animate-pulse z-0" v-if="photo.url && !photo.loaded"></div>
+                                    <img v-if="photo.url" :src="getThumbUrl(photo.url)" class="w-full h-full object-cover relative z-10" onload="this.previousElementSibling.style.display='none'" onerror="this.src='https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=200&q=80'">
+                                    <i v-else class="ph-duotone ph-image text-gray-400 text-2xl"></i>
                                 </div>
-                                <div class="flex flex-col md:flex-row gap-2 mt-1 w-full">
-                                    <!-- 城市填写 -->
-                                    <div class="flex items-center flex-1">
-                                        <span class="text-[10px] text-gray-500 w-10 shrink-0">地点:</span>
-                                        <input v-model="photo.tempCity" type="text" placeholder="输入城市或景点 (如: 巴黎)" class="flex-1 border rounded px-2 py-1.5 text-xs focus:ring-1">
+
+                                <!-- 右侧：原有表单输入区 -->
+                                <div class="flex-1 flex flex-col justify-center space-y-2 pr-6">
+                                    <div class="flex gap-2 w-full">
+                                        <input v-model="photo.url" type="text" placeholder="图片链接 URL (或本地图片名)" class="flex-1 border rounded px-2 py-1.5 text-xs">
+                                        <input v-model="photo.desc" type="text" placeholder="照片描述" class="w-1/3 border rounded px-2 py-1.5 text-xs">
                                     </div>
-                                    <!-- 💡 照片类型选择 -->
-                                    <div class="flex items-center flex-1">
-                                        <span class="text-[10px] text-gray-500 w-10 shrink-0">类型:</span>
-                                        <select v-model="photo.type" class="flex-1 border rounded px-2 py-1.5 text-xs focus:ring-1 bg-white">
-                                            <option value="自然风景">自然风景 (Nature)</option>
-                                            <option value="城市建筑">城市建筑 (Architecture)</option>
-                                            <option value="浪漫旅行">浪漫旅行 (Travel)</option>
-                                            <option value="人物写真">人物写真 (Portraits)</option>
-                                            <option value="美食探店">美食探店 (Food)</option>
-                                            <option value="日常记录">日常记录 (Daily)</option>
-                                            <option value="可爱萌宠">可爱萌宠 (Pets)</option>
-                                        </select>
+                                    <div class="flex flex-col md:flex-row gap-2 mt-1 w-full">
+                                        <div class="flex items-center flex-1">
+                                            <span class="text-[10px] text-gray-500 w-10 shrink-0">地点:</span>
+                                            <input v-model="photo.tempCity" type="text" placeholder="输入城市或景点 (如: 巴黎)" class="flex-1 border rounded px-2 py-1.5 text-xs focus:ring-1">
+                                        </div>
+                                        <div class="flex items-center flex-1">
+                                            <span class="text-[10px] text-gray-500 w-10 shrink-0">类型:</span>
+                                            <select v-model="photo.type" class="flex-1 border rounded px-2 py-1.5 text-xs focus:ring-1 bg-white">
+                                                <option value="自然风景">自然风景 (Nature)</option>
+                                                <option value="城市建筑">城市建筑 (Architecture)</option>
+                                                <option value="浪漫旅行">浪漫旅行 (Travel)</option>
+                                                <option value="人物写真">人物写真 (Portraits)</option>
+                                                <option value="美食探店">美食探店 (Food)</option>
+                                                <option value="日常记录">日常记录 (Daily)</option>
+                                                <option value="可爱萌宠">可爱萌宠 (Pets)</option>
+                                            </select>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -215,12 +224,13 @@ const addGoal = () => { familyData.value.goals.push({ name: '', target: 10000, c
 const addDate = () => { familyData.value.dates.push({ name: '', date: '2000-01-01', type: 'birthday' }) }
 const addStock = () => { familyData.value.stocks.push({ symbol: '', name: '', market: 'CN', owner: 'Aosen', costPrice: 0, shares: 0, currentPrice: 0 }) }
 const addRegularAsset = () => { familyData.value.assets.push({ id: Date.now(), owner: '共同', type: 'house', name: '', value: 0 }) }
-const addEquityMember = () => { familyData.value.equity.members.push({ name: '', principal: 0 }) }
-const addLoan = () => { familyData.value.loans.push({ id: Date.now(), owner: '共同', type: '消费贷', bank: '', left: 0, monthly: 0, rate: 3.0, isAutoCalc: false }) }
-const addTransfer = () => { familyData.value.transfers.push({ from: '', to: '', amount: 0, day: 1, expire: '长期' }) }
+const addPhoto = () => { familyData.value.photos.unshift({ url: '', desc: '', location: null, tempCity: '', type: '日常记录' }) }
 
-// 光影画廊：新增项带上 type 和 tempCity 字段
-const addPhoto = () => { familyData.value.photos.unshift({ url: '', desc: '', tempCity: '', type: '日常记录' }) }
+// 💡 新增：配置面板专用的极速缩略图解析器 (把参数压到 w_200，保证配置台秒开不卡顿)
+const getThumbUrl = (url) => {
+    if (!url) return '';
+    return url.includes('myhuaweicloud.com') ? url + '?x-image-process=image/resize,w_200/quality,q_60' : url;
+}
 
 const logout = () => { sessionStorage.removeItem('family_auth_token'); window.location.reload(); }
 const saveAndClose = async () => { await saveConfig(); emit('close'); }
