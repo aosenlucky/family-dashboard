@@ -1,70 +1,98 @@
 <template>
-    <div class="pt-28 pb-20 min-h-screen">
+    <div class="pt-28 pb-20 min-h-screen bg-transparent">
         <!-- 头部标题 -->
-        <header class="px-4 text-center mb-8">
-            <h1 class="text-3xl md:text-5xl font-semibold tracking-tight text-apple-text mb-4">世界足迹与光影</h1>
+        <header class="px-4 text-center mb-6 relative z-10">
+            <h1 class="text-3xl md:text-5xl font-semibold tracking-tight text-apple-text mb-4">岁月挂绳上的光影</h1>
             <p class="text-gray-500 text-sm md:text-base max-w-2xl mx-auto font-light leading-relaxed">
-                每一张照片，都是我们在地球上留下的锚点。
+                听，风吹过的时候，记忆在轻轻作响。
             </p>
         </header>
 
-        <!-- 模块 1：苹果风卡片式足迹地图 -->
-        <section class="max-w-6xl mx-auto px-4 mb-12">
-            <div class="glass-card rounded-3xl p-2 md:p-3 shadow-lg border-2 border-white/80 relative overflow-hidden">
-                <div id="map" class="w-full h-[45vh] md:h-[55vh] rounded-[1.25rem] z-0"></div>
-                
-                <!-- 悬浮的操作按钮 -->
-                <div class="absolute bottom-6 right-6 z-10 flex flex-col gap-3">
-                    <button @click="focusOnPhotos" class="bg-white/90 backdrop-blur-md w-10 h-10 rounded-full shadow-md border border-gray-200 text-gray-700 hover:text-apple-blue transition-colors flex items-center justify-center">
-                        <i class="ph-fill ph-crosshair text-lg"></i>
-                    </button>
-                </div>
-            </div>
-        </section>
+        <!-- 模块 1：经幡与铃铛 (横向滚动挂绳) -->
+        <section class="relative w-full mb-8 z-10">
+            <!-- 贯穿全屏的挂绳 (细线) -->
+            <div class="absolute top-[3.25rem] left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-gray-300/60 to-transparent z-0"></div>
+            
+            <div class="flex overflow-x-auto no-scrollbar px-6 md:px-12 py-4 gap-8 md:gap-12 relative z-10 snap-x">
+                <div v-for="(group, idx) in groupedPhotos" :key="group.name" 
+                     class="flex flex-col items-center shrink-0 snap-center relative group cursor-pointer"
+                     @click="selectGroup(group)">
+                    
+                    <!-- 夹子/连接点 -->
+                    <div class="w-2 h-4 bg-gray-300/80 rounded-sm mb-1 z-20 shadow-sm border border-white/50"></div>
+                    
+                    <!-- 旗子 (城市标签) -->
+                    <div class="glass-card px-4 py-2 rounded-2xl shadow-sm border flex items-center space-x-2 transition-all duration-300 z-20"
+                         :class="activeGroupName === group.name ? 'bg-apple-blue text-white border-blue-400 shadow-blue-500/30 shadow-lg scale-105' : 'bg-white/80 border-white text-gray-700 hover:bg-white group-hover:scale-105'">
+                        <span class="text-lg">{{ group.icon }}</span>
+                        <span class="text-sm font-medium whitespace-nowrap">{{ group.name }}</span>
+                        <span class="text-[10px] font-bold bg-white/20 px-1.5 py-0.5 rounded-full" :class="activeGroupName === group.name ? 'text-white' : 'text-gray-400'">{{ group.photos.length }}</span>
+                    </div>
 
-        <!-- 模块 2：智能照片流控制台 -->
-        <section class="max-w-6xl mx-auto px-4 mb-6 flex justify-between items-end">
-            <div>
-                <h2 class="text-xl font-semibold flex items-center text-gray-800">
-                    <i class="ph-fill ph-images mr-2 text-apple-blue"></i> {{ galleryTitle }}
-                </h2>
-                <p class="text-xs text-gray-500 mt-1">共 {{ activePhotos.length }} 个瞬间</p>
+                    <!-- 挂铃铛的细线 -->
+                    <div class="w-[1.5px] h-6 bg-gradient-to-b from-gray-300 to-gray-200/50 z-10"></div>
+
+                    <!-- 铃铛 (浓缩的照片头像) -->
+                    <div class="flex flex-col -space-y-3 z-20 transition-transform duration-500 group-hover:-translate-y-1">
+                        <!-- 最多展示3个铃铛 -->
+                        <div v-for="(photo, pIdx) in group.photos.slice(0, 3)" :key="pIdx" 
+                             class="w-10 h-10 rounded-full border-2 border-white shadow-md overflow-hidden bg-gray-100 relative"
+                             :style="{ zIndex: 10 - pIdx }">
+                            <img :src="getThumbUrl(photo.url)" class="w-full h-full object-cover">
+                        </div>
+                        <!-- 如果超过3张，显示一个更多的小铃铛 -->
+                        <div v-if="group.photos.length > 3" class="w-6 h-6 rounded-full border-2 border-white shadow-sm bg-white/90 backdrop-blur-sm flex items-center justify-center text-[8px] font-bold text-gray-500 mx-auto" style="z-index: 0;">
+                            +{{ group.photos.length - 3 }}
+                        </div>
+                    </div>
+                </div>
             </div>
             
-            <div class="flex space-x-2">
-                <button v-if="filterMode !== 'all'" @click="showAllPhotos" class="text-[11px] font-medium bg-white/60 hover:bg-white border border-white text-gray-600 px-3 py-1.5 rounded-full shadow-sm transition-colors flex items-center">
-                    <i class="ph ph-x mr-1 text-rose-500"></i> 取消筛选
-                </button>
-                <button v-if="unmappedPhotos.length > 0 && filterMode === 'all'" @click="showUnmapped" class="text-[11px] font-medium bg-white/60 hover:bg-white border border-white text-gray-600 px-3 py-1.5 rounded-full shadow-sm transition-colors flex items-center">
-                    其他记忆 ({{ unmappedPhotos.length }})
-                </button>
+            <!-- 滑动提示 (仅在移动端显示) -->
+            <div v-if="groupedPhotos.length > 3" class="md:hidden text-center mt-2 opacity-50">
+                <span class="text-[10px] bg-white/50 px-2 py-1 rounded-full"><i class="ph ph-arrows-left-right align-middle"></i> 滑动查看更多地点</span>
             </div>
         </section>
 
-        <!-- 模块 3：照片瀑布流 (带骨架屏与优雅降级) -->
-        <section class="max-w-6xl mx-auto px-4 mb-20">
-            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
-                <div v-for="(photo, idx) in activePhotos" :key="idx" @click="previewPhoto(photo)" class="photo-card glass-card p-2 md:p-3 rounded-2xl relative group cursor-pointer bg-white/50">
-                    <div class="aspect-square md:aspect-[4/5] bg-gray-100 rounded-xl overflow-hidden relative border border-gray-100/50 shadow-inner flex items-center justify-center">
-                        
-                        <!-- 优雅的骨架屏呼吸灯 (图片加载完前显示) -->
-                        <div class="absolute inset-0 flex items-center justify-center bg-gray-100/80 animate-pulse z-0">
-                            <i class="ph ph-image text-gray-300 text-3xl"></i>
-                        </div>
-                        
-                        <!-- 图片本体：利用原生 onload/onerror 处理复杂加载状态 -->
-                        <img :src="getThumbUrl(photo.url)" 
-                             :data-orig="photo.url"
-                             onload="this.classList.remove('opacity-0'); this.previousElementSibling.style.display='none';"
-                             onerror="if(this.src!==this.dataset.orig) { this.src=this.dataset.orig; } else { this.previousElementSibling.innerHTML='<i class=\'ph ph-warning-circle text-red-300 text-3xl\'></i>'; this.previousElementSibling.classList.remove('animate-pulse'); }"
-                             class="w-full h-full object-cover transition-all duration-700 opacity-0 group-hover:scale-110 relative z-10">
-                    </div>
-                    <p class="text-xs font-medium text-gray-600 mt-3 truncate px-1 text-center">{{ photo.desc }}</p>
-                </div>
+        <!-- 模块 2：照片瀑布流 -->
+        <section class="max-w-6xl mx-auto px-4 mb-20 relative z-10">
+            <!-- 优雅的标题区 -->
+            <div class="flex items-center justify-between mb-6 border-b border-gray-200/50 pb-3" v-if="activeGroup">
+                <h2 class="text-xl font-semibold flex items-center text-gray-800">
+                    <span class="text-2xl mr-2">{{ activeGroup.icon }}</span> {{ activeGroup.name }} 的记忆
+                </h2>
+                <span class="text-xs bg-white/60 px-3 py-1 rounded-full text-gray-500 shadow-sm border border-white">
+                    共 {{ activeGroup.photos.length }} 幕光影
+                </span>
             </div>
+
+            <!-- 照片网格 -->
+            <transition name="fade" mode="out-in">
+                <div :key="activeGroupName" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+                    <div v-for="(photo, idx) in activeGroup?.photos" :key="idx" 
+                         @click="previewPhoto(photo)" 
+                         class="photo-card glass-card p-2 md:p-3 rounded-2xl relative group cursor-pointer bg-white/50 hover:bg-white transition-colors duration-300">
+                        <div class="aspect-square md:aspect-[4/5] bg-gray-100 rounded-xl overflow-hidden relative border border-gray-100/50 shadow-inner flex items-center justify-center">
+                            
+                            <!-- 骨架屏呼吸灯 -->
+                            <div class="absolute inset-0 flex items-center justify-center bg-gray-100/80 animate-pulse z-0">
+                                <i class="ph ph-image text-gray-300 text-3xl"></i>
+                            </div>
+                            
+                            <!-- 图片本体 -->
+                            <img :src="getThumbUrl(photo.url)" 
+                                 :data-orig="photo.url"
+                                 onload="this.classList.remove('opacity-0'); this.previousElementSibling.style.display='none';"
+                                 onerror="if(this.src!==this.dataset.orig) { this.src=this.dataset.orig; } else { this.previousElementSibling.innerHTML='<i class=\'ph ph-warning-circle text-red-300 text-3xl\'></i>'; this.previousElementSibling.classList.remove('animate-pulse'); }"
+                                 class="w-full h-full object-cover transition-transform duration-700 opacity-0 group-hover:scale-110 relative z-10">
+                        </div>
+                        <p class="text-xs font-medium text-gray-600 mt-3 truncate px-1 text-center">{{ photo.desc }}</p>
+                    </div>
+                </div>
+            </transition>
             
             <!-- 空状态 -->
-            <div v-if="activePhotos.length === 0" class="text-center py-20 text-gray-400 bg-white/40 rounded-3xl border border-dashed border-white shadow-sm mt-4">
+            <div v-if="!activeGroup || activeGroup.photos.length === 0" class="text-center py-20 text-gray-400 bg-white/40 rounded-3xl border border-dashed border-white shadow-sm mt-4">
                 <i class="ph-fill ph-camera text-4xl mb-3 text-gray-300"></i>
                 <p class="text-sm">没有找到照片记录</p>
             </div>
@@ -89,158 +117,82 @@
 </template>
 
 <script setup>
-import { ref, inject, onMounted, onBeforeUnmount, watch, shallowRef } from 'vue'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
-import 'leaflet.markercluster/dist/MarkerCluster.css'
-import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
-import 'leaflet.markercluster'
+import { ref, inject, computed, watch, onMounted } from 'vue'
 
 const familyData = inject('familyData')
 
-const mapInstance = shallowRef(null)
-const markerClusterGroup = shallowRef(null)
-const unmappedPhotos = ref([])
-const activePhotos = ref([])
-const galleryTitle = ref('所有光影记忆')
-const filterMode = ref('all') // all, map, unmapped
+const activeGroupName = ref('')
 const currentPreview = ref(null)
 
+// 💡 智能城市与图标推断引擎
+const getCityIcon = (cityName) => {
+    const iconMap = {
+        '北京': '🏛️', '上海': '🏙️', '广州': '🗼', '深圳': '🚀', '三亚': '🏖️', '成都': '🐼', 
+        '重庆': '🌶️', '杭州': '🛶', '西安': '🍲', '巴黎': '🗼', '伦敦': '🎡', '东京': '🌸',
+        '未分类': '✨', '温馨家园': '🏡'
+    };
+    for (let key in iconMap) {
+        if (cityName.includes(key)) return iconMap[key];
+    }
+    return '📍'; // 默认图标
+}
+
+// 💡 核心：自动将照片聚类成“经幡”组
+const groupedPhotos = computed(() => {
+    const groups = {};
+    const photos = familyData.value.photos || [];
+
+    photos.forEach(p => {
+        // 优先使用 ConfigPanel 填写的城市，如果没有，尝试从描述中智能提取常见城市名
+        let city = p.tempCity || p.city;
+        if (!city) {
+            const commonCities = ['北京', '上海', '广州', '深圳', '成都', '重庆', '杭州', '三亚', '西安', '巴黎', '伦敦', '东京'];
+            const found = commonCities.find(c => p.desc && p.desc.includes(c));
+            city = found || '温馨家园'; // 兜底分类
+        }
+        
+        if (!groups[city]) {
+            groups[city] = { name: city, photos: [], icon: getCityIcon(city) };
+        }
+        groups[city].photos.push(p);
+    });
+
+    // 转换为数组并排序（让“温馨家园”等兜底分类排在最后）
+    return Object.values(groups).sort((a, b) => {
+        if (a.name === '温馨家园') return 1;
+        if (b.name === '温馨家园') return -1;
+        return b.photos.length - a.photos.length;
+    });
+});
+
+// 当前选中的组对象
+const activeGroup = computed(() => {
+    return groupedPhotos.value.find(g => g.name === activeGroupName.value) || groupedPhotos.value[0];
+});
+
+// 监听数据加载，默认选中第一个旗子
+watch(groupedPhotos, (newVal) => {
+    if (newVal.length > 0 && !activeGroupName.value) {
+        activeGroupName.value = newVal[0].name;
+    }
+}, { immediate: true })
+
 onMounted(() => {
-    initMap();
-    renderMarkers();
-    showAllPhotos();
-})
+    if (groupedPhotos.value.length > 0) {
+        activeGroupName.value = groupedPhotos.value[0].name;
+    }
+});
 
-onBeforeUnmount(() => {
-    if (mapInstance.value) { mapInstance.value.remove(); }
-})
+const selectGroup = (group) => {
+    activeGroupName.value = group.name;
+}
 
-watch(() => familyData.value.photos, () => {
-    renderMarkers();
-    if (filterMode.value === 'all') showAllPhotos();
-}, { deep: true })
-
-// 💡 缩略图生成器
+// 缩略图生成器 (保持原有的优雅降级逻辑)
 const getThumbUrl = (url) => {
     if (!url) return '';
-    // 请求 800px 宽度的高清缩略图，保证展示质量
     return url.includes('myhuaweicloud.com') ? url + '?x-image-process=image/resize,w_800/quality,q_80' : url;
 }
 
-// 💡 初始化地图：使用灰白透视主题
-const initMap = () => {
-    mapInstance.value = L.map('map', { zoomControl: false, preferCanvas: true });
-    
-    // 轻度透明的 CartoDB 极简底图，与家庭空间的背景完美融合
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap',
-        subdomains: 'abcd',
-        maxZoom: 19
-    }).addTo(mapInstance.value);
-
-    L.control.zoom({ position: 'bottomright' }).addTo(mapInstance.value);
-}
-
-// 💡 渲染聚合图标
-const renderMarkers = () => {
-    if (!mapInstance.value) return;
-    
-    if (markerClusterGroup.value) {
-        mapInstance.value.removeLayer(markerClusterGroup.value);
-    }
-    
-    markerClusterGroup.value = L.markerClusterGroup({
-        showCoverageOnHover: false,
-        spiderfyOnMaxZoom: false,
-        maxClusterRadius: 40,
-        iconCreateFunction: function(cluster) {
-            const childMarkers = cluster.getAllChildMarkers();
-            const coverUrl = childMarkers[0].options.coverUrl;
-            const count = cluster.getChildCount();
-            
-            const html = `
-                <div class="relative w-12 h-12 rounded-xl border-[3px] border-white shadow-md transition-transform hover:scale-110 bg-gray-100 z-20">
-                    <img src="${coverUrl}" class="w-full h-full object-cover rounded-lg">
-                    <div class="absolute -top-1 -right-1 w-full h-full border-2 border-white rounded-xl shadow-sm -z-10 bg-white" style="transform: rotate(6deg);"></div>
-                    <span class="absolute -top-2 -right-2 bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-sm border border-white z-30">${count}</span>
-                </div>
-            `;
-            return L.divIcon({ html: html, className: 'custom-cluster-icon', iconSize: L.point(48, 48) });
-        }
-    });
-
-    const photos = familyData.value.photos || [];
-    unmappedPhotos.value = photos.filter(p => !p.location || p.location.length !== 2);
-    const validPhotos = photos.filter(p => p.location && p.location.length === 2);
-
-    const grouped = {};
-    validPhotos.forEach(p => {
-        const key = `${p.location[0].toFixed(3)},${p.location[1].toFixed(3)}`;
-        if (!grouped[key]) grouped[key] = [];
-        grouped[key].push(p);
-    });
-
-    for (const key in grouped) {
-        const groupPhotos = grouped[key];
-        const lat = groupPhotos[0].location[0];
-        const lon = groupPhotos[0].location[1];
-        const coverUrl = getThumbUrl(groupPhotos[0].url);
-
-        const html = `
-            <div class="relative w-10 h-10 rounded-xl border-2 border-white shadow-sm transition-transform hover:scale-110 transform rotate-[-3deg] bg-gray-100 z-10">
-                <img src="${coverUrl}" class="w-full h-full object-cover rounded-lg">
-                <span class="absolute -top-2 -right-2 bg-blue-500 text-white text-[9px] font-bold px-1 py-0.5 rounded-full shadow-sm border border-white z-20">${groupPhotos.length}</span>
-            </div>
-        `;
-
-        const icon = L.divIcon({ html: html, className: 'custom-photo-icon', iconSize: L.point(40, 40) });
-        const marker = L.marker([lat, lon], { icon: icon, coverUrl: coverUrl });
-        
-        // 点击地图图标时：平滑滚动到相册并筛选数据
-        marker.on('click', () => { 
-            activePhotos.value = groupPhotos; 
-            galleryTitle.value = `定格于此的 ${groupPhotos.length} 个瞬间`;
-            filterMode.value = 'map';
-            scrollToGallery();
-        });
-        markerClusterGroup.value.addLayer(marker);
-    }
-
-    markerClusterGroup.value.on('clusterclick', function (a) {
-        a.layer.zoomToBounds({padding: [30, 30]});
-    });
-
-    mapInstance.value.addLayer(markerClusterGroup.value);
-    focusOnPhotos();
-}
-
-const focusOnPhotos = () => {
-    if (!mapInstance.value) return;
-    const validPhotos = (familyData.value.photos || []).filter(p => p.location && p.location.length === 2);
-    if (validPhotos.length > 0) {
-        const bounds = L.latLngBounds(validPhotos.map(p => p.location));
-        mapInstance.value.fitBounds(bounds, { padding: [30, 30], maxZoom: 8 });
-    } else {
-        mapInstance.value.setView([35.86166, 104.195397], 4);
-    }
-}
-
-// 视图与交互控制
-const showAllPhotos = () => {
-    activePhotos.value = familyData.value.photos || [];
-    galleryTitle.value = '所有光影记忆';
-    filterMode.value = 'all';
-}
-const showUnmapped = () => {
-    activePhotos.value = unmappedPhotos.value;
-    galleryTitle.value = '未标记坐标的记忆';
-    filterMode.value = 'unmapped';
-    scrollToGallery();
-}
-const scrollToGallery = () => {
-    window.scrollTo({ top: document.getElementById('map').offsetHeight + 150, behavior: 'smooth' });
-}
 const previewPhoto = (photo) => { currentPreview.value = photo; }
 const downloadPhoto = (url) => {
     const a = document.createElement('a'); a.href = url; a.download = `Aosen_Family_${Date.now()}.jpg`;
@@ -248,40 +200,13 @@ const downloadPhoto = (url) => {
 }
 </script>
 
-<style>
-/* 融合式地图样式优化 */
-.leaflet-container { 
-    background: transparent !important; 
-    border-radius: 1.25rem;
+<style scoped>
+/* 隐藏横向滚动条，保持界面整洁 */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
 }
-
-.leaflet-tile-pane { 
-    opacity: 0.75; 
-    filter: grayscale(0.6) contrast(1.05); 
-    transition: opacity 0.3s;
+.no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 }
-
-.leaflet-control-attribution {
-    background: transparent !important;
-    color: rgba(0,0,0,0.3) !important;
-    text-shadow: 0 1px 1px rgba(255,255,255,0.6);
-}
-.leaflet-control-attribution a { color: rgba(0,0,0,0.5) !important; }
-
-/* 苹果风药丸缩放按钮 */
-.leaflet-control-zoom {
-    border: none !important;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.08) !important;
-    border-radius: 12px !important; 
-    overflow: hidden;
-    margin-bottom: 4rem !important; 
-    margin-right: 1rem !important;
-}
-.leaflet-control-zoom a {
-    background: rgba(255, 255, 255, 0.9) !important;
-    backdrop-filter: blur(12px);
-    color: #1d1d1f !important;
-    border-bottom: 1px solid rgba(0,0,0,0.05) !important;
-}
-.custom-cluster-icon, .custom-photo-icon { background: transparent; border: none; }
 </style>
