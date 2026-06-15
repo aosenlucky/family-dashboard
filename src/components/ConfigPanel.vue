@@ -279,7 +279,8 @@ const submitDirectUpload = async () => {
 
     try {
         // 1. 向 Vercel 申请华为云单次上传通行证
-        const authRes = await fetch(`/api/get-upload-url?filename=${encodeURIComponent(uploadFile.value.name)}`, {
+        // 💡 核心修改：在这里的网址后面，加上 &contentType=${encodeURIComponent(uploadFile.value.type)}
+        const authRes = await fetch(`/api/get-upload-url?filename=${encodeURIComponent(uploadFile.value.name)}&contentType=${encodeURIComponent(uploadFile.value.type)}`, {
             headers: { 'Authorization': token }
         });
         

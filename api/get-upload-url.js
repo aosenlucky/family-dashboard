@@ -1,7 +1,6 @@
 import ObsClient from 'esdk-obs-nodejs';
 
 export default async function handler(req, res) {
-  // 1. 安全校验：验证请求是否携带了正确的家庭空间密码
   const PIN = process.env.SYSTEM_PASSWORD;
   if (req.headers.authorization !== PIN) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -11,43 +10,43 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { filename } = req.query;
+  // 💡 修复：同时接收文件名和图片类型(ContentType)
+  const { filename, contentType } = req.query;
   if (!filename) {
     return res.status(400).json({ error: 'Filename is required' });
   }
 
   try {
-    // 2. 初始化华为云客户端
-    // OBS_ENDPOINT 格式应为：https://obs.cn-east-3.myhuaweicloud.com (不要带桶名和结尾的斜杠)
     const obsClient = new ObsClient({
       access_key_id: process.env.OBS_AK,
       secret_access_key: process.env.OBS_SK,
       server: process.env.OBS_ENDPOINT
     });
 
-    // 3. 生成安全的唯一文件名，防止中文字符乱码或同名覆盖
     const safeFilename = filename.replace(/[^a-zA-Z0-9.\-_]/g, '');
     const uniqueFilename = `${Date.now()}_${safeFilename}`;
     const objectKey = `photos/${uniqueFilename}`;
 
-    // 4. 生成带签名的直传 URL
-    const result = obsClient.createSignedUrlSync({
+    // 💡 修复：将前端要上传的 Content-Type 加入到华为云的签名计算中！这步不加必报 403 失败
+    const signParams = {
       Method: 'PUT',
       Bucket: process.env.OBS_BUCKET_NAME,
       Key: objectKey,
       Expires: 3600
-    });
-
-    // 💡 核心修复：正确解析华为云深层嵌套的返回结果
-    if (result.CommonMsg && result.CommonMsg.Status >= 300) {
-      console.error("【OBS 签名拒绝】:", result.CommonMsg);
-      return res.status(500).json({ error: 'OBS signature refused', details: result.CommonMsg });
+    };
+    if (contentType) {
+      signParams.Headers = { 'Content-Type': contentType };
     }
 
-    // 拿到真正的直传 URL
-    const uploadUrl = result.InterfaceResult.SignedUrl;
+    const result = obsClient.createSignedUrlSync(signParams);
 
-    // 5. 拼装最终在画廊中显示的公网图片访问地址
+    // 💡 修复：改回正确的 SDK 属性直读方式
+    const uploadUrl = result.SignedUrl;
+
+    if (!uploadUrl) {
+      throw new Error('签名生成失败，请检查 AK/SK 配置');
+    }
+
     const endpointWithoutProtocol = process.env.OBS_ENDPOINT.replace('https://', '').replace('http://', '');
     const finalUrl = `https://${process.env.OBS_BUCKET_NAME}.${endpointWithoutProtocol}/${objectKey}`;
 
