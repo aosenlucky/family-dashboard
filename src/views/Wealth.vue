@@ -24,19 +24,29 @@
                 </div>
             </section>
 
+            <!-- 1. 股市模块 (红绿渐变背景 + 盈亏计算 + 💡 同步按钮回归) -->
             <section class="max-w-6xl mx-auto px-4 mb-12">
                 <div class="glass-card rounded-3xl p-6 shadow-sm border border-white/60">
                     <div class="flex justify-between items-center mb-4">
                         <h3 class="text-lg font-semibold flex items-center text-gray-800"><i class="ph-fill ph-trend-up mr-2 text-rose-500"></i> 投资与股市雷达</h3>
-                        <span class="text-[10px] text-gray-500">美元汇率: {{ familyData.usdRate }}</span>
+                        
+                        <!-- 💡 修复：完美加回行情同步按钮 -->
+                        <div class="flex items-center space-x-3">
+                            <span class="text-[10px] text-gray-500 hidden sm:inline">美元汇率: {{ familyData.usdRate }}</span>
+                            <button @click="fetchStocks" :disabled="isFetchingStocks" class="text-xs bg-white border border-gray-200 shadow-sm px-3 py-1.5 rounded-full hover:bg-gray-50 transition flex items-center">
+                                <i class="ph ph-arrows-clockwise mr-1" :class="{'animate-spin text-apple-blue': isFetchingStocks}"></i> {{ isFetchingStocks ? '同步中' : '行情同步' }}
+                            </button>
+                        </div>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div v-for="stock in familyData.stocks" :key="stock.symbol" class="bg-white/60 backdrop-blur-sm p-4 rounded-2xl border border-white shadow-sm relative overflow-hidden">
+                            <!-- 红绿渐变背景 -->
                             <div class="absolute right-0 top-0 bottom-0 w-1/2 bg-gradient-to-l opacity-10 pointer-events-none" :class="getStockProfit(stock) >= 0 ? 'from-rose-500' : 'from-green-500'"></div>
                             <div class="flex justify-between items-start mb-3 relative z-10">
                                 <div><h4 class="font-semibold text-gray-800 flex items-center">{{ stock.name }}</h4><p class="text-[10px] text-gray-500 mt-1"><span :class="getOwnerTagClass(stock.owner)" class="border px-1.5 py-0.5 rounded">{{ stock.owner }}</span></p></div>
                                 <div class="text-right"><p class="text-sm font-bold text-gray-800">{{ isMasked ? '***' : stock.currentPrice }}</p><p class="text-[10px] text-gray-500 mt-0.5">持仓: {{ isMasked ? '***' : stock.shares }} 股</p></div>
                             </div>
+                            <!-- 盈亏展示 -->
                             <div class="flex justify-between items-center text-xs border-t border-gray-200/50 pt-2 relative z-10">
                                 <span class="text-gray-500">持仓盈亏</span>
                                 <div class="font-semibold" :class="getStockProfit(stock) >= 0 ? 'text-rose-500' : 'text-green-500'">
@@ -50,6 +60,7 @@
             </section>
 
             <section class="max-w-6xl mx-auto px-4 mb-12 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- 基础资产 -->
                 <div class="glass-card rounded-3xl p-6">
                     <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800"><i class="ph-fill ph-house mr-2 text-blue-500"></i> 固定与流动资产</h3>
                     <div class="space-y-3 max-h-[300px] overflow-y-auto pr-2 modal-scroll">
@@ -64,6 +75,7 @@
                     </div>
                 </div>
 
+                <!-- 2. 家族股权大盘 -->
                 <div class="glass-card rounded-3xl p-6 relative overflow-hidden">
                     <div class="absolute top-0 right-0 w-24 h-24 bg-red-500/10 rounded-full blur-2xl transform translate-x-4 -translate-y-4"></div>
                     <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800"><i class="ph-fill ph-aperture mr-2 text-red-500"></i> HW 家族股权大盘</h3>
@@ -87,6 +99,7 @@
                             </div>
                         </div>
                     </div>
+                    <!-- 整体统计 -->
                     <div class="mt-4 pt-3 border-t border-gray-300/50 flex justify-between items-center">
                         <span class="text-sm font-semibold text-gray-800">家族年预期 <span class="text-green-600">税后</span> 总分红</span>
                         <span class="text-xl font-bold text-green-600">{{ formatCurrencyInt(totalDividendsPostTax) }}</span>
@@ -94,6 +107,7 @@
                 </div>
             </section>
 
+            <!-- 3. 贷款明细 (支持本金/利息分解引擎) -->
             <section class="max-w-6xl mx-auto px-4 mb-16">
                 <h2 class="text-xl font-semibold mb-6 flex items-center"><i class="ph ph-notebook mr-2 text-apple-subtext"></i> 贷款月供分解</h2>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -106,6 +120,7 @@
                         <div class="bg-white/50 p-4 rounded-xl border border-white shadow-sm">
                             <div class="flex justify-between items-center text-sm border-b border-gray-200/50 pb-2 mb-2"><span class="text-gray-600 font-medium">剩余本金</span><span class="font-bold text-gray-800">{{ formatCurrency(loan.left) }}</span></div>
                             <div class="flex justify-between items-center text-sm"><span class="text-gray-600 font-medium">本月需还总额</span><span class="font-bold text-rose-500">{{ formatCurrency(loan.monthly) }}</span></div>
+                            <!-- 补全的分解显示 -->
                             <div class="bg-white/60 rounded-lg p-2 flex justify-between text-xs text-gray-500 mt-3 border border-gray-100">
                                 <span>还本金: {{ formatCurrency(loan.nextPrincipal) }}</span>
                                 <span class="text-orange-500">还利息: {{ formatCurrency(loan.nextInterest) }}</span>
@@ -115,6 +130,7 @@
                 </div>
             </section>
 
+            <!-- 4. 拓扑图 -->
             <section id="flow" class="max-w-6xl mx-auto px-4 mb-20">
                 <div class="flex justify-between items-end mb-4">
                     <h2 class="text-xl font-semibold flex items-center"><i class="ph ph-git-branch mr-2 text-apple-subtext"></i> 资金自动化航线</h2>
@@ -140,6 +156,10 @@ const formatCurrency = inject('formatCurrency')
 const formatCurrencyInt = inject('formatCurrencyInt')
 const formatCurrencyIntNoSymbol = inject('formatCurrencyIntNoSymbol')
 const getOwnerTagClass = inject('getOwnerTagClass')
+
+// 💡 修复：从 App.vue 注入同步方法和状态
+const fetchStocks = inject('fetchStocks')
+const isFetchingStocks = inject('isFetchingStocks')
 
 // 股票与收益计算方法
 const getStockProfit = (stock) => { return (stock.currentPrice - stock.costPrice) * stock.shares; }

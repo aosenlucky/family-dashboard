@@ -40,7 +40,7 @@
                 
                 <div class="absolute left-1/2 transform -translate-x-1/2 flex items-center bg-white/40 p-1 rounded-full border border-white/60 shadow-sm z-10">
                     <router-link to="/life" active-class="bg-white shadow-sm text-gray-800" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium text-gray-500 hover:text-gray-800 transition-all">生活</router-link>
-                    <router-link to="/wealth" active-class="bg-white shadow-sm text-gray-800" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium text-gray-500 hover:text-gray-800 transition-all">理财</router-link>
+                    <router-link to="/wealth" active-class="bg-white shadow-sm text-gray-800" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium text-gray-500 hover:text-gray-800 transition-all">财富</router-link>
                     <router-link to="/gallery" active-class="bg-white shadow-sm text-gray-800" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium text-gray-500 hover:text-gray-800 transition-all">画廊</router-link>
                 </div>
 
@@ -88,7 +88,7 @@ const defaultData = {
     loans: [ { id: 1, owner: '共同', type: '房贷', bank: '中信银行', isAutoCalc: true, baseLeft: 1786921.68, baseMonthly: 8891, baseDate: '2026-04', rate: 3.2, day: 20, monthly: 0, left: 0 } ],
     transfers: [], assets: [ { id: 1, owner: '共同', type: 'house', name: '房产估值', value: 7000000 } ], stocks: [],
     equity: { pricePerShare: 7.85, dividendRate: 1.06, members: [ {name: 'Aosen&小悦', principal: 1242097.6} ] },
-    photos: [ { url: '[https://images.unsplash.com/photo-1506869640319-ce1a56065328?w=500&q=80](https://images.unsplash.com/photo-1506869640319-ce1a56065328?w=500&q=80)', desc: '旅行记录' } ],
+    photos: [ { url: 'https://images.unsplash.com/photo-1506869640319-ce1a56065328?w=500&q=80', desc: '旅行记录', tempCity: '自然风景', type: '自然风景' } ],
     goals: [ { name: '欧洲10周年纪念游', target: 100000, current: 0 } ],
     dates: [ { name: '小悦生日', date: '1996-09-01', type: 'birthday' } ],
     todos: [ { id: 1, text: '周末一起去买菜', completed: false } ],
@@ -102,6 +102,7 @@ const isMasked = ref(true)
 const showConfig = ref(false)
 const isSyncing = ref(false)
 const syncStatus = ref('')
+const isFetchingStocks = ref(false)
 
 const wealthPassword = ref('')
 const showWealthAuth = ref(false)
@@ -153,6 +154,10 @@ provide('formatCurrencyInt', formatCurrencyInt)
 provide('formatCurrencyIntNoSymbol', formatCurrencyIntNoSymbol)
 provide('getOwnerTagClass', getOwnerTagClass)
 
+// 💡 修复：提供给 Wealth.vue 使用的刷新事件和状态
+provide('fetchStocks', () => fetchStocks())
+provide('isFetchingStocks', isFetchingStocks)
+
 // ==== Auth 与数据加载逻辑 ====
 const applyData = (data) => {
     const fd = familyData.value;
@@ -191,15 +196,14 @@ const loadConfig = async () => {
 }
 
 const fetchStocks = async () => {
+    isFetchingStocks.value = true;
     for (let stock of familyData.value.stocks) {
         try {
             let symbol = stock.symbol.toLowerCase().trim();
-            
-            // 💡 智能补全核心：如果你选了A股，但只填了6位数字(如 002230)，自动补全 sh 或 sz
+            // 💡 智能补全核心：A股且为6位数字，自动补全 sh 或 sz
             if (stock.market === 'CN' && /^\d{6}$/.test(symbol)) {
                 symbol = symbol.startsWith('6') ? `sh${symbol}` : `sz${symbol}`;
             }
-
             const query = stock.market === 'US' ? `gb_${symbol}` : symbol; 
             
             await new Promise((resolve) => {
@@ -212,7 +216,7 @@ const fetchStocks = async () => {
                     const res = window[`hq_str_${query}`];
                     if (res && res.length > 10) { 
                         const parts = res.split(','); 
-                        // 💡 错位修复核心：美股现价在第2个位置(parts[1])，A股现价在第4个位置(parts[3])
+                        // 美股现价在2位，A股在4位
                         if (stock.market === 'US' && parts.length > 1) {
                             stock.currentPrice = parseFloat(parts[1]);
                         } else if (stock.market === 'CN' && parts.length > 3) {
@@ -229,6 +233,7 @@ const fetchStocks = async () => {
             console.error('抓取股票失败:', e);
         }
     }
+    setTimeout(() => { isFetchingStocks.value = false; }, 800);
 }
 
 const handleLogin = async () => {
