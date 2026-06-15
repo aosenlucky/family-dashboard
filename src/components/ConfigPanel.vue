@@ -1,4 +1,4 @@
-<template>
+\<template>
     <div class="fixed inset-0 z-[300] flex items-center justify-center p-4">
         <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="$emit('close')"></div>
         <div class="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col relative z-10 overflow-hidden">
@@ -20,7 +20,6 @@
                     
                     <!-- 💡 核心模块：原图直传与相册管理 -->
                     <div class="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 transition-all duration-300">
-                        <!-- 💡 新增：可折叠标题栏 -->
                         <div class="flex justify-between items-center cursor-pointer select-none" @click="toggle('photos')">
                             <h4 class="text-sm font-semibold text-gray-800 flex items-center">
                                 <i class="ph-fill ph-camera mr-2 text-purple-500"></i> 光影相册管理
@@ -66,15 +65,15 @@
                                 </div>
                             </div>
 
-                            <!-- 💡 新增：动态照片类型管理面板 -->
+                            <!-- 💡 动态照片类型管理面板 (已优化删除按钮 UI) -->
                             <div class="bg-gray-50 border border-gray-100 rounded-xl p-3 md:p-4">
                                 <h5 class="text-xs font-semibold text-gray-700 mb-2 flex items-center"><i class="ph-bold ph-tag mr-1 text-purple-500"></i> 照片类型标签库</h5>
                                 <div class="flex flex-wrap gap-2 mb-3">
-                                    <!-- 💡 修复1：加强标签删除按钮的触控面积，并在手机端常态化显示 -->
-                                    <span v-for="(type, idx) in familyData.photoTypes" :key="idx" class="text-[10px] bg-white border border-gray-200 text-gray-600 pl-2.5 pr-1 py-1 rounded-full shadow-sm flex items-center">
+                                    <!-- 🌟 升级：醒目的红色删除徽章设计，增大触控区 -->
+                                    <span v-for="(type, idx) in familyData.photoTypes" :key="idx" class="text-xs bg-white border border-gray-200 text-gray-700 pl-3 pr-1 py-1 rounded-full shadow-sm flex items-center group transition-all hover:border-red-200">
                                         {{ type }}
-                                        <button @click.stop="removePhotoType(idx)" class="ml-1.5 w-4 h-4 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-red-100 hover:text-red-500 transition-colors" title="删除该标签">
-                                            <i class="ph-bold ph-x text-[9px]"></i>
+                                        <button @click.stop="removePhotoType(idx)" class="ml-2 w-5 h-5 rounded-full bg-red-50 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-sm" title="删除该标签">
+                                            <i class="ph-bold ph-x text-[10px]"></i>
                                         </button>
                                     </span>
                                 </div>
@@ -88,11 +87,9 @@
                                 <option v-for="type in familyData.photoTypes" :key="type" :value="type"></option>
                             </datalist>
 
-                            <!-- 历史图库管理 (列表防过长，加了高度限制与滚动条) -->
+                            <!-- 历史图库管理 -->
                             <div class="space-y-3 max-h-[350px] overflow-y-auto modal-scroll pr-2">
-                                <!-- 💡 修复2：重构手机端布局，改为左右布局并预留 pr-10 专属防遮挡区域 -->
                                 <div v-for="(photo, idx) in familyData.photos" :key="idx" class="flex flex-row gap-3 md:gap-4 bg-gray-50 p-3 pr-10 rounded-lg border border-gray-200 relative transition-colors hover:bg-white hover:shadow-sm">
-                                    <!-- 明显的垃圾桶图标，防遮挡定位 -->
                                     <button @click="familyData.photos.splice(idx,1)" class="text-gray-400 absolute right-2 top-2 p-1.5 hover:bg-red-50 hover:text-red-500 rounded transition z-20">
                                         <i class="ph ph-trash text-base"></i>
                                     </button>
@@ -322,7 +319,6 @@ const showNotification = inject('showNotification')
 
 const configTab = ref('life')
 
-// 💡 新增：各大模块的折叠状态管理 (默认全部展开，但通过 max-h 限制了高度防撑破)
 const activeSections = ref({
     photos: true,
     habits: true,
@@ -335,14 +331,12 @@ const activeSections = ref({
 });
 const toggle = (sec) => { activeSections.value[sec] = !activeSections.value[sec]; };
 
-// === Web 原图直传引擎逻辑 ===
 const fileInput = ref(null)
 const uploadFile = ref(null)
 const uploadPreview = ref('')
 const isUploading = ref(false)
 const uploadMeta = ref({ desc: '', city: '', type: '日常记录' })
 
-// 照片类型管理逻辑
 const newPhotoType = ref('')
 const addPhotoType = () => {
     const type = newPhotoType.value.trim();
