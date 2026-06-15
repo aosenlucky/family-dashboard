@@ -88,6 +88,7 @@ const defaultData = {
     loans: [ { id: 1, owner: '共同', type: '房贷', bank: '中信银行', isAutoCalc: true, baseLeft: 1786921.68, baseMonthly: 8891, baseDate: '2026-04', rate: 3.2, day: 20, monthly: 0, left: 0 } ],
     transfers: [], assets: [ { id: 1, owner: '共同', type: 'house', name: '房产估值', value: 7000000 } ], stocks: [],
     equity: { pricePerShare: 7.85, dividendRate: 1.06, members: [ {name: 'Aosen&小悦', principal: 1242097.6} ] },
+    photoTypes: ['自然风景', '城市建筑', '浪漫旅行', '人物写真', '美食探店', '日常记录', '可爱萌宠'],
     photos: [ { url: 'https://images.unsplash.com/photo-1506869640319-ce1a56065328?w=500&q=80', desc: '旅行记录', tempCity: '自然风景', type: '自然风景' } ],
     goals: [ { name: '欧洲10周年纪念游', target: 100000, current: 0 } ],
     dates: [ { name: '小悦生日', date: '1996-09-01', type: 'birthday' } ],
@@ -165,6 +166,8 @@ const applyData = (data) => {
     fd.transfers = data.transfers && data.transfers.length > 0 ? data.transfers : defaultData.transfers;
     fd.goals = data.goals && data.goals.length > 0 ? data.goals : defaultData.goals; 
     fd.dates = data.dates && data.dates.length > 0 ? data.dates : defaultData.dates;
+    // 💡 支持动态照片类型标签库的加载
+    fd.photoTypes = data.photoTypes && data.photoTypes.length > 0 ? data.photoTypes : defaultData.photoTypes;
     fd.photos = data.photos && data.photos.length > 0 ? data.photos : defaultData.photos;
     fd.stocks = data.stocks && data.stocks.length > 0 ? data.stocks : defaultData.stocks;
     fd.todos = data.todos && data.todos.length > 0 ? data.todos : defaultData.todos;
@@ -192,7 +195,7 @@ const loadConfig = async () => {
     }
 }
 
-// 💡 核心大换血：彻底抛弃新浪，全面接入【腾讯财经 API】
+// 💡 彻底抛弃新浪，全面接入【腾讯财经 API】
 const fetchStocks = async () => {
     isFetchingStocks.value = true;
     for (let stock of familyData.value.stocks) {
@@ -214,23 +217,21 @@ const fetchStocks = async () => {
 
             await new Promise((resolve) => {
                 const script = document.createElement('script'); 
-                // 💡 换用腾讯接口 qt.gtimg.cn，并加入随机时间戳彻底粉碎浏览器缓存！
+                // 💡 加入随机时间戳彻底粉碎浏览器缓存
                 script.src = `https://qt.gtimg.cn/q=${query}&_t=${Date.now()}`; 
                 
-                // 腾讯的返回值变量名是 v_ 开头
                 window[`v_${query}`] = "";
                 
                 script.onload = () => {
                     const res = window[`v_${query}`];
                     if (res && res.length > 10) { 
-                        // 腾讯的数据是用 波浪号 ~ 分隔的
                         const parts = res.split('~'); 
                         
-                        // 🌟 腾讯最强的一点：不管 A股 还是 美股，当前价格永远都在第 4 位（索引为 3）
+                        // 不管 A股 还是 美股，当前价格永远都在第 4 位（索引为 3）
                         if (parts.length > 3) {
                             const price = parseFloat(parts[3]);
                             if (!isNaN(price) && price > 0) {
-                                stock.currentPrice = price; // 成功获取并更新响应式数据
+                                stock.currentPrice = price; 
                             }
                         }
                     }

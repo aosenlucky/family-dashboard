@@ -58,20 +58,35 @@
                                         </div>
                                     </div>
                                     <button @click="submitDirectUpload" :disabled="isUploading" class="w-full bg-apple-blue text-white font-medium py-2 rounded-lg hover:bg-blue-600 shadow-sm transition disabled:bg-gray-400 flex justify-center items-center text-sm">
-                                        <i v-if="isUploading" class="ph ph-spinner animate-spin mr-2"></i>
-                                        {{ isUploading ? '正在极速直传华为云...' : '一键归档至画廊' }}
-                                    </button>
-                                </div>
+                                    <i v-if="isUploading" class="ph ph-spinner animate-spin mr-2"></i>
+                                    {{ isUploading ? '正在极速直传华为云...' : '一键归档至画廊' }}
+                                </button>
                             </div>
                         </div>
+                    </div>
 
-                        <!-- 预设类别 -->
-                        <datalist id="photo-types">
-                            <option value="自然风景"></option><option value="城市建筑"></option><option value="浪漫旅行"></option><option value="人物写真"></option><option value="日常记录"></option>
-                        </datalist>
+                    <!-- 💡 新增：动态照片类型管理面板 -->
+                    <div class="bg-gray-50 border border-gray-100 rounded-xl p-4 mb-6">
+                        <h5 class="text-xs font-semibold text-gray-700 mb-2 flex items-center"><i class="ph-bold ph-tag mr-1 text-purple-500"></i> 照片类型标签库</h5>
+                        <div class="flex flex-wrap gap-2 mb-3">
+                            <span v-for="(type, idx) in familyData.photoTypes" :key="idx" class="text-[10px] bg-white border border-gray-200 text-gray-600 px-2.5 py-1 rounded-full shadow-sm flex items-center group">
+                                {{ type }}
+                                <i @click="removePhotoType(idx)" class="ph-bold ph-x ml-1.5 text-gray-400 hover:text-red-500 cursor-pointer hidden group-hover:inline-block transition-colors" title="删除该标签"></i>
+                            </span>
+                        </div>
+                        <div class="flex gap-2">
+                            <input v-model="newPhotoType" @keyup.enter="addPhotoType" type="text" placeholder="添加新类型 (如: 家庭合影)" class="border border-gray-200 rounded-lg px-2 py-1.5 text-xs flex-1 focus:ring-1 focus:ring-blue-400 outline-none">
+                            <button @click="addPhotoType" class="bg-white border border-gray-200 shadow-sm px-4 py-1.5 rounded-lg text-xs font-medium text-gray-600 hover:text-apple-blue transition">新增</button>
+                        </div>
+                    </div>
 
-                        <!-- 历史图库管理 -->
-                        <div class="space-y-3">
+                    <!-- 动态预设类别，取代原来的硬编码 -->
+                    <datalist id="photo-types">
+                        <option v-for="type in familyData.photoTypes" :key="type" :value="type"></option>
+                    </datalist>
+
+                    <!-- 历史图库管理 -->
+                    <div class="space-y-3">
                             <div v-for="(photo, idx) in familyData.photos" :key="idx" class="flex gap-3 md:gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200 relative transition-colors hover:bg-white hover:shadow-sm">
                                 <button @click="familyData.photos.splice(idx,1)" class="text-red-500 absolute right-2 top-2 hover:text-red-700 transition z-10"><i class="ph ph-x text-sm"></i></button>
                                 
@@ -260,6 +275,19 @@ const uploadPreview = ref('')
 const isUploading = ref(false)
 const uploadMeta = ref({ desc: '', city: '', type: '日常记录' })
 
+// 💡 新增：照片类型管理逻辑
+const newPhotoType = ref('')
+const addPhotoType = () => {
+    const type = newPhotoType.value.trim();
+    if (type && !familyData.value.photoTypes.includes(type)) {
+        familyData.value.photoTypes.push(type);
+        newPhotoType.value = '';
+    }
+}
+const removePhotoType = (idx) => {
+    familyData.value.photoTypes.splice(idx, 1);
+}
+
 const handleFileSelect = (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -296,12 +324,18 @@ const submitDirectUpload = async () => {
 
         if (!uploadRes.ok) throw new Error('上传华为云失败，请检查 OBS CORS 跨域设置');
 
-        // 3. 上传成功，将数据注入全局变量并保存
+        // 💡 上传成功，将数据注入全局变量并保存
+        // 如果用户在直传时填入了一个全新的类别，自动将其收录进全局标签库中
+        const finalType = uploadMeta.value.type || '日常记录';
+        if (!familyData.value.photoTypes.includes(finalType)) {
+            familyData.value.photoTypes.push(finalType);
+        }
+
         familyData.value.photos.unshift({
             url: finalUrl,
             desc: uploadMeta.value.desc || `上传于 ${new Date().toLocaleDateString()}`,
             tempCity: uploadMeta.value.city,
-            type: uploadMeta.value.type || '日常记录'
+            type: finalType
         });
 
         showNotification('🎉 高清原图已成功上云归档！');
