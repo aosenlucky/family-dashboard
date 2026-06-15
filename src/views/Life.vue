@@ -27,7 +27,7 @@
                     </div>
                 </div>
 
-                <!-- 待办清单 -->
+                 <!-- 待办清单 -->
                 <div class="glass-card rounded-3xl p-6">
                     <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800"><i class="ph-fill ph-check-square-offset mr-2 text-blue-500"></i> 家庭待办协作</h3>
                     <div class="flex gap-2 mb-5">
@@ -35,9 +35,13 @@
                         <button @click="addTodo" class="bg-apple-blue hover:bg-blue-600 text-white rounded-xl px-4 py-2 text-sm shadow-md transition"><i class="ph ph-plus font-bold"></i></button>
                     </div>
                     <div class="space-y-2 max-h-[250px] overflow-y-auto modal-scroll pr-2">
-                        <div v-for="todo in sortedTodos" :key="todo.id" class="flex items-center justify-between bg-white/60 p-3 rounded-xl border border-white shadow-sm transition-all hover:bg-white/80" :class="{'opacity-60': todo.completed}">
-                            <div class="flex items-center space-x-3 overflow-hidden"><input type="checkbox" :checked="todo.completed" @change="toggleTodo(todo)" class="apple-checkbox shrink-0"><span class="text-sm text-gray-800 truncate transition-all duration-300" :class="{'line-through text-gray-400': todo.completed}">{{ todo.text }}</span></div>
-                            <button @click="deleteTodo(todo.id)" class="text-gray-400 hover:text-red-500 px-2 shrink-0"><i class="ph ph-trash"></i></button>
+                        <!-- 💡 修复3：取消单行截断，支持无限向下换行显示完整内容 -->
+                        <div v-for="todo in sortedTodos" :key="todo.id" class="flex items-start justify-between bg-white/60 p-3 rounded-xl border border-white shadow-sm transition-all hover:bg-white/80" :class="{'opacity-60': todo.completed}">
+                            <div class="flex items-start space-x-3 flex-1 min-w-0 pr-2">
+                                <input type="checkbox" :checked="todo.completed" @change="toggleTodo(todo)" class="apple-checkbox shrink-0 mt-0.5">
+                                <span class="text-sm text-gray-800 break-words whitespace-normal transition-all duration-300 leading-relaxed" :class="{'line-through text-gray-400': todo.completed}">{{ todo.text }}</span>
+                            </div>
+                            <button @click="deleteTodo(todo.id)" class="text-gray-400 hover:text-red-500 p-1 shrink-0 mt-0.5"><i class="ph ph-trash"></i></button>
                         </div>
                     </div>
                 </div>
