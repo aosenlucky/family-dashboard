@@ -65,7 +65,7 @@
             </transition>
         </router-view>
 
-        <footer class="border-t border-white/40 backdrop-blur-sm pb-12 pt-8">
+        <footer class="border-t border-white/40 backdrop-blur-sm pb-12 pt-8 mt-10">
             <div class="max-w-6xl mx-auto px-4 flex flex-col items-center text-xs text-gray-500">
                 <p>Aosen & 小悦的家庭空间。Vite 云端驱动 & 本地加密。</p>
             </div>
@@ -153,12 +153,9 @@ provide('formatCurrency', formatCurrency)
 provide('formatCurrencyInt', formatCurrencyInt)
 provide('formatCurrencyIntNoSymbol', formatCurrencyIntNoSymbol)
 provide('getOwnerTagClass', getOwnerTagClass)
-
-// 💡 修复：提供给 Wealth.vue 使用的刷新事件和状态
 provide('fetchStocks', () => fetchStocks())
 provide('isFetchingStocks', isFetchingStocks)
 
-// ==== Auth 与数据加载逻辑 ====
 const applyData = (data) => {
     const fd = familyData.value;
     fd.wealthPassword = data.wealthPassword || defaultData.wealthPassword; wealthPassword.value = fd.wealthPassword;
@@ -195,44 +192,65 @@ const loadConfig = async () => {
     }
 }
 
+// 💡 核心大换血：彻底抛弃新浪，全面接入【腾讯财经 API】
 const fetchStocks = async () => {
     isFetchingStocks.value = true;
     for (let stock of familyData.value.stocks) {
         try {
             let symbol = stock.symbol.toLowerCase().trim();
-            // 💡 智能补全核心：A股且为6位数字，自动补全 sh 或 sz
-            if (stock.market === 'CN' && /^\d{6}$/.test(symbol)) {
-                symbol = symbol.startsWith('6') ? `sh${symbol}` : `sz${symbol}`;
+            let query = '';
+
+            // 1. 腾讯接口组装逻辑
+            if (stock.market === 'CN') {
+                // A股 6位数字自动补全 sh 或 sz
+                if (/^\d{6}$/.test(symbol)) {
+                    symbol = symbol.startsWith('6') ? `sh${symbol}` : `sz${symbol}`;
+                }
+                query = symbol;
+            } else if (stock.market === 'US') {
+                // 腾讯美股格式：us + 大写代码 (例如 usBABA, usAAPL)
+                query = `us${symbol.toUpperCase()}`;
             }
-            const query = stock.market === 'US' ? `gb_${symbol}` : symbol; 
-            
+
             await new Promise((resolve) => {
                 const script = document.createElement('script'); 
-                script.src = `https://hq.sinajs.cn/list=${query}`; 
-                script.referrerPolicy = "no-referrer"; 
-                window[`hq_str_${query}`] = "";
+                // 💡 换用腾讯接口 qt.gtimg.cn，并加入随机时间戳彻底粉碎浏览器缓存！
+                script.src = `https://qt.gtimg.cn/q=${query}&_t=${Date.now()}`; 
+                
+                // 腾讯的返回值变量名是 v_ 开头
+                window[`v_${query}`] = "";
                 
                 script.onload = () => {
-                    const res = window[`hq_str_${query}`];
+                    const res = window[`v_${query}`];
                     if (res && res.length > 10) { 
-                        const parts = res.split(','); 
-                        // 美股现价在2位，A股在4位
-                        if (stock.market === 'US' && parts.length > 1) {
-                            stock.currentPrice = parseFloat(parts[1]);
-                        } else if (stock.market === 'CN' && parts.length > 3) {
-                            stock.currentPrice = parseFloat(parts[3]);
+                        // 腾讯的数据是用 波浪号 ~ 分隔的
+                        const parts = res.split('~'); 
+                        
+                        // 🌟 腾讯最强的一点：不管 A股 还是 美股，当前价格永远都在第 4 位（索引为 3）
+                        if (parts.length > 3) {
+                            const price = parseFloat(parts[3]);
+                            if (!isNaN(price) && price > 0) {
+                                stock.currentPrice = price; // 成功获取并更新响应式数据
+                            }
                         }
                     }
                     document.body.removeChild(script); 
                     resolve();
                 };
-                script.onerror = () => { document.body.removeChild(script); resolve(); };
+                
+                script.onerror = () => { 
+                    console.error(`腾讯接口拒绝或网络失败: ${query}`);
+                    document.body.removeChild(script); 
+                    resolve(); 
+                };
                 document.body.appendChild(script);
             });
         } catch(e) {
-            console.error('抓取股票失败:', e);
+            console.error(`抓取 ${stock.name} 失败:`, e);
         }
     }
+    
+    // 给动画一点缓冲时间
     setTimeout(() => { isFetchingStocks.value = false; }, 800);
 }
 
