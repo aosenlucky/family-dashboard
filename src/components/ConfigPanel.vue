@@ -113,11 +113,11 @@
                         </div>
                     </div>
 
-                    <!-- 🌟 终极版精神岛屿 (无需 Python 的纯净 AI 直连方案) -->
+                    <!-- 🌟 终极版精神岛屿 (全自动化封面与笔记生成) -->
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 transition-all duration-300">
                         <div class="flex justify-between items-center cursor-pointer select-none" @click="toggle('reading')">
                             <h4 class="text-sm font-semibold text-gray-800 flex items-center">
-                                <i class="ph-fill ph-book-open-text mr-2 text-indigo-500"></i> 精神岛屿 (纯享版 AI 读书笔记)
+                                <i class="ph-fill ph-book-open-text mr-2 text-indigo-500"></i> 精神岛屿 (全自动读书笔记)
                                 <i class="ph ml-2 text-gray-400 transition-transform" :class="activeSections.reading ? 'ph-caret-up' : 'ph-caret-down'"></i>
                             </h4>
                         </div>
@@ -125,7 +125,7 @@
                         <div v-show="activeSections.reading" class="mt-4 space-y-4">
                             <p class="text-[10px] text-gray-500 leading-relaxed bg-indigo-50/50 p-2.5 rounded-lg border border-indigo-100 flex items-start">
                                 <i class="ph-fill ph-lightbulb text-indigo-400 mr-1.5 mt-0.5 text-base"></i>
-                                <span><b>使用姿势：</b>在微信读书 APP 中点击「导出 -> 复制到剪贴板」，然后将划线笔记粘贴在下方。DeepSeek 将自动解析书名、作者，并为您生成深度读书笔记！永不掉线，永不封号。</span>
+                                <span><b>使用姿势：</b>在微信读书 APP 中点击「导出 -> 复制到剪贴板」，然后将划线笔记粘贴在下方。<br>DeepSeek 将帮您生成深度笔记，并且<b>系统会自动联网抓取本书的高清封面</b>！</span>
                             </p>
                             
                             <div class="space-y-3">
@@ -145,25 +145,32 @@
                                 <button @click="generateMagicNote" :disabled="isGeneratingNote || !rawWeReadNote || !familyData.llmApiKey" class="w-full bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-medium py-2.5 rounded-lg hover:from-indigo-600 hover:to-purple-600 shadow-md transition disabled:from-gray-300 disabled:to-gray-400 flex justify-center items-center text-sm disabled:cursor-not-allowed">
                                     <i v-if="isGeneratingNote" class="ph ph-spinner animate-spin mr-2"></i>
                                     <i v-else class="ph-fill ph-magic-wand mr-2"></i>
-                                    {{ isGeneratingNote ? 'DeepSeek 正在深度研读并撰写笔记...' : 'AI 一键生成精神岛屿卡片' }}
+                                    {{ isGeneratingNote ? 'DeepSeek 研读中并自动抓取封面...' : 'AI 一键生成精神岛屿卡片' }}
                                 </button>
                             </div>
 
                             <!-- 已生成的书架管理 -->
                             <div class="mt-6 pt-4 border-t border-gray-100">
                                 <h5 class="text-xs font-semibold text-gray-700 mb-3">当前岛屿藏书</h5>
-                                <div class="space-y-2 max-h-[250px] overflow-y-auto modal-scroll pr-2">
-                                    <div v-for="(book, idx) in familyData.books" :key="idx" class="flex justify-between items-center bg-gray-50 p-2.5 rounded-lg border border-gray-200 relative group">
-                                        <div class="flex items-center gap-3 overflow-hidden">
-                                            <div class="w-8 h-10 bg-indigo-100 rounded flex items-center justify-center shrink-0 border border-indigo-200/50">
-                                                <i class="ph-duotone ph-book-open text-indigo-400 text-lg"></i>
+                                <div class="space-y-3 max-h-[350px] overflow-y-auto modal-scroll pr-2">
+                                    <div v-for="(book, idx) in familyData.books" :key="idx" class="flex flex-col bg-gray-50 p-3 rounded-lg border border-gray-200 relative group transition hover:shadow-sm">
+                                        <div class="flex justify-between items-start mb-2">
+                                            <div class="flex items-center gap-3 overflow-hidden">
+                                                <div class="w-10 h-14 bg-indigo-100 rounded flex items-center justify-center shrink-0 border border-indigo-200/50 overflow-hidden shadow-inner">
+                                                    <img :src="book.cover" class="w-full h-full object-cover" onerror="this.src='https://images.unsplash.com/photo-1544947950-fa07a98d237f?q=80&w=300'">
+                                                </div>
+                                                <div class="flex flex-col min-w-0 flex-1">
+                                                    <span class="text-xs font-medium text-gray-800 line-clamp-2 leading-tight break-words">{{ book.title }}</span>
+                                                    <span class="text-[10px] text-gray-500 line-clamp-2 leading-tight break-words mt-0.5">{{ book.author }}</span>
+                                                </div>
                                             </div>
-                                            <div class="flex flex-col min-w-0">
-                                                <span class="text-xs font-medium text-gray-800 truncate">{{ book.title }}</span>
-                                                <span class="text-[10px] text-gray-500 truncate">{{ book.author }}</span>
-                                            </div>
+                                            <button @click="familyData.books.splice(idx,1)" class="text-gray-400 hover:text-red-500 p-1 shrink-0 ml-2"><i class="ph ph-trash text-lg"></i></button>
                                         </div>
-                                        <button @click="familyData.books.splice(idx,1)" class="text-gray-400 hover:text-red-500 p-1 shrink-0"><i class="ph ph-trash"></i></button>
+                                        <!-- 允许随时修改已有书籍的封面 -->
+                                        <div class="mt-1 flex items-center text-[10px]">
+                                            <span class="text-gray-400 w-12 shrink-0">修改封面:</span>
+                                            <input v-model="book.cover" type="text" placeholder="图片链接" class="flex-1 border border-gray-200 rounded px-2 py-1 bg-white text-gray-500 outline-none focus:border-indigo-300">
+                                        </div>
                                     </div>
                                     <div v-if="!familyData.books || familyData.books.length === 0" class="text-center py-4 text-[10px] text-gray-400">
                                         还没有藏书，快去粘贴第一本吧！
@@ -396,6 +403,26 @@ const rawWeReadNote = ref('')
 const isGeneratingNote = ref(false)
 const clearRawNote = () => { rawWeReadNote.value = ''; }
 
+// 💡 核心新增：利用 Google Books API 自动检索全球图书封面
+const searchBookCover = async (title, author) => {
+    try {
+        const query = encodeURIComponent(`${title} ${author}`);
+        const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=1`);
+        const data = await res.json();
+        if (data.items && data.items.length > 0) {
+            const volumeInfo = data.items[0].volumeInfo;
+            if (volumeInfo.imageLinks && volumeInfo.imageLinks.thumbnail) {
+                // 💡 必须将 http 强制替换为 https，否则 Vercel 上会报混合内容拦截
+                return volumeInfo.imageLinks.thumbnail.replace('http:', 'https:');
+            }
+        }
+    } catch (e) {
+        console.warn("自动获取封面失败", e);
+    }
+    // 💡 兜底：如果没找到，返回一张极其优雅的书籍意象图
+    return "https://images.unsplash.com/photo-1544947950-fa07a98d237f?q=80&w=300";
+}
+
 const generateMagicNote = async () => {
     const rawText = rawWeReadNote.value.trim()
     const apiKey = familyData.value.llmApiKey?.trim()
@@ -404,15 +431,51 @@ const generateMagicNote = async () => {
     
     isGeneratingNote.value = true;
     
-    // 我们要求 DeepSeek 直接返回标准的 JSON 结构，让前端能够一步解析入库！
     const prompt = `
-你是一个深度阅读与知识管理专家。下面是一段我从微信读书里导出的原始笔记文本，里面包含书名、作者以及大量我划线的句子。
+你是一个深度阅读与知识管理专家。下面是一段我从微信读书里导出的原始笔记文本，里面包含书籍信息和大量我划线的句子。
 请你帮我完成两件事：
 
 第一，识别出这本的书名和作者。
-第二，根据这些划线的句子生成一份专属的读书笔记（包含：书籍背景与作者介绍、核心观点提炼、个人划线深度解析、金句总结）。
-排版要求：采用美观的 Markdown 格式，合理使用加粗、列表 - 和引用 > 符号。
+第二，根据书籍信息和阅读笔记，生成一份完整、深入、结构清晰的读书笔记。
 
+## 我提供的信息
+- 书籍信息与原始笔记：
+<raw_notes>
+${rawText.substring(0, 6000)}
+</raw_notes>
+- 阅读动机/目的：提炼、整合并融入批判性思考，形成可供日后快速回顾的深度知识库。
+
+## 生成要求
+请严格按照以下板块生成笔记，语言精炼且有深度，避免简单复述目录，要提炼、整合并融入批判性思考。
+
+### 一、全书核心概括
+用1-5句话概括这本书在“说什么”，点明核心命题和最终结论。如果书籍是虚构类，请概括主线情节与核心主题，对作者进行简要介绍。
+
+### 二、全书逻辑骨架
+分析全书的组织结构、论证脉络或叙事结构。作者是如何一步步展开的？各章节之间有怎样的递进或并列关系？画出清晰的知识/情节地图。
+
+### 三、关键洞见与颠覆认知（非虚构）/ 人物弧光与象征隐喻（虚构）
+- **非虚构类**：提炼书中最重要的5-10个观点、模型或数据。对每一个进行简要阐述，并指出它如何挑战或深化了既有认知。
+- **虚构类**：分析主要人物的成长轨迹、关键转折，以及作品中反复出现的意象、象征手法及其背后的深意。
+
+### 四、高光语录
+摘录5-10句最击中你、最能体现本书神髓的原句，并附上你选择它的简短理由（为什么这句话重要）。
+
+### 五、共鸣、质疑与边界
+- **内在共鸣**：书中的哪些内容与你自身的经验、困惑或已有知识产生了强烈共振？
+- **批判性质疑**：你是否发现作者论证的漏洞、视角的局限，或不同意其部分观点？理由是什么？
+- **适用边界**：这本书的结论在什么条件下有效？在什么场景或人群中可能不适用？
+
+### 六、关联与互文
+这本书与你读过的其他书、看过的电影、学过的理论有何联系？它处于什么样的思想网络或文学传统中？请进行跨书/跨领域联结，构建你的知识网络。
+
+### 七、行动启示与改变清单
+这本书让你产生哪些具体的行为意图或思维转变？请列出3-5条可立即实践的“最小行动”或需要长期内化的心智模式。
+
+### 八、一句话推荐
+如果只能用一句话向特定人群推荐这本书，你会怎么说？（请明确推荐给“谁”，以及能解决“什么需求”）
+
+【强制输出格式】
 请严格以纯 JSON 格式输出，不要有任何多余的文字说明，不要用 \`\`\`json 包裹。
 格式要求如下：
 {
@@ -420,11 +483,6 @@ const generateMagicNote = async () => {
   "author": "提取出的作者",
   "markdownNote": "你生成的 Markdown 格式读书笔记正文"
 }
-
-下面是我的原始笔记：
-<raw_notes>
-${rawText.substring(0, 4000)}
-</raw_notes>
     `;
 
     try {
@@ -441,7 +499,7 @@ ${rawText.substring(0, 4000)}
                     {"role": "user", "content": prompt}
                 ],
                 temperature: 0.6,
-                response_format: { type: "json_object" } // 强力约束返回 JSON
+                response_format: { type: "json_object" } 
             })
         });
 
@@ -454,22 +512,23 @@ ${rawText.substring(0, 4000)}
         const contentStr = result.choices[0].message.content;
         const parsedData = JSON.parse(contentStr);
 
-        // 如果解析成功，直接创建一本新书存入本地状态池！
+        // 💡 核心新增：自动查询全球图书库，彻底摆脱手动填链接
+        const finalCoverUrl = await searchBookCover(parsedData.title, parsedData.author);
+
         if (!familyData.value.books) familyData.value.books = [];
         
         familyData.value.books.unshift({
             bookId: Date.now().toString(),
             title: parsedData.title || "未知书名",
             author: parsedData.author || "佚名",
-            cover: "https://images.unsplash.com/photo-1544947950-fa07a98d237f?q=80&w=300", // 默认优雅书籍封面
-            readPercentage: 100, // 既然导出了笔记，默认 100% 已读
+            cover: finalCoverUrl, 
+            readPercentage: 100, 
             aiNote: parsedData.markdownNote
         });
 
-        showNotification('🎉 魔法生效！深度读书笔记已入库！');
-        rawWeReadNote.value = ''; // 清空输入框
+        showNotification('🎉 魔法生效！深度笔记已生成，且系统为您抓取了高清封面！');
+        rawWeReadNote.value = ''; 
 
-        // 自动触发一次保存
         await saveConfig();
 
     } catch (error) {
