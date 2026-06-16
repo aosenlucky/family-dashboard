@@ -1,4 +1,4 @@
-\<template>
+<template>
     <div class="fixed inset-0 z-[300] flex items-center justify-center p-4">
         <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="$emit('close')"></div>
         <div class="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col relative z-10 overflow-hidden">
@@ -18,7 +18,7 @@
                 <!-- ================= TAB 1: 日常记录与相册 ================= -->
                 <div v-if="configTab === 'life'" class="space-y-6">
                     
-                    <!-- 💡 核心模块：原图直传与相册管理 -->
+                    <!-- 光影相册管理 -->
                     <div class="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 transition-all duration-300">
                         <div class="flex justify-between items-center cursor-pointer select-none" @click="toggle('photos')">
                             <h4 class="text-sm font-semibold text-gray-800 flex items-center">
@@ -29,7 +29,7 @@
                         </div>
                         
                         <div v-show="activeSections.photos" class="mt-4 space-y-6">
-                            <!-- 🌟 智能直传控制台 -->
+                            <!-- 直传控制台 -->
                             <div class="bg-blue-50/50 border border-blue-100 rounded-xl p-3 md:p-4">
                                 <h5 class="text-xs font-semibold text-apple-blue mb-3 flex items-center"><i class="ph-bold ph-cloud-arrow-up mr-1"></i> 本地原图直传 (自动入库 OBS)</h5>
                                 
@@ -65,11 +65,10 @@
                                 </div>
                             </div>
 
-                            <!-- 💡 动态照片类型管理面板 (已优化删除按钮 UI) -->
+                            <!-- 照片类型管理面板 -->
                             <div class="bg-gray-50 border border-gray-100 rounded-xl p-3 md:p-4">
                                 <h5 class="text-xs font-semibold text-gray-700 mb-2 flex items-center"><i class="ph-bold ph-tag mr-1 text-purple-500"></i> 照片类型标签库</h5>
                                 <div class="flex flex-wrap gap-2 mb-3">
-                                    <!-- 🌟 升级：醒目的红色删除徽章设计，增大触控区 -->
                                     <span v-for="(type, idx) in familyData.photoTypes" :key="idx" class="text-xs bg-white border border-gray-200 text-gray-700 pl-3 pr-1 py-1 rounded-full shadow-sm flex items-center group transition-all hover:border-red-200">
                                         {{ type }}
                                         <button @click.stop="removePhotoType(idx)" class="ml-2 w-5 h-5 rounded-full bg-red-50 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-sm" title="删除该标签">
@@ -108,6 +107,66 @@
                                             <div class="flex items-center w-full md:flex-1 min-w-0"><span class="text-[10px] text-gray-500 w-8 shrink-0">地点</span><input v-model="photo.tempCity" type="text" class="flex-1 border rounded px-2 py-1 text-xs min-w-0"></div>
                                             <div class="flex items-center w-full md:flex-1 min-w-0"><span class="text-[10px] text-gray-500 w-8 shrink-0">类型</span><input v-model="photo.type" list="photo-types" type="text" class="flex-1 border rounded px-2 py-1 text-xs bg-white min-w-0"></div>
                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 🌟 终极版精神岛屿 (无需 Python 的纯净 AI 直连方案) -->
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 transition-all duration-300">
+                        <div class="flex justify-between items-center cursor-pointer select-none" @click="toggle('reading')">
+                            <h4 class="text-sm font-semibold text-gray-800 flex items-center">
+                                <i class="ph-fill ph-book-open-text mr-2 text-indigo-500"></i> 精神岛屿 (纯享版 AI 读书笔记)
+                                <i class="ph ml-2 text-gray-400 transition-transform" :class="activeSections.reading ? 'ph-caret-up' : 'ph-caret-down'"></i>
+                            </h4>
+                        </div>
+                        
+                        <div v-show="activeSections.reading" class="mt-4 space-y-4">
+                            <p class="text-[10px] text-gray-500 leading-relaxed bg-indigo-50/50 p-2.5 rounded-lg border border-indigo-100 flex items-start">
+                                <i class="ph-fill ph-lightbulb text-indigo-400 mr-1.5 mt-0.5 text-base"></i>
+                                <span><b>使用姿势：</b>在微信读书 APP 中点击「导出 -> 复制到剪贴板」，然后将划线笔记粘贴在下方。DeepSeek 将自动解析书名、作者，并为您生成深度读书笔记！永不掉线，永不封号。</span>
+                            </p>
+                            
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="text-[10px] text-gray-600 font-medium block mb-1">DeepSeek API Key</label>
+                                    <input v-model="familyData.llmApiKey" type="password" placeholder="sk-..." class="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-1 focus:ring-indigo-400 outline-none">
+                                </div>
+                                
+                                <div>
+                                    <label class="text-[10px] text-gray-600 font-medium block mb-1 flex justify-between">
+                                        <span>从微信读书复制的原始笔记文本</span>
+                                        <button @click="clearRawNote" class="text-gray-400 hover:text-red-500">清空</button>
+                                    </label>
+                                    <textarea v-model="rawWeReadNote" rows="6" placeholder="《被讨厌的勇气》&#10;岸见一郎 古贺史健&#10;10个笔记&#10;&#10;◆ 引言&#10;>> 哲人：不，这并非无情..." class="w-full border border-gray-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-400 outline-none resize-y"></textarea>
+                                </div>
+                                
+                                <button @click="generateMagicNote" :disabled="isGeneratingNote || !rawWeReadNote || !familyData.llmApiKey" class="w-full bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-medium py-2.5 rounded-lg hover:from-indigo-600 hover:to-purple-600 shadow-md transition disabled:from-gray-300 disabled:to-gray-400 flex justify-center items-center text-sm disabled:cursor-not-allowed">
+                                    <i v-if="isGeneratingNote" class="ph ph-spinner animate-spin mr-2"></i>
+                                    <i v-else class="ph-fill ph-magic-wand mr-2"></i>
+                                    {{ isGeneratingNote ? 'DeepSeek 正在深度研读并撰写笔记...' : 'AI 一键生成精神岛屿卡片' }}
+                                </button>
+                            </div>
+
+                            <!-- 已生成的书架管理 -->
+                            <div class="mt-6 pt-4 border-t border-gray-100">
+                                <h5 class="text-xs font-semibold text-gray-700 mb-3">当前岛屿藏书</h5>
+                                <div class="space-y-2 max-h-[250px] overflow-y-auto modal-scroll pr-2">
+                                    <div v-for="(book, idx) in familyData.books" :key="idx" class="flex justify-between items-center bg-gray-50 p-2.5 rounded-lg border border-gray-200 relative group">
+                                        <div class="flex items-center gap-3 overflow-hidden">
+                                            <div class="w-8 h-10 bg-indigo-100 rounded flex items-center justify-center shrink-0 border border-indigo-200/50">
+                                                <i class="ph-duotone ph-book-open text-indigo-400 text-lg"></i>
+                                            </div>
+                                            <div class="flex flex-col min-w-0">
+                                                <span class="text-xs font-medium text-gray-800 truncate">{{ book.title }}</span>
+                                                <span class="text-[10px] text-gray-500 truncate">{{ book.author }}</span>
+                                            </div>
+                                        </div>
+                                        <button @click="familyData.books.splice(idx,1)" class="text-gray-400 hover:text-red-500 p-1 shrink-0"><i class="ph ph-trash"></i></button>
+                                    </div>
+                                    <div v-if="!familyData.books || familyData.books.length === 0" class="text-center py-4 text-[10px] text-gray-400">
+                                        还没有藏书，快去粘贴第一本吧！
                                     </div>
                                 </div>
                             </div>
@@ -327,9 +386,99 @@ const activeSections = ref({
     assets: true,
     equity: true,
     loans: true,
-    transfers: true
+    transfers: true,
+    reading: true
 });
 const toggle = (sec) => { activeSections.value[sec] = !activeSections.value[sec]; };
+
+// 🌟 纯前端 AI 魔法生成引擎 🌟
+const rawWeReadNote = ref('')
+const isGeneratingNote = ref(false)
+const clearRawNote = () => { rawWeReadNote.value = ''; }
+
+const generateMagicNote = async () => {
+    const rawText = rawWeReadNote.value.trim()
+    const apiKey = familyData.value.llmApiKey?.trim()
+    
+    if (!rawText || !apiKey) return;
+    
+    isGeneratingNote.value = true;
+    
+    // 我们要求 DeepSeek 直接返回标准的 JSON 结构，让前端能够一步解析入库！
+    const prompt = `
+你是一个深度阅读与知识管理专家。下面是一段我从微信读书里导出的原始笔记文本，里面包含书名、作者以及大量我划线的句子。
+请你帮我完成两件事：
+
+第一，识别出这本的书名和作者。
+第二，根据这些划线的句子生成一份专属的读书笔记（包含：书籍背景与作者介绍、核心观点提炼、个人划线深度解析、金句总结）。
+排版要求：采用美观的 Markdown 格式，合理使用加粗、列表 - 和引用 > 符号。
+
+请严格以纯 JSON 格式输出，不要有任何多余的文字说明，不要用 \`\`\`json 包裹。
+格式要求如下：
+{
+  "title": "提取出的书名",
+  "author": "提取出的作者",
+  "markdownNote": "你生成的 Markdown 格式读书笔记正文"
+}
+
+下面是我的原始笔记：
+<raw_notes>
+${rawText.substring(0, 4000)}
+</raw_notes>
+    `;
+
+    try {
+        const response = await fetch("https://api.deepseek.com/chat/completions", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+                model: "deepseek-chat",
+                messages: [
+                    {"role": "system", "content": "你是一个只返回严格 JSON 格式数据的知识处理助手。"},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature: 0.6,
+                response_format: { type: "json_object" } // 强力约束返回 JSON
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`API 请求失败: ${response.status} ${errorText}`);
+        }
+
+        const result = await response.json();
+        const contentStr = result.choices[0].message.content;
+        const parsedData = JSON.parse(contentStr);
+
+        // 如果解析成功，直接创建一本新书存入本地状态池！
+        if (!familyData.value.books) familyData.value.books = [];
+        
+        familyData.value.books.unshift({
+            bookId: Date.now().toString(),
+            title: parsedData.title || "未知书名",
+            author: parsedData.author || "佚名",
+            cover: "https://images.unsplash.com/photo-1544947950-fa07a98d237f?q=80&w=300", // 默认优雅书籍封面
+            readPercentage: 100, // 既然导出了笔记，默认 100% 已读
+            aiNote: parsedData.markdownNote
+        });
+
+        showNotification('🎉 魔法生效！深度读书笔记已入库！');
+        rawWeReadNote.value = ''; // 清空输入框
+
+        // 自动触发一次保存
+        await saveConfig();
+
+    } catch (error) {
+        console.error("生成笔记出错:", error);
+        alert("生成失败，请检查 API Key 额度或网络连接！\n详细信息: " + error.message);
+    } finally {
+        isGeneratingNote.value = false;
+    }
+}
 
 const fileInput = ref(null)
 const uploadFile = ref(null)

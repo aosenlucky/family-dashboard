@@ -27,7 +27,7 @@
                     </div>
                 </div>
 
-                 <!-- 待办清单 -->
+                <!-- 待办清单 -->
                 <div class="glass-card rounded-3xl p-6">
                     <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800"><i class="ph-fill ph-check-square-offset mr-2 text-blue-500"></i> 家庭待办协作</h3>
                     <div class="flex gap-2 mb-5">
@@ -35,7 +35,6 @@
                         <button @click="addTodo" class="bg-apple-blue hover:bg-blue-600 text-white rounded-xl px-4 py-2 text-sm shadow-md transition"><i class="ph ph-plus font-bold"></i></button>
                     </div>
                     <div class="space-y-2 max-h-[250px] overflow-y-auto modal-scroll pr-2">
-                        <!-- 💡 修复3：取消单行截断，支持无限向下换行显示完整内容 -->
                         <div v-for="todo in sortedTodos" :key="todo.id" class="flex items-start justify-between bg-white/60 p-3 rounded-xl border border-white shadow-sm transition-all hover:bg-white/80" :class="{'opacity-60': todo.completed}">
                             <div class="flex items-start space-x-3 flex-1 min-w-0 pr-2">
                                 <input type="checkbox" :checked="todo.completed" @change="toggleTodo(todo)" class="apple-checkbox shrink-0 mt-0.5">
@@ -46,6 +45,40 @@
                     </div>
                 </div>
                 
+                <!-- 🌟 新增：精神岛屿（书籍展示区） -->
+                <div class="glass-card rounded-3xl p-6 relative overflow-hidden">
+                    <div class="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl transform translate-x-8 -translate-y-8 pointer-events-none"></div>
+                    <h3 class="text-lg font-semibold mb-6 flex items-center text-gray-800 relative z-10"><i class="ph-fill ph-books mr-2 text-indigo-500"></i> 精神岛屿 <span class="ml-2 text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 border border-indigo-100 rounded-full font-normal">大模型提炼</span></h3>
+                    
+                    <div v-if="familyData.books && familyData.books.length > 0" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- 点击书籍卡片触发 openBookNote 方法弹窗 -->
+                        <div v-for="book in familyData.books.slice(0,6)" :key="book.bookId" @click="openBookNote(book)" class="bg-white/60 p-3 rounded-2xl border border-white shadow-sm hover:shadow-md transition cursor-pointer flex gap-3 group relative overflow-hidden">
+                            <!-- 封面 -->
+                            <div class="w-16 h-[88px] bg-gray-200 rounded-lg overflow-hidden shrink-0 shadow-inner">
+                                <img :src="book.cover" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" onerror="this.src='https://via.placeholder.com/150/e2e8f0/94a3b8?text=Book'">
+                            </div>
+                            <div class="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+                                <div>
+                                    <h4 class="font-medium text-gray-800 text-sm truncate">{{ book.title }}</h4>
+                                    <p class="text-[10px] text-gray-500 truncate mt-0.5">{{ book.author }}</p>
+                                </div>
+                                <div class="mt-2">
+                                    <!-- 有AI笔记则展示徽章 -->
+                                    <div v-if="book.aiNote" class="mt-2 text-[9px] text-purple-600 bg-purple-50 border border-purple-100 px-1.5 py-0.5 rounded inline-flex items-center"><i class="ph-fill ph-magic-wand mr-1"></i> 已生成深度笔记</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div v-else class="text-center py-8 text-gray-500 bg-white/30 rounded-2xl border border-dashed border-white">
+                        <i class="ph-duotone ph-book-open text-3xl text-indigo-300 mb-2"></i>
+                        <p class="text-xs">岛屿上还没有藏书</p>
+                        <p class="text-[10px] mt-1 text-gray-400">去配置台中粘贴微信读书笔记来生成吧</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="space-y-6 md:space-y-8">
                 <!-- 心愿单 -->
                 <div class="glass-card rounded-3xl p-6">
                     <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800"><i class="ph-fill ph-star mr-2 text-yellow-500"></i> 梦想小金库</h3>
@@ -59,9 +92,7 @@
                         </div>
                     </div>
                 </div>
-            </div>
-
-            <div class="space-y-6 md:space-y-8">
+                
                 <!-- 宝宝时光轴 -->
                 <div class="glass-card rounded-3xl p-6">
                     <h3 class="text-lg font-semibold mb-6 flex items-center text-gray-800"><i class="ph-fill ph-baby mr-2 text-rose-400"></i> 宝宝成长时光轴</h3>
@@ -91,6 +122,45 @@
                 </div>
             </div>
         </section>
+
+        <!-- 🌟 新增：沉浸式读书笔记阅读器弹窗 -->
+        <transition name="fade">
+            <div v-if="activeBook" class="fixed inset-0 z-[400] flex items-center justify-center p-4 sm:p-6">
+                <!-- 点击背景遮罩关闭弹窗 -->
+                <div class="absolute inset-0 bg-gray-900/40 backdrop-blur-sm" @click="activeBook = null"></div>
+                
+                <div class="bg-[#F8F5F0] w-full max-w-3xl max-h-[90vh] rounded-3xl shadow-2xl relative z-10 flex flex-col overflow-hidden border border-white/60">
+                    <!-- 顶栏 -->
+                    <div class="flex justify-between items-center px-6 py-4 bg-white/40 border-b border-gray-200/50 backdrop-blur-md shrink-0">
+                        <div class="flex items-center space-x-3">
+                            <i class="ph-duotone ph-book-open-text text-xl text-indigo-500"></i>
+                            <span class="text-sm font-semibold text-gray-800">深度读书笔记</span>
+                        </div>
+                        <button @click="activeBook = null" class="w-8 h-8 rounded-full bg-gray-200/50 flex justify-center items-center text-gray-500 hover:bg-gray-200 transition"><i class="ph ph-x"></i></button>
+                    </div>
+                    
+                    <div class="flex-1 overflow-y-auto modal-scroll px-6 py-8 relative">
+                        <div class="flex flex-col md:flex-row gap-6 mb-8 border-b border-gray-200/60 pb-8">
+                            <div class="w-24 h-32 bg-gray-200 rounded-lg shadow-md overflow-hidden shrink-0"><img :src="activeBook.cover" class="w-full h-full object-cover"></div>
+                            <div>
+                                <h2 class="text-2xl font-bold text-gray-900 mb-1 tracking-tight">{{ activeBook.title }}</h2>
+                                <p class="text-sm text-gray-500 mb-4">{{ activeBook.author }}</p>
+                            </div>
+                        </div>
+
+                        <!-- 💡 核心：调用 renderMarkdown 方法渲染 DeepSeek 生成的文本 -->
+                        <article class="prose prose-sm md:prose-base prose-slate max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-a:text-indigo-600 prose-strong:text-indigo-800">
+                            <div v-if="activeBook.aiNote" v-html="renderMarkdown(activeBook.aiNote)"></div>
+                            <div v-else class="text-center py-10 bg-white/50 rounded-2xl border border-dashed border-gray-300">
+                                <i class="ph-duotone ph-magic-wand text-4xl text-gray-300 mb-2"></i>
+                                <p class="text-sm text-gray-500">笔记生成好像出错了，去配置台重新生成一下吧！</p>
+                            </div>
+                        </article>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
     </div>
 </template>
 
@@ -104,6 +174,7 @@ const triggerPushNotification = inject('triggerPushNotification')
 const formatCurrencyInt = inject('formatCurrencyInt')
 
 const newTodoText = ref('')
+const activeBook = ref(null) // 控制读书笔记弹窗
 
 const sortedTodos = computed(() => [...familyData.value.todos].sort((a, b) => (a.completed === b.completed) ? 0 : a.completed ? 1 : -1))
 const sortedMilestones = computed(() => [...familyData.value.milestones].sort((a, b) => new Date(b.date) - new Date(a.date)))
@@ -155,4 +226,24 @@ const toggleTodo = (todo) => {
     saveConfig();
 }
 const deleteTodo = (id) => { familyData.value.todos = familyData.value.todos.filter(t => t.id !== id); saveConfig(); }
+
+// 打开书籍弹窗
+const openBookNote = (book) => {
+    activeBook.value = book;
+}
+
+// 💡 极其轻量的 Markdown 渲染器，只解析常见的加粗、换行、引用和列表，避免引入庞大的第三方库
+const renderMarkdown = (text) => {
+    if(!text) return '';
+    let html = text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'); // 加粗
+    html = html.replace(/### (.*?)\n/g, '<h3 class="text-lg font-bold text-gray-800 mt-6 mb-3 border-b border-gray-200 pb-1">$1</h3>'); // H3 标题
+    html = html.replace(/## (.*?)\n/g, '<h2 class="text-xl font-bold text-gray-800 mt-6 mb-3 border-b border-gray-200 pb-1">$1</h2>'); // H2 标题
+    html = html.replace(/# (.*?)\n/g, '<h1 class="text-2xl font-bold text-gray-800 mt-6 mb-3 border-b border-gray-200 pb-1">$1</h1>'); // H1 标题
+    html = html.replace(/> (.*?)\n/g, '<blockquote class="border-l-4 border-indigo-300 pl-4 py-2 my-4 bg-indigo-50/50 text-gray-600 italic rounded-r-lg">$1</blockquote>'); // 引用
+    html = html.replace(/- (.*?)\n/g, '<li class="ml-5 mb-1.5 list-disc marker:text-indigo-400">$1</li>'); // 列表
+    html = html.replace(/\n\n/g, '</p><p class="mb-4 leading-loose text-gray-700">'); // 段落间距加宽
+    html = html.replace(/\n/g, '<br/>'); // 普通换行
+    return `<p class="mb-4 leading-loose text-gray-700">${html}</p>`;
+}
 </script>

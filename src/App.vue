@@ -94,7 +94,9 @@ const defaultData = {
     dates: [ { name: '小悦生日', date: '1996-09-01', type: 'birthday' } ],
     todos: [ { id: 1, text: '周末一起去买菜', completed: false } ],
     milestones: [ { id: 1, date: '2026-06-01', title: '期待新生命的到来', desc: '建立档案的第一天。', icon: 'ph-baby' } ],
-    habits: [ { id: 1, name: '每天阅读 30 分钟', growthValue: 5, lastWatered: '', stage1Days: 7, stage1Reward: '电影之夜', stage2Days: 21, stage2Reward: '新玩具', stage3Days: 100, stage3Reward: '迪士尼' } ]
+    habits: [ { id: 1, name: '每天阅读 30 分钟', growthValue: 5, lastWatered: '', stage1Days: 7, stage1Reward: '电影之夜', stage2Days: 21, stage2Reward: '新玩具', stage3Days: 100, stage3Reward: '迪士尼' } ],
+    // 💡 新增：大模型秘钥与书籍数据库
+    llmApiKey: '', books: []
 }
 
 const auth = ref({ isLoggedIn: false, inputPin: '', errorMsg: '', isAuthenticating: false })
@@ -166,7 +168,6 @@ const applyData = (data) => {
     fd.transfers = data.transfers && data.transfers.length > 0 ? data.transfers : defaultData.transfers;
     fd.goals = data.goals && data.goals.length > 0 ? data.goals : defaultData.goals; 
     fd.dates = data.dates && data.dates.length > 0 ? data.dates : defaultData.dates;
-    // 💡 支持动态照片类型标签库的加载
     fd.photoTypes = data.photoTypes && data.photoTypes.length > 0 ? data.photoTypes : defaultData.photoTypes;
     fd.photos = data.photos && data.photos.length > 0 ? data.photos : defaultData.photos;
     fd.stocks = data.stocks && data.stocks.length > 0 ? data.stocks : defaultData.stocks;
@@ -175,6 +176,9 @@ const applyData = (data) => {
     fd.habits = data.habits && data.habits.length > 0 ? data.habits : defaultData.habits;
     fd.assets = data.assets && data.assets.length > 0 ? data.assets.map(a => ({...a, owner: a.owner || '共同'})) : defaultData.assets; 
     fd.equity = data.equity && data.equity.members && data.equity.members.length > 0 ? data.equity : defaultData.equity; 
+    // 💡 注入新增的大模型秘钥与书籍数据
+    fd.llmApiKey = data.llmApiKey || '';
+    fd.books = data.books || [];
 }
 
 const loadConfig = async () => {
@@ -195,7 +199,7 @@ const loadConfig = async () => {
     }
 }
 
-// 💡 彻底抛弃新浪，全面接入【腾讯财经 API】
+// 腾讯财经 API
 const fetchStocks = async () => {
     isFetchingStocks.value = true;
     for (let stock of familyData.value.stocks) {
@@ -203,55 +207,35 @@ const fetchStocks = async () => {
             let symbol = stock.symbol.toLowerCase().trim();
             let query = '';
 
-            // 1. 腾讯接口组装逻辑
             if (stock.market === 'CN') {
-                // A股 6位数字自动补全 sh 或 sz
-                if (/^\d{6}$/.test(symbol)) {
-                    symbol = symbol.startsWith('6') ? `sh${symbol}` : `sz${symbol}`;
-                }
+                if (/^\d{6}$/.test(symbol)) { symbol = symbol.startsWith('6') ? `sh${symbol}` : `sz${symbol}`; }
                 query = symbol;
             } else if (stock.market === 'US') {
-                // 腾讯美股格式：us + 大写代码 (例如 usBABA, usAAPL)
                 query = `us${symbol.toUpperCase()}`;
             }
 
             await new Promise((resolve) => {
                 const script = document.createElement('script'); 
-                // 💡 加入随机时间戳彻底粉碎浏览器缓存
                 script.src = `https://qt.gtimg.cn/q=${query}&_t=${Date.now()}`; 
-                
                 window[`v_${query}`] = "";
                 
                 script.onload = () => {
                     const res = window[`v_${query}`];
                     if (res && res.length > 10) { 
                         const parts = res.split('~'); 
-                        
-                        // 不管 A股 还是 美股，当前价格永远都在第 4 位（索引为 3）
                         if (parts.length > 3) {
                             const price = parseFloat(parts[3]);
-                            if (!isNaN(price) && price > 0) {
-                                stock.currentPrice = price; 
-                            }
+                            if (!isNaN(price) && price > 0) { stock.currentPrice = price; }
                         }
                     }
                     document.body.removeChild(script); 
                     resolve();
                 };
-                
-                script.onerror = () => { 
-                    console.error(`腾讯接口拒绝或网络失败: ${query}`);
-                    document.body.removeChild(script); 
-                    resolve(); 
-                };
+                script.onerror = () => { document.body.removeChild(script); resolve(); };
                 document.body.appendChild(script);
             });
-        } catch(e) {
-            console.error(`抓取 ${stock.name} 失败:`, e);
-        }
+        } catch(e) { console.error(`抓取 ${stock.name} 失败:`, e); }
     }
-    
-    // 给动画一点缓冲时间
     setTimeout(() => { isFetchingStocks.value = false; }, 800);
 }
 
