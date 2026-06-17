@@ -89,48 +89,163 @@ const searchOpenLibraryCover = async ({ title, author, isbn }) => {
     return match?.cover_i ? `https://covers.openlibrary.org/b/id/${match.cover_i}-L.jpg` : ''
 }
 
-export const createGeneratedBookCover = (title = '未知书名', author = '佚名') => {
-    const safeTitle = title.toString().trim() || '未知书名'
-    const safeAuthor = author.toString().trim() || '佚名'
-    const shortTitle = safeTitle.length > 16 ? `${safeTitle.slice(0, 16)}...` : safeTitle
-    const shortAuthor = safeAuthor.length > 18 ? `${safeAuthor.slice(0, 18)}...` : safeAuthor
-    const initials = safeTitle.replace(/[《》\s]/g, '').slice(0, 2) || '书'
+const coverStylePresets = {
+    business: {
+        background: ['#06162f', '#eff6ff', '#ffffff'],
+        accent: '#2563eb',
+        secondary: '#93c5fd',
+        symbol: 'business'
+    },
+    literary: {
+        background: ['#172033', '#d8b99a', '#f8efe4'],
+        accent: '#9a5f47',
+        secondary: '#f0c9a9',
+        symbol: 'literary'
+    },
+    mystery: {
+        background: ['#020617', '#1e293b', '#f1f5f9'],
+        accent: '#111827',
+        secondary: '#64748b',
+        symbol: 'mystery'
+    },
+    scifi: {
+        background: ['#031926', '#0f766e', '#e0f2fe'],
+        accent: '#22d3ee',
+        secondary: '#67e8f9',
+        symbol: 'scifi'
+    },
+    memoir: {
+        background: ['#2f1f18', '#d99b53', '#fff7ed'],
+        accent: '#f59e0b',
+        secondary: '#fde68a',
+        symbol: 'memoir'
+    },
+    general: {
+        background: ['#081225', '#334155', '#fff8e7'],
+        accent: '#c4a36a',
+        secondary: '#dbeafe',
+        symbol: 'general'
+    }
+}
+
+const inferCoverStyle = (title = '', author = '', explicitStyle = '') => {
+    const explicit = normalizeText(explicitStyle)
+    if (coverStylePresets[explicit]) return explicit
+
+    const text = normalizeText(`${title} ${author}`)
+    if (/商业|管理|增长|创业|财富|投资|原则|效率|习惯|思维|认知|领导|战略|自控|自我|成长|business|startup|growth|money|invest|atomic/.test(text)) return 'business'
+    if (/悬疑|推理|谋杀|侦探|真相|嫌疑|白夜|暗黑|mystery|detective|crime|murder|thriller/.test(text)) return 'mystery'
+    if (/科幻|宇宙|星球|银河|三体|基地|机器人|未来|时间|太空|scifi|sci-fi|space|future|robot/.test(text)) return 'scifi'
+    if (/回忆录|自传|传记|人生|岁月|memoir|biography|autobiography/.test(text)) return 'memoir'
+    if (/小说|文学|诗|散文|故事|文学史|novel|fiction|literature|poem/.test(text)) return 'literary'
+
+    return 'general'
+}
+
+const renderCoverSymbol = (preset) => {
+    const { accent, secondary, symbol } = preset
+    if (symbol === 'business') {
+        return `
+  <g transform="translate(240 370)" opacity=".92">
+    <path d="M-92 58 C-38 12, 10 -4, 78 -72" fill="none" stroke="${accent}" stroke-width="22" stroke-linecap="round"/>
+    <path d="M42 -78 L92 -90 L80 -39" fill="none" stroke="${accent}" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="-98" cy="64" r="14" fill="${secondary}" opacity=".72"/>
+  </g>`
+    }
+
+    if (symbol === 'literary') {
+        return `
+  <g transform="translate(240 380)" opacity=".88">
+    <path d="M-116 -8 C-55 -82, 18 -74, 118 -22 C62 -20, 10 6, -42 72 C-78 44, -102 20, -116 -8Z" fill="${accent}" opacity=".68"/>
+    <path d="M-82 36 C-34 4, 28 -6, 82 -52" fill="none" stroke="${secondary}" stroke-width="16" stroke-linecap="round" opacity=".72"/>
+  </g>`
+    }
+
+    if (symbol === 'mystery') {
+        return `
+  <g transform="translate(240 382)">
+    <ellipse cx="0" cy="86" rx="110" ry="18" fill="#020617" opacity=".28"/>
+    <path d="M-34 68 C-30 20, -22 -28, 0 -58 C22 -28, 30 20, 34 68Z" fill="${accent}" opacity=".9"/>
+    <circle cx="0" cy="-82" r="33" fill="#0f172a" opacity=".88"/>
+    <path d="M-74 -44 C-24 -74, 24 -74, 74 -44" fill="none" stroke="${secondary}" stroke-width="10" stroke-linecap="round" opacity=".42"/>
+  </g>`
+    }
+
+    if (symbol === 'scifi') {
+        return `
+  <g transform="translate(240 368)" opacity=".9">
+    <circle cx="0" cy="0" r="76" fill="${accent}" opacity=".34"/>
+    <circle cx="0" cy="0" r="50" fill="#e0f2fe" opacity=".76"/>
+    <ellipse cx="0" cy="0" rx="122" ry="24" fill="none" stroke="${secondary}" stroke-width="12" opacity=".68" transform="rotate(-12)"/>
+    <circle cx="104" cy="-88" r="5" fill="#ecfeff" opacity=".85"/>
+    <circle cx="-132" cy="-58" r="3" fill="#ecfeff" opacity=".75"/>
+  </g>`
+    }
+
+    if (symbol === 'memoir') {
+        return `
+  <g transform="translate(240 386)" opacity=".9">
+    <circle cx="0" cy="-28" r="82" fill="${secondary}" opacity=".62"/>
+    <path d="M-126 52 C-76 12, -34 12, 0 52 C34 12, 76 12, 126 52" fill="none" stroke="${accent}" stroke-width="14" stroke-linecap="round" opacity=".68"/>
+    <circle cx="-92" cy="-102" r="10" fill="#fff7ed" opacity=".6"/>
+    <circle cx="112" cy="-78" r="7" fill="#fff7ed" opacity=".52"/>
+  </g>`
+    }
+
+    return `
+  <g transform="translate(240 374)" opacity=".9">
+    <circle cx="0" cy="0" r="92" fill="${accent}" opacity=".18"/>
+    <path d="M0 -104 L92 0 L0 104 L-92 0Z" fill="${accent}" opacity=".64"/>
+    <circle cx="0" cy="0" r="38" fill="${secondary}" opacity=".72"/>
+  </g>`
+}
+
+export const createGeneratedBookCover = (title = '未知书名', author = '佚名', coverStyle = '') => {
+    const styleKey = inferCoverStyle(title, author, coverStyle)
+    const preset = coverStylePresets[styleKey]
+    const [top, middle, bottom] = preset.background
 
     const svg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="480" height="720" viewBox="0 0 480 720">
   <defs>
-    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
-      <stop offset="0%" stop-color="#f8fafc"/>
-      <stop offset="46%" stop-color="#dbeafe"/>
-      <stop offset="100%" stop-color="#f5d0fe"/>
+    <linearGradient id="bg" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="${top}"/>
+      <stop offset="58%" stop-color="${middle}"/>
+      <stop offset="100%" stop-color="${bottom}"/>
     </linearGradient>
-    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="18"/>
+    <radialGradient id="paperGlow" cx="50%" cy="72%" r="62%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity=".42"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="3" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer>
+        <feFuncA type="table" tableValues="0 .055"/>
+      </feComponentTransfer>
     </filter>
   </defs>
-  <rect width="480" height="720" rx="42" fill="url(#bg)"/>
-  <circle cx="360" cy="128" r="92" fill="#ffffff" opacity=".68" filter="url(#soft)"/>
-  <circle cx="114" cy="548" r="118" fill="#ffffff" opacity=".46" filter="url(#soft)"/>
-  <rect x="54" y="58" width="372" height="604" rx="32" fill="#ffffff" opacity=".42" stroke="#ffffff" stroke-width="2"/>
-  <path d="M176 196c0-34 24-58 64-58s64 24 64 58v208c0 14-12 22-24 14l-40-25-40 25c-12 8-24 0-24-14V196z" fill="#111827" opacity=".82"/>
-  <text x="240" y="495" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="42" font-weight="700" fill="#111827">${escapeSvg(initials)}</text>
-  <text x="240" y="554" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="28" font-weight="700" fill="#111827">${escapeSvg(shortTitle)}</text>
-  <text x="240" y="596" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="18" font-weight="500" fill="#64748b">${escapeSvg(shortAuthor)}</text>
+  <rect width="480" height="720" fill="url(#bg)"/>
+  <rect width="480" height="720" fill="url(#paperGlow)"/>
+  <rect width="480" height="720" fill="#ffffff" opacity=".035"/>
+  <rect width="480" height="720" filter="url(#grain)" opacity=".34"/>
+  <path d="M64 184 C142 160, 308 160, 416 198" fill="none" stroke="#ffffff" stroke-width="1.4" opacity=".16"/>
+  ${renderCoverSymbol(preset)}
 </svg>`
 
     return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
 }
 
-export const getBookCoverSrc = (book = {}) => book.cover || createGeneratedBookCover(book.title, book.author)
+export const getBookCoverSrc = (book = {}) => book.cover || createGeneratedBookCover(book.title, book.author, book.coverStyle)
 
 export const useGeneratedBookCover = (event, book = {}) => {
-    const fallback = createGeneratedBookCover(book.title, book.author)
+    const fallback = createGeneratedBookCover(book.title, book.author, book.coverStyle)
     if (event.currentTarget.src !== fallback) {
         event.currentTarget.src = fallback
     }
 }
 
-export const searchBookCover = async (title, author, isbn) => {
+export const searchBookCover = async (title, author, isbn, coverStyle) => {
     const book = {
         title: title?.trim() || '未知书名',
         author: author?.trim() || '佚名',
@@ -151,14 +266,5 @@ export const searchBookCover = async (title, author, isbn) => {
         console.warn('Open Library cover lookup failed', e)
     }
 
-    return createGeneratedBookCover(book.title, book.author)
-}
-
-function escapeSvg(value = '') {
-    return value
-        .toString()
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
+    return createGeneratedBookCover(book.title, book.author, coverStyle)
 }

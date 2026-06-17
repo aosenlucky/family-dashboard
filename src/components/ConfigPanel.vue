@@ -417,8 +417,9 @@ const generateMagicNote = async () => {
 
 你的任务：
 1. 从原文中识别书名、作者；如果出现 ISBN，也请提取。
-2. 基于原始笔记生成一份“可复读、可迁移、可行动”的深度读书笔记。
-3. 不要泛泛总结，不要编造原文中不存在的具体情节、数据或引文；如果需要推断，请写成“可推断/可能意味着”。
+2. 判断适合的备用封面风格，只能从 general、business、literary、mystery、scifi、memoir 中选择一个。
+3. 基于原始笔记生成一份“可复读、可迁移、可行动”的深度读书笔记。
+4. 不要泛泛总结，不要编造原文中不存在的具体情节、数据或引文；如果需要推断，请写成“可推断/可能意味着”。
 
 ## 原始笔记
 <raw_notes>
@@ -446,6 +447,7 @@ ${rawText.substring(0, 12000)}
   "title": "提取出的书名",
   "author": "提取出的作者",
   "isbn": "如果原始笔记出现 ISBN 则填写，否则为空字符串",
+  "coverStyle": "general | business | literary | mystery | scifi | memoir",
   "markdownNote": "你生成的 Markdown 格式读书笔记正文"
 }
     `;
@@ -481,7 +483,7 @@ ${rawText.substring(0, 12000)}
 
         const finalTitle = parsedData.title || "未知书名";
         const finalAuthor = parsedData.author || "佚名";
-        const finalCoverUrl = await searchBookCover(finalTitle, finalAuthor, parsedData.isbn);
+        const finalCoverUrl = await searchBookCover(finalTitle, finalAuthor, parsedData.isbn, parsedData.coverStyle);
 
         if (!familyData.value.books) familyData.value.books = [];
         
@@ -490,6 +492,7 @@ ${rawText.substring(0, 12000)}
             title: finalTitle,
             author: finalAuthor,
             isbn: parsedData.isbn || '',
+            coverStyle: parsedData.coverStyle || 'general',
             cover: finalCoverUrl, 
             readPercentage: 100, 
             aiNote: parsedData.markdownNote
