@@ -94,7 +94,7 @@
                                     </button>
                                     
                                     <div class="w-16 h-16 md:w-20 md:h-20 shrink-0 rounded-lg overflow-hidden bg-gray-200 border border-gray-300 shadow-inner flex items-center justify-center relative mt-1">
-                                        <img v-if="photo.url" :src="getThumbUrl(photo.url)" class="w-full h-full object-cover relative z-10" onerror="this.src='https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=200&q=80'" />
+                                        <img v-if="photo.url" :src="getThumbUrl(photo.url)" :data-orig="photo.url" class="w-full h-full object-cover relative z-10" @error="useOriginalPhoto" />
                                         <i v-else class="ph-duotone ph-image text-gray-400 text-2xl"></i>
                                     </div>
                                     
@@ -157,7 +157,7 @@
                                         <div class="flex justify-between items-start mb-2">
                                             <div class="flex items-center gap-3 overflow-hidden">
                                                 <div class="w-10 h-14 bg-indigo-100 rounded flex items-center justify-center shrink-0 border border-indigo-200/50 overflow-hidden shadow-inner">
-                                                    <img :src="book.cover" class="w-full h-full object-cover" onerror="this.src='https://images.unsplash.com/photo-1544947950-fa07a98d237f?q=80&w=300'" />
+                                                    <img :src="getBookCoverSrc(book)" class="w-full h-full object-cover" @error="useGeneratedBookCover($event, book)" />
                                                 </div>
                                                 <div class="flex flex-col min-w-0 flex-1">
                                                     <span class="text-xs font-medium text-gray-800 line-clamp-2 leading-tight break-words">{{ book.title }}</span>
@@ -377,6 +377,7 @@
 
 <script setup>
 import { ref, inject } from 'vue'
+import { getBookCoverSrc, searchBookCover, useGeneratedBookCover } from '../utils/bookCovers'
 
 const emit = defineEmits(['close'])
 const familyData = inject('familyData')
@@ -403,24 +404,6 @@ const rawWeReadNote = ref('')
 const isGeneratingNote = ref(false)
 const clearRawNote = () => { rawWeReadNote.value = ''; }
 
-// 💡 核心新增：利用 Google Books API 自动检索全球图书封面
-const searchBookCover = async (title, author) => {
-    try {
-        const query = encodeURIComponent(`${title} ${author}`);
-        const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=1`);
-        const data = await res.json();
-        if (data.items && data.items.length > 0) {
-            const volumeInfo = data.items[0].volumeInfo;
-            if (volumeInfo.imageLinks && volumeInfo.imageLinks.thumbnail) {
-                return volumeInfo.imageLinks.thumbnail.replace('http:', 'https:');
-            }
-        }
-    } catch (e) {
-        console.warn("自动获取封面失败", e);
-    }
-    return "https://images.unsplash.com/photo-1544947950-fa07a98d237f?q=80&w=300";
-}
-
 const generateMagicNote = async () => {
     const rawText = rawWeReadNote.value.trim()
     const apiKey = familyData.value.llmApiKey?.trim()
@@ -430,48 +413,31 @@ const generateMagicNote = async () => {
     isGeneratingNote.value = true;
     
     const prompt = `
-你是一个深度阅读与知识管理专家。下面是一段我从微信读书里导出的原始笔记文本，里面包含书籍信息和大量我划线的句子。
-请你帮我完成两件事：
+你是一位严谨的读书编辑、知识管理顾问和批判性思维教练。下面是我从微信读书导出的原始笔记，包含书籍信息、划线、想法或章节标题。
 
-第一，识别出这本的书名和作者。
-第二，根据书籍信息和阅读笔记，生成一份完整、深入、结构清晰的读书笔记。
+你的任务：
+1. 从原文中识别书名、作者；如果出现 ISBN，也请提取。
+2. 基于原始笔记生成一份“可复读、可迁移、可行动”的深度读书笔记。
+3. 不要泛泛总结，不要编造原文中不存在的具体情节、数据或引文；如果需要推断，请写成“可推断/可能意味着”。
 
-## 我提供的信息
-- 书籍信息与原始笔记：
+## 原始笔记
 <raw_notes>
-${rawText.substring(0, 6000)}
+${rawText.substring(0, 12000)}
 </raw_notes>
-- 阅读动机/目的：提炼、整合并融入批判性思考，形成可供日后快速回顾的深度知识库。
 
 ## 生成要求
-请严格按照以下板块生成笔记，语言精炼且有深度，避免简单复述目录，要提炼、整合并融入批判性思考。
-
-### 一、全书核心概括
-用1-5句话概括这本书在“说什么”，点明核心命题和最终结论。如果书籍是虚构类，请概括主线情节与核心主题，对作者进行简要介绍。
-
-### 二、全书逻辑骨架
-分析全书的组织结构、论证脉络或叙事结构。作者是如何一步步展开的？各章节之间有怎样的递进或并列关系？画出清晰的知识/情节地图。
-
-### 三、关键洞见与颠覆认知（非虚构）/ 人物弧光与象征隐喻（虚构）
-- **非虚构类**：提炼书中最重要的5-10个观点、模型或数据。对每一个进行简要阐述，并指出它如何挑战或深化了既有认知。
-- **虚构类**：分析主要人物的成长轨迹、关键转折，以及作品中反复出现的意象、象征手法及其背后的深意。
-
-### 四、高光语录
-摘录5-10句最击中你、最能体现本书神髓的原句，并附上你选择它的简短理由（为什么这句话重要）。
-
-### 五、共鸣、质疑与边界
-- **内在共鸣**：书中的哪些内容与你自身的经验、困惑或已有知识产生了强烈共振？
-- **批判性质疑**：你是否发现作者论证的漏洞、视角的局限，或不同意其部分观点？理由是什么？
-- **适用边界**：这本书的结论在什么条件下有效？在什么场景或人群中可能不适用？
-
-### 六、关联与互文
-这本书与你读过的其他书、看过的电影、学过的理论有何联系？它处于什么样的思想网络或文学传统中？请进行跨书/跨领域联结，构建你的知识网络。
-
-### 七、行动启示与改变清单
-这本书让你产生哪些具体的行为意图或思维转变？请列出3-5条可立即实践的“最小行动”或需要长期内化的心智模式。
-
-### 八、一句话推荐
-如果只能用一句话向特定人群推荐这本书，你会怎么说？（请明确推荐给“谁”，以及能解决“什么需求”）
+- 使用中文。
+- 先判断本书更接近“非虚构/虚构/混合”，再选择合适分析方式。
+- 生成 Markdown 正文，必须包含以下板块：
+  1. "## 一、全书核心命题"：用 3-6 句话说明这本书真正要解决的问题、核心判断和最终落点。
+  2. "## 二、结构地图"：梳理作者论证链条、章节递进或叙事结构，必要时用要点列出“从 A 到 B 到 C”的路径。
+  3. "## 三、关键洞见"：提炼 6-10 条高价值洞见。每条包含“观点/证据或笔记来源/对我的启发或挑战”。
+  4. "## 四、高光原句与解释"：从原始笔记中选 5-8 句原文。每句后解释它为什么重要，避免只摘录不分析。
+  5. "## 五、批判性阅读"：指出作者的盲区、适用边界、可能被误用的地方，以及我应保留的疑问。
+  6. "## 六、和我的生活连接"：把书中观点连接到家庭、工作、财富管理、亲密关系或长期成长，不要空泛励志。
+  7. "## 七、行动清单"：给出 3-5 个一周内可执行的最小行动，每条都要具体到行为。
+  8. "## 八、一句话推荐"：说明推荐给谁、为什么读、读完能改变什么。
+- 如果原始笔记信息不足，请在对应板块明确“不足以判断”，但仍基于已有材料给出有边界的分析。
 
 【强制输出格式】
 请严格以纯 JSON 格式输出，不要有任何多余的文字说明，不要用 \`\`\`json 包裹。
@@ -479,6 +445,7 @@ ${rawText.substring(0, 6000)}
 {
   "title": "提取出的书名",
   "author": "提取出的作者",
+  "isbn": "如果原始笔记出现 ISBN 则填写，否则为空字符串",
   "markdownNote": "你生成的 Markdown 格式读书笔记正文"
 }
     `;
@@ -491,12 +458,14 @@ ${rawText.substring(0, 6000)}
                 "Authorization": `Bearer ${apiKey}`
             },
             body: JSON.stringify({
-                model: "deepseek-chat",
+                model: "deepseek-v4-pro",
                 messages: [
-                    {"role": "system", "content": "你是一个只返回严格 JSON 格式数据的知识处理助手。"},
+                    {"role": "system", "content": "你是一个严谨的读书编辑，只返回可被 JSON.parse 解析的 JSON 对象。"},
                     {"role": "user", "content": prompt}
                 ],
-                temperature: 0.6,
+                temperature: 0.45,
+                reasoning_effort: "high",
+                thinking: { type: "enabled" },
                 response_format: { type: "json_object" } 
             })
         });
@@ -510,14 +479,17 @@ ${rawText.substring(0, 6000)}
         const contentStr = result.choices[0].message.content;
         const parsedData = JSON.parse(contentStr);
 
-        const finalCoverUrl = await searchBookCover(parsedData.title, parsedData.author);
+        const finalTitle = parsedData.title || "未知书名";
+        const finalAuthor = parsedData.author || "佚名";
+        const finalCoverUrl = await searchBookCover(finalTitle, finalAuthor, parsedData.isbn);
 
         if (!familyData.value.books) familyData.value.books = [];
         
         familyData.value.books.unshift({
             bookId: Date.now().toString(),
-            title: parsedData.title || "未知书名",
-            author: parsedData.author || "佚名",
+            title: finalTitle,
+            author: finalAuthor,
+            isbn: parsedData.isbn || '',
             cover: finalCoverUrl, 
             readPercentage: 100, 
             aiNote: parsedData.markdownNote
@@ -624,6 +596,18 @@ const addPhoto = () => { familyData.value.photos.unshift({ url: '', desc: '', te
 const getThumbUrl = (url) => {
     if (!url) return '';
     return url.includes('myhuaweicloud.com') ? url + '?x-image-process=image/resize,w_200/quality,q_60' : url;
+}
+
+const useOriginalPhoto = (event) => {
+    const img = event.currentTarget
+    const originalUrl = img.dataset.orig
+    if (originalUrl && !img.dataset.triedOriginal && img.src !== originalUrl) {
+        img.dataset.triedOriginal = '1'
+        img.src = originalUrl
+        return
+    }
+
+    img.classList.add('opacity-0')
 }
 
 const logout = () => { sessionStorage.removeItem('family_auth_token'); window.location.reload(); }

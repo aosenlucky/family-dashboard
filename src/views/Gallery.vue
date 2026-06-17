@@ -34,7 +34,7 @@
                              :class="activeCategoryName === cat.name ? 'border-apple-blue shadow-md scale-110' : 'border-white/80 group-hover:border-white group-hover:scale-105 group-hover:shadow-md'">
                              
                              <div class="absolute inset-0 bg-gray-200 animate-pulse z-0" v-if="!cat.coverUrl"></div>
-                             <img :src="getThumbUrl(cat.coverUrl)" class="w-full h-full object-cover relative z-10" loading="lazy" onerror="this.src='https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=200&q=80'">
+                             <img :src="getThumbUrl(cat.coverUrl)" :data-cover-index="0" class="w-full h-full object-cover relative z-10" loading="lazy" @error="useNextCategoryCover($event, cat)">
                         </div>
                         
                         <!-- 类别名称 -->
@@ -66,7 +66,7 @@
                         <img :src="getThumbUrl(photo.url)" 
                              :data-orig="photo.url"
                              onload="this.classList.remove('opacity-0');"
-                             onerror="this.src !== this.dataset.orig ? this.src = this.dataset.orig : this.src = 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=800&q=80'"
+                             @error="handlePhotoError($event, photo)"
                              class="w-full h-auto object-cover opacity-0 transition-opacity duration-700 relative z-10 block" loading="lazy">
                         
                         <!-- 悬浮信息蒙层 (优雅的暗色渐变底) -->
@@ -107,17 +107,24 @@
 </template>
 
 <script setup>
-import { ref, inject, computed, watch, onMounted } from 'vue'
+import { ref, inject, computed, watch } from 'vue'
 
 const familyData = inject('familyData')
 const viewMode = ref('type') // 'type' (按类型) 或 'location' (按地点)
 const activeCategoryName = ref('')
 const currentPreview = ref(null)
+const failedPhotoUrls = ref(new Set())
+
+const isTemplatePhotoUrl = (url = '') => /images\.unsplash\.com|source\.unsplash\.com|picsum\.photos/i.test(url)
+
+const galleryPhotos = computed(() => (familyData.value.photos || []).filter(photo => {
+    return photo.url && !isTemplatePhotoUrl(photo.url) && !failedPhotoUrls.value.has(photo.url)
+}))
 
 // 💡 核心：动态生成双轨分类数据
 const dynamicCategories = computed(() => {
     const groups = {};
-    const photos = familyData.value.photos || [];
+    const photos = galleryPhotos.value;
 
     photos.forEach(p => {
         let key = '未分类';
@@ -175,6 +182,47 @@ watch([dynamicCategories, viewMode], () => {
 const getThumbUrl = (url) => {
     if (!url) return '';
     return url.includes('myhuaweicloud.com') ? url + '?x-image-process=image/resize,w_800/quality,q_80' : url;
+}
+
+const markPhotoFailed = (url) => {
+    const next = new Set(failedPhotoUrls.value)
+    next.add(url)
+    failedPhotoUrls.value = next
+}
+
+const handlePhotoError = (event, photo) => {
+    const img = event.currentTarget
+    const originalUrl = img.dataset.orig
+    if (originalUrl && !img.dataset.triedOriginal && img.src !== originalUrl) {
+        img.dataset.triedOriginal = '1'
+        img.src = originalUrl
+        return
+    }
+
+    markPhotoFailed(photo.url)
+}
+
+const useNextCategoryCover = (event, category) => {
+    const img = event.currentTarget
+    const currentIndex = Number(img.dataset.coverIndex || 0)
+    const currentPhoto = category.photos[currentIndex]
+
+    if (currentPhoto?.url && !img.dataset.triedOriginal) {
+        img.dataset.triedOriginal = '1'
+        img.src = currentPhoto.url
+        return
+    }
+
+    const nextIndex = category.photos.findIndex((photo, index) => index > currentIndex && photo.url && !failedPhotoUrls.value.has(photo.url))
+    if (nextIndex >= 0) {
+        img.dataset.coverIndex = String(nextIndex)
+        img.dataset.triedOriginal = ''
+        img.src = getThumbUrl(category.photos[nextIndex].url)
+        return
+    }
+
+    if (currentPhoto?.url) markPhotoFailed(currentPhoto.url)
+    img.classList.add('opacity-0')
 }
 
 const previewPhoto = (photo) => { currentPreview.value = photo; }

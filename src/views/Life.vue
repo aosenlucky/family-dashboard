@@ -79,7 +79,7 @@
                     <div v-if="familyData.books && familyData.books.length > 0" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div v-for="book in familyData.books.slice(0,6)" :key="book.bookId" @click="openBookNote(book)" class="bg-white/60 p-3 rounded-2xl border border-white shadow-sm hover:shadow-md transition cursor-pointer flex gap-3 group relative overflow-hidden">
                             <div class="w-16 h-[88px] bg-gray-200 rounded-lg overflow-hidden shrink-0 shadow-inner">
-                                <img :src="book.cover" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" onerror="this.src='https://images.unsplash.com/photo-1544947950-fa07a98d237f?q=80&w=300'" />
+                                <img :src="getBookCoverSrc(book)" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" @error="useGeneratedBookCover($event, book)" />
                             </div>
                             <div class="flex-1 min-w-0 flex flex-col justify-between py-0.5">
                                 <div>
@@ -193,7 +193,7 @@
                     <div class="flex-1 overflow-y-auto modal-scroll px-6 py-8 relative">
                         <div class="flex flex-col md:flex-row gap-6 mb-8 border-b border-gray-200/60 pb-8">
                             <div class="w-24 h-32 bg-gray-200 rounded-lg shadow-md overflow-hidden shrink-0">
-                                <img :src="activeBook.cover" class="w-full h-full object-cover" />
+                                <img :src="getBookCoverSrc(activeBook)" class="w-full h-full object-cover" @error="useGeneratedBookCover($event, activeBook)" />
                             </div>
                             <div>
                                 <h2 class="text-2xl font-bold text-gray-900 mb-1 tracking-tight">{{ activeBook.title }}</h2>
@@ -218,6 +218,7 @@
 
 <script setup>
 import { inject, computed, ref } from 'vue'
+import { getBookCoverSrc, useGeneratedBookCover } from '../utils/bookCovers'
 
 const familyData = inject('familyData')
 const saveConfig = inject('saveConfig')

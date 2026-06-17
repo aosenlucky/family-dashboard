@@ -89,7 +89,7 @@ const defaultData = {
     transfers: [], assets: [ { id: 1, owner: '共同', type: 'house', name: '房产估值', value: 7000000 } ], stocks: [],
     equity: { pricePerShare: 7.85, dividendRate: 1.06, members: [ {name: 'Aosen&小悦', principal: 1242097.6} ] },
     photoTypes: ['自然风景', '城市建筑', '浪漫旅行', '人物写真', '美食探店', '日常记录', '可爱萌宠'],
-    photos: [ { url: 'https://images.unsplash.com/photo-1506869640319-ce1a56065328?w=500&q=80', desc: '旅行记录', tempCity: '自然风景', type: '自然风景' } ],
+    photos: [],
     goals: [ { name: '欧洲10周年纪念游', target: 100000, current: 0 } ],
     dates: [ { name: '小悦生日', date: '1996-09-01', type: 'birthday' } ],
     todos: [ { id: 1, text: '周末一起去买菜', completed: false } ],
