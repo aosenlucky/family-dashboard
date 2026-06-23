@@ -40,8 +40,9 @@
                 
                 <div class="absolute left-1/2 transform -translate-x-1/2 flex items-center bg-white/40 p-1 rounded-full border border-white/60 shadow-sm z-10">
                     <router-link to="/life" active-class="bg-white shadow-sm text-gray-800" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium text-gray-500 hover:text-gray-800 transition-all">生活</router-link>
-                    <router-link to="/wealth" active-class="bg-white shadow-sm text-gray-800" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium text-gray-500 hover:text-gray-800 transition-all">财富</router-link>
+                    <router-link to="/wealth" active-class="bg-white shadow-sm text-gray-800" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium text-gray-500 hover:text-gray-800 transition-all">理财</router-link>
                     <router-link to="/gallery" active-class="bg-white shadow-sm text-gray-800" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium text-gray-500 hover:text-gray-800 transition-all">画廊</router-link>
+                    <router-link to="/travel" active-class="bg-white shadow-sm text-gray-800" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium text-gray-500 hover:text-gray-800 transition-all">旅行</router-link>
                 </div>
 
                 <div class="flex items-center justify-end space-x-2 sm:space-x-4 text-xs font-medium text-apple-text z-10">
