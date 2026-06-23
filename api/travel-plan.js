@@ -5,6 +5,11 @@ import { createWorker } from 'tesseract.js'
 const MODEL_NAME = 'deepseek-v4-pro'
 const OCR_TIMEOUT_MS = 45000
 const REQUEST_TIMEOUT_MS = 7000
+const DEEPSEEK_TIMEOUT_MS = 55000
+
+export const config = {
+  maxDuration: 60
+}
 
 const mockPlan = {
   meta: {
@@ -89,7 +94,7 @@ export default async function handler(req, res) {
     }
 
     const normalizedInput = await prepareInputMaterials(input)
-    const response = await fetch('https://api.deepseek.com/chat/completions', {
+    const response = await fetchWithTimeout('https://api.deepseek.com/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
@@ -103,7 +108,7 @@ export default async function handler(req, res) {
         thinking: { type: 'enabled' },
         response_format: { type: 'json_object' }
       })
-    })
+    }, DEEPSEEK_TIMEOUT_MS)
 
     if (!response.ok) {
       const detail = await response.text()
@@ -114,10 +119,83 @@ export default async function handler(req, res) {
     const content = payload.choices?.[0]?.message?.content
     if (!content) return res.status(502).json({ error: 'DeepSeek 返回内容为空。' })
 
-    const plan = JSON.parse(content)
+    const plan = normalizePlan(parseJsonContent(content), input)
     return res.status(200).json(await enrichPlanImages(plan, input.destination))
   } catch (error) {
-    return res.status(500).json({ error: '生成行程失败。', detail: error instanceof Error ? error.message : String(error) })
+    const message = error instanceof Error ? error.message : String(error)
+    const isTimeout = /abort|timeout|timed out/i.test(message)
+    return res.status(isTimeout ? 504 : 500).json({
+      error: isTimeout ? 'DeepSeek 生成超时，请稍后重试。' : '生成行程失败。',
+      detail: message
+    })
+  }
+}
+
+function parseJsonContent(content) {
+  const clean = String(content || '').trim().replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim()
+  try {
+    return JSON.parse(clean)
+  } catch {
+    const start = clean.indexOf('{')
+    const end = clean.lastIndexOf('}')
+    if (start >= 0 && end > start) return JSON.parse(clean.slice(start, end + 1))
+    throw new Error('DeepSeek 返回内容不是可解析的 JSON。')
+  }
+}
+
+function normalizePlan(plan, input = {}) {
+  const safePlan = plan && typeof plan === 'object' ? plan : {}
+  const meta = safePlan.meta && typeof safePlan.meta === 'object' ? safePlan.meta : {}
+  const extracted = safePlan.extractedStrategy && typeof safePlan.extractedStrategy === 'object' ? safePlan.extractedStrategy : {}
+  const critique = safePlan.critique && typeof safePlan.critique === 'object' ? safePlan.critique : {}
+  const plans = Array.isArray(safePlan.plans) ? safePlan.plans.filter(Boolean) : []
+  return {
+    ...safePlan,
+    meta: {
+      destination: meta.destination || input.destination || '目的地',
+      dateRange: meta.dateRange || `${input.startDate || ''} 至 ${input.endDate || ''}`.trim(),
+      generatedAt: meta.generatedAt || new Date().toISOString(),
+      assumptions: Array.isArray(meta.assumptions) ? meta.assumptions : [],
+      warnings: Array.isArray(meta.warnings) ? meta.warnings : []
+    },
+    extractedStrategy: {
+      places: Array.isArray(extracted.places) ? extracted.places : [],
+      restaurants: Array.isArray(extracted.restaurants) ? extracted.restaurants : [],
+      notes: Array.isArray(extracted.notes) ? extracted.notes : [],
+      rejectedItems: Array.isArray(extracted.rejectedItems) ? extracted.rejectedItems : [],
+      selectionRationale: Array.isArray(extracted.selectionRationale) ? extracted.selectionRationale : []
+    },
+    grouping: safePlan.grouping && typeof safePlan.grouping === 'object' ? safePlan.grouping : { byArea: {}, byTheme: {} },
+    plans: plans.length ? plans.map((item, index) => normalizeVariantPlan(item, input, index)) : [normalizeVariantPlan({}, input, 0)],
+    critique: {
+      initialIssues: Array.isArray(critique.initialIssues) ? critique.initialIssues : [],
+      revisionsApplied: Array.isArray(critique.revisionsApplied) ? critique.revisionsApplied : []
+    }
+  }
+}
+
+function normalizeVariantPlan(plan, input, index) {
+  const variant = ['classic', 'photoFood', 'familyRelaxed'].includes(plan.variant) ? plan.variant : input.selectedVariants?.[index] || 'classic'
+  const days = Array.isArray(plan.days) ? plan.days : []
+  return {
+    ...plan,
+    variant,
+    title: plan.title || `${input.destination || '目的地'}旅行安排`,
+    positioning: plan.positioning || '按照家人的节奏整理出的旅行安排。',
+    heroImageUrl: plan.heroImageUrl || '',
+    heroImageAlt: plan.heroImageAlt || `${input.destination || '目的地'}旅行照片`,
+    totalFatigueLevel: ['low', 'medium', 'high'].includes(plan.totalFatigueLevel) ? plan.totalFatigueLevel : 'medium',
+    bestFor: plan.bestFor || '',
+    days: days.map((day, dayIndex) => ({
+      day: day.day || dayIndex + 1,
+      date: day.date || input.startDate || '',
+      theme: day.theme || '轻松游览',
+      areaFocus: day.areaFocus || '',
+      summary: day.summary || '',
+      slots: Array.isArray(day.slots) ? day.slots : [],
+      dailyBudgetHint: day.dailyBudgetHint || '',
+      riskCheck: day.riskCheck || ''
+    }))
   }
 }
 

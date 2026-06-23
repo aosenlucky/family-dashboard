@@ -16,6 +16,22 @@
           <i class="ph ph-sliders-horizontal text-2xl text-gray-700"></i>
         </div>
 
+        <div v-if="travelHistory.length" class="history-box">
+          <div class="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <p class="text-[11px] text-apple-blue font-semibold">Saved Trips</p>
+              <h3>之前保存的行程</h3>
+            </div>
+            <button type="button" class="mini-pill" @click="clearHistory">清空</button>
+          </div>
+          <div class="history-list">
+            <button v-for="item in travelHistory" :key="item.id" type="button" @click="openHistoryPlan(item)">
+              <span>{{ item.destination }}</span>
+              <small>{{ item.dateRange }}</small>
+            </button>
+          </div>
+        </div>
+
         <div class="grid grid-cols-1 gap-3">
           <label class="field-label col-span-2">
             <span>目的地</span>
@@ -160,6 +176,9 @@
           </button>
           <button class="secondary-btn" :disabled="isLoading" @click="generate(true)">示例看看</button>
         </div>
+        <div v-if="isLoading" class="loading-note">
+          <i class="ph ph-circle-notch"></i> 正在认真安排行程，通常需要 20-50 秒。页面可以停在这里等一会儿。
+        </div>
         <p v-if="error" class="text-xs text-rose-500 mt-3">{{ error }}</p>
       </section>
 
@@ -193,6 +212,13 @@
           <button class="mobile-download-btn" :disabled="isDownloading" @click="downloadPlanCard">
             <i class="ph ph-download-simple"></i>{{ isDownloading ? '正在生成长图' : '导出这份行程长图' }}
           </button>
+
+          <div class="result-actions glass-card rounded-3xl p-3">
+            <button class="save-history-btn" :disabled="isSavingHistory" @click="saveCurrentPlan">
+              <i class="ph ph-check-circle"></i>{{ isSavingHistory ? '保存中...' : '这版OK，保存到历史' }}
+            </button>
+            <span v-if="saveStatus">{{ saveStatus }}</span>
+          </div>
 
           <div class="glass-card rounded-3xl p-4 flex flex-wrap gap-2">
             <span v-for="item in plan.meta.assumptions" :key="item" class="pill-blue">{{ item }}</span>
@@ -313,7 +339,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { toPng } from 'html-to-image'
 
 const variantOptions = [
@@ -345,6 +371,7 @@ const scenerySlogans = [
 ]
 const maxImages = 6
 const maxImageSize = 4 * 1024 * 1024
+const historyStorageKey = 'family_travel_history_v1'
 
 const form = ref({
   destination: '京都',
@@ -369,10 +396,13 @@ const datePickingStep = ref('start')
 const calendarMonth = ref(firstDayOfMonth(new Date()))
 const isLoading = ref(false)
 const isDownloading = ref(false)
+const isSavingHistory = ref(false)
 const error = ref('')
+const saveStatus = ref('')
 const plan = ref(null)
 const activeVariant = ref('classic')
 const downloadRef = ref(null)
+const travelHistory = ref([])
 
 const tripDates = computed(() => enumerateDates(form.value.startDate, form.value.endDate))
 const hotelStays = computed(() => buildHotelStays(tripDates.value, form.value.hotelArea, dailyHotels.value, useDailyHotels.value))
@@ -401,10 +431,14 @@ const dailySlogan = computed(() => scenerySlogans[dailyIndex.value % scenerySlog
 const calendarTitle = computed(() => `${calendarMonth.value.getFullYear()} 年 ${calendarMonth.value.getMonth() + 1} 月`)
 const calendarDays = computed(() => buildCalendarDays(calendarMonth.value, form.value.startDate, form.value.endDate))
 
+onMounted(() => {
+  travelHistory.value = readTravelHistory()
+})
+
 async function generate(useMock = false) {
   isLoading.value = true
   error.value = ''
-  if (!form.value.feedback) plan.value = null
+  saveStatus.value = ''
   try {
     const response = await fetch('/api/travel-plan', {
       method: 'POST',
@@ -418,7 +452,7 @@ async function generate(useMock = false) {
         useMock
       })
     })
-    const data = await response.json()
+    const data = await parseApiResponse(response)
     if (!response.ok) throw new Error([data.error, data.detail].filter(Boolean).join(' '))
     plan.value = data
     activeVariant.value = data.plans?.[0]?.variant || 'classic'
@@ -426,6 +460,19 @@ async function generate(useMock = false) {
     error.value = err instanceof Error ? err.message : String(err)
   } finally {
     isLoading.value = false
+  }
+}
+
+async function parseApiResponse(response) {
+  const text = await response.text()
+  if (!text) return {}
+  try {
+    return JSON.parse(text)
+  } catch {
+    return {
+      error: response.ok ? '服务端返回格式异常。' : `服务端请求失败：${response.status}`,
+      detail: text.slice(0, 600)
+    }
   }
 }
 
@@ -469,14 +516,80 @@ async function downloadPlanCard() {
   if (!downloadRef.value) return
   isDownloading.value = true
   try {
-    const dataUrl = await toPng(downloadRef.value, { cacheBust: true, pixelRatio: 2, backgroundColor: '#f5f5f7' })
+    const dataUrl = await toPng(downloadRef.value, { cacheBust: true, pixelRatio: 2, backgroundColor: '#f5f5f7', skipFonts: true })
     const link = document.createElement('a')
     link.download = `${plan.value.meta.destination}-${variantLabel[activePlan.value.variant]}-行程长图.png`
     link.href = dataUrl
     link.click()
+  } catch (err) {
+    error.value = err instanceof Error ? `导出图片失败：${err.message}` : '导出图片失败，请稍后再试。'
   } finally {
     isDownloading.value = false
   }
+}
+function saveCurrentPlan() {
+  if (!plan.value || !activePlan.value) return
+  isSavingHistory.value = true
+  saveStatus.value = ''
+  try {
+    const item = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      destination: plan.value.meta?.destination || form.value.destination,
+      dateRange: plan.value.meta?.dateRange || `${form.value.startDate} 至 ${form.value.endDate}`,
+      savedAt: new Date().toISOString(),
+      activeVariant: activePlan.value.variant,
+      plan: structuredCloneSafe(plan.value),
+      form: structuredCloneSafe({
+        ...form.value,
+        hotelStays: hotelStays.value,
+        referenceLinksText: referenceLinksText.value
+      })
+    }
+    const next = [item, ...travelHistory.value.filter((history) => history.destination !== item.destination || history.dateRange !== item.dateRange)].slice(0, 12)
+    travelHistory.value = next
+    localStorage.setItem(historyStorageKey, JSON.stringify(next))
+    saveStatus.value = '已保存，下次可以从左侧历史直接打开。'
+  } catch (err) {
+    saveStatus.value = err instanceof Error ? err.message : '保存失败，请稍后再试。'
+  } finally {
+    isSavingHistory.value = false
+  }
+}
+function openHistoryPlan(item) {
+  if (!item?.plan) return
+  plan.value = structuredCloneSafe(item.plan)
+  activeVariant.value = item.activeVariant || item.plan.plans?.[0]?.variant || 'classic'
+  if (item.form) {
+    form.value = {
+      ...form.value,
+      ...item.form,
+      travelers: { ...form.value.travelers, ...(item.form.travelers || {}) },
+      interests: Array.isArray(item.form.interests) ? item.form.interests : form.value.interests,
+      selectedVariants: Array.isArray(item.form.selectedVariants) ? item.form.selectedVariants : form.value.selectedVariants
+    }
+    referenceLinksText.value = item.form.referenceLinksText || ''
+  }
+  error.value = ''
+  saveStatus.value = '已打开保存过的行程。'
+}
+function clearHistory() {
+  travelHistory.value = []
+  localStorage.removeItem(historyStorageKey)
+  saveStatus.value = '历史记录已清空。'
+}
+function readTravelHistory() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(historyStorageKey) || '[]')
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.plan).slice(0, 12) : []
+  } catch {
+    return []
+  }
+}
+function structuredCloneSafe(value) {
+  try {
+    if (typeof structuredClone === 'function') return structuredClone(value)
+  } catch {}
+  return JSON.parse(JSON.stringify(value))
 }
 function useFamilyBg(event) {
   event.currentTarget.src = '/bg.jpg'
@@ -585,6 +698,12 @@ function fatigueLabel(value) {
 .empty-travel-content p { max-width:560px; margin:0; color:rgba(255,255,255,.84); font-size:15px; line-height:1.8; }
 .empty-travel-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:28px; }
 .empty-travel-actions span { display:inline-flex; align-items:center; gap:7px; min-height:36px; padding:0 13px; border:1px solid rgba(255,255,255,.34); border-radius:999px; background:rgba(255,255,255,.16); color:white; font-size:12px; font-weight:800; backdrop-filter:blur(16px); }
+.history-box { margin:0 0 18px; padding:15px; border-radius:24px; background:rgba(239,246,255,.72); border:1px solid rgba(255,255,255,.74); }
+.history-box h3 { margin:2px 0 0; color:#1f2937; font-size:15px; font-weight:900; }
+.history-list { display:grid; gap:8px; }
+.history-list button { width:100%; display:flex; align-items:center; justify-content:space-between; gap:12px; border:0; border-radius:16px; background:rgba(255,255,255,.76); padding:11px 12px; text-align:left; color:#1f2937; }
+.history-list button span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:900; }
+.history-list button small { flex:none; color:#6b7280; font-size:11px; font-weight:800; }
 .field-label { display:flex; flex-direction:column; gap:7px; margin-bottom:12px; }
 .field-label span,.section-title { color:#6b7280; font-size:12px; font-weight:700; }
 .apple-input { width:100%; border:1px solid rgba(255,255,255,.78); background:rgba(255,255,255,.68); border-radius:16px; padding:11px 13px; color:#1f2937; outline:none; box-shadow:inset 0 0 0 1px rgba(0,0,0,.04); }
@@ -624,6 +743,8 @@ function fatigueLabel(value) {
 .image-thumb img { width:100%; aspect-ratio:4/3; object-fit:cover; display:block; }
 .image-thumb button { position:absolute; right:6px; bottom:6px; width:26px; height:26px; border:0; border-radius:999px; background:#fff0ee; color:#d92d20; display:flex; align-items:center; justify-content:center; }
 .summary-box { display:grid; gap:6px; padding:13px; border-radius:20px; background:rgba(239,246,255,.75); color:#0757a8; font-size:12px; font-weight:800; }
+.loading-note { display:flex; align-items:center; gap:8px; margin-top:12px; border-radius:18px; padding:11px 12px; background:rgba(255,255,255,.72); color:#6b7280; font-size:12px; font-weight:800; line-height:1.5; }
+.loading-note i { color:#0066cc; animation:travel-spin 1s linear infinite; }
 .primary-btn { min-height:42px; padding:0 18px; background:#1f2937; color:white; }
 .secondary-btn { min-height:42px; padding:0 18px; background:rgba(255,255,255,.72); color:#1f2937; }
 .primary-btn:disabled,.secondary-btn:disabled,.download-btn:disabled { opacity:.55; cursor:not-allowed; }
@@ -635,6 +756,10 @@ function fatigueLabel(value) {
 .hero-mask { mask-image:linear-gradient(to left,#000 58%,transparent); }
 .download-btn { min-height:38px; padding:0 14px; background:#1f2937; color:white; font-size:12px; box-shadow:0 12px 28px rgba(0,0,0,.16); }
 .mobile-download-btn { display:none; width:100%; min-height:48px; align-items:center; justify-content:center; gap:8px; border:0; border-radius:999px; background:#1f2937; color:white; font-size:14px; font-weight:900; box-shadow:0 16px 36px rgba(31,41,55,.18); }
+.result-actions { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.result-actions span { color:#0757a8; font-size:12px; font-weight:800; }
+.save-history-btn { min-height:42px; display:inline-flex; align-items:center; justify-content:center; gap:8px; border:0; border-radius:999px; background:#fff; color:#1f2937; padding:0 16px; font-size:13px; font-weight:900; box-shadow:0 10px 24px rgba(31,41,55,.08); }
+.save-history-btn:disabled { opacity:.55; cursor:not-allowed; }
 .pill-blue,.pill-gray { border-radius:999px; padding:7px 10px; font-size:12px; font-weight:800; }
 .pill-blue { background:#eff6ff; color:#0757a8; }
 .pill-gray { background:rgba(255,255,255,.72); color:#1f2937; }
@@ -676,6 +801,7 @@ function fatigueLabel(value) {
 .download-days li small { display:block; color:#6b7280; font-size:14px; line-height:1.45; }
 .download-days li em { color:#86868b; font-size:15px; font-style:normal; text-align:right; }
 .download-note { border-top:1px solid rgba(0,0,0,.07); padding-top:14px; font-weight:700; }
+@keyframes travel-spin { to { transform:rotate(360deg); } }
 @media (max-width:768px) {
   main { padding-left:14px !important; padding-right:14px !important; }
   .travel-form-panel { padding:20px !important; border-radius:28px !important; }
@@ -690,6 +816,9 @@ function fatigueLabel(value) {
   .result-hero-copy h2 { font-size:28px; line-height:1.15; word-break:keep-all; overflow-wrap:break-word; }
   .result-download-btn { display:none; }
   .mobile-download-btn { display:flex; position:sticky; top:70px; z-index:25; margin:0 0 12px; }
+  .result-actions { flex-direction:column; align-items:stretch; }
+  .save-history-btn { width:100%; }
+  .history-list button { align-items:flex-start; flex-direction:column; gap:4px; }
   .slot-card { border-left:0; border-top:1px solid rgba(0,0,0,.08); padding:14px 0; }
   .slot-card:first-child { border-top:0; }
   .date-range-trigger { grid-template-columns:1fr 20px 1fr; padding:10px; }
