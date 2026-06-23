@@ -83,7 +83,7 @@ export default async function handler(req, res) {
     }
 
     if (input.useMock) {
-      return res.status(200).json(await enrichPlanImages(buildMockPlan(input), input.destination))
+      return res.status(200).json(await enrichPlanImages(await enrichPlanWeather(buildMockPlan(input), input), input.destination))
     }
 
     const apiKey = getDeepSeekApiKey()
@@ -121,7 +121,7 @@ export default async function handler(req, res) {
     const content = payload.choices?.[0]?.message?.content
     if (!content) return res.status(502).json({ error: 'DeepSeek 返回内容为空。' })
 
-    const plan = normalizePlan(parseJsonContent(content), input)
+    const plan = await enrichPlanWeather(normalizePlan(parseJsonContent(content), input), input)
     return res.status(200).json(await enrichPlanImages(plan, input.destination))
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -182,10 +182,21 @@ function normalizePlan(plan, input = {}) {
     },
     grouping: safePlan.grouping && typeof safePlan.grouping === 'object' ? safePlan.grouping : { byArea: {}, byTheme: {} },
     plans: plans.length ? plans.map((item, index) => normalizeVariantPlan(item, input, index)) : [normalizeVariantPlan({}, input, 0)],
+    weather: normalizeWeather(safePlan.weather),
     critique: {
       initialIssues: Array.isArray(critique.initialIssues) ? critique.initialIssues : [],
       revisionsApplied: Array.isArray(critique.revisionsApplied) ? critique.revisionsApplied : []
     }
+  }
+}
+
+function normalizeWeather(weather) {
+  const safeWeather = weather && typeof weather === 'object' ? weather : {}
+  return {
+    summary: safeWeather.summary || '天气信息将在生成后补充。',
+    source: safeWeather.source || '',
+    days: Array.isArray(safeWeather.days) ? safeWeather.days : [],
+    advice: Array.isArray(safeWeather.advice) ? safeWeather.advice : []
   }
 }
 
@@ -448,8 +459,119 @@ JSON Schema 形状：
       "riskCheck": "string"
     }]
   }],
+  "weather": { "summary": "string", "source": "string", "days": [{ "date": "YYYY-MM-DD", "condition": "string", "temperatureMin": 10, "temperatureMax": 20, "precipitationProbability": 30 }], "advice": ["string"] },
   "critique": { "initialIssues": ["string"], "revisionsApplied": ["string"] }
 }`
+}
+
+async function enrichPlanWeather(plan, input) {
+  const weather = await fetchTravelWeather(input.destination, input.startDate, input.endDate)
+  return { ...plan, weather }
+}
+
+async function fetchTravelWeather(destination, startDate, endDate) {
+  try {
+    const geo = await geocodeDestination(destination)
+    if (!geo) return buildWeatherFallback(startDate, endDate, '暂时没有定位到目的地，建议出发前再看一次天气。')
+    const url = [
+      'https://api.open-meteo.com/v1/forecast',
+      `?latitude=${encodeURIComponent(geo.latitude)}`,
+      `&longitude=${encodeURIComponent(geo.longitude)}`,
+      `&start_date=${encodeURIComponent(startDate)}`,
+      `&end_date=${encodeURIComponent(endDate)}`,
+      '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max',
+      '&timezone=auto'
+    ].join('')
+    const response = await fetchWithTimeout(url, {}, 5000)
+    if (!response.ok) return buildWeatherFallback(startDate, endDate, '出行日期可能离现在较远，天气预报暂未开放，建议临近出发前再确认。')
+    const data = await response.json()
+    const days = (data.daily?.time || []).map((date, index) => ({
+      date,
+      condition: weatherCodeLabel(data.daily?.weather_code?.[index]),
+      temperatureMin: Math.round(Number(data.daily?.temperature_2m_min?.[index] ?? 0)),
+      temperatureMax: Math.round(Number(data.daily?.temperature_2m_max?.[index] ?? 0)),
+      precipitationProbability: Math.round(Number(data.daily?.precipitation_probability_max?.[index] ?? 0))
+    }))
+    if (!days.length) return buildWeatherFallback(startDate, endDate, '出行日期可能离现在较远，天气预报暂未开放，建议临近出发前再确认。')
+    return buildWeatherSummary(days, geo.name || destination)
+  } catch {
+    return buildWeatherFallback(startDate, endDate, '天气服务暂时不可用，建议出发前再刷新一次。')
+  }
+}
+
+async function geocodeDestination(destination) {
+  const candidates = uniqueText([destination, translateImageTerm(destination), `${destination} China`])
+  for (const candidate of candidates) {
+    try {
+      const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(candidate)}&count=1&language=zh&format=json`
+      const response = await fetchWithTimeout(url, {}, 5000)
+      if (!response.ok) continue
+      const data = await response.json()
+      if (data.results?.[0]) return data.results[0]
+    } catch {}
+  }
+  return null
+}
+
+function buildWeatherSummary(days, destination) {
+  const min = Math.min(...days.map((day) => day.temperatureMin))
+  const max = Math.max(...days.map((day) => day.temperatureMax))
+  const rainyDays = days.filter((day) => day.precipitationProbability >= 45)
+  const hotDays = days.filter((day) => day.temperatureMax >= 30)
+  const advice = [
+    rainyDays.length ? '有较高降雨概率，建议带轻便雨具，鞋子优先选防滑好走的。' : '降雨概率不高，但长时间户外仍建议带一把轻便伞。',
+    hotDays.length ? '白天温度偏高，上午优先安排户外，午后多留室内和休息点。' : '温度整体适中，可以按原计划安排步行，但仍要预留补水和休息。',
+    '天气会影响排队和拍照体验，出发前一天建议再刷新确认。'
+  ]
+  return {
+    summary: `${destination}行程期间约 ${min}°C - ${max}°C，${rainyDays.length ? '有降雨风险' : '整体适合出行'}`,
+    source: 'Open-Meteo',
+    days,
+    advice
+  }
+}
+
+function buildWeatherFallback(startDate, endDate, reason) {
+  return {
+    summary: '天气预报暂时不可用',
+    source: 'Open-Meteo',
+    days: enumerateDateStrings(startDate, endDate).slice(0, 7).map((date) => ({
+      date,
+      condition: '待确认',
+      temperatureMin: 0,
+      temperatureMax: 0,
+      precipitationProbability: 0
+    })),
+    advice: [reason, '建议把雨具、防晒、舒适鞋作为默认准备项。']
+  }
+}
+
+function weatherCodeLabel(code) {
+  const value = Number(code)
+  if ([0].includes(value)) return '晴'
+  if ([1, 2, 3].includes(value)) return '多云'
+  if ([45, 48].includes(value)) return '雾'
+  if ([51, 53, 55, 56, 57].includes(value)) return '小雨'
+  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(value)) return '雨'
+  if ([71, 73, 75, 77, 85, 86].includes(value)) return '雪'
+  if ([95, 96, 99].includes(value)) return '雷阵雨'
+  return '待确认'
+}
+
+function enumerateDateStrings(startDate, endDate) {
+  const cursor = new Date(`${startDate}T00:00:00`)
+  const last = new Date(`${endDate}T00:00:00`)
+  if (Number.isNaN(cursor.getTime()) || Number.isNaN(last.getTime())) return []
+  const dates = []
+  while (cursor <= last && dates.length < 30) {
+    dates.push(formatDateString(cursor))
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return dates
+}
+
+function formatDateString(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
 async function enrichPlanImages(plan, destination) {
@@ -458,12 +580,19 @@ async function enrichPlanImages(plan, destination) {
     const image = await searchTravelImage(`${destination} ${leadPlace} travel landmark`, destination, leadPlace)
     return {
       ...item,
-      heroImageUrl: image?.url || item.heroImageUrl || '/bg.jpg',
+      heroImageUrl: image?.url || trustedExistingImage(item.heroImageUrl, destination) || curatedTravelImage(destination, leadPlace)?.url || fallbackTravelImage(destination),
       heroImageAlt: image?.alt || item.heroImageAlt || `${destination}${leadPlace}宣传照片`,
       heroImageCredit: image?.credit || ''
     }
   }))
   return { ...plan, plans: enrichedPlans }
+}
+
+function trustedExistingImage(url, destination) {
+  const value = String(url || '').trim()
+  if (!value || /loremflickr\.com|\/bg\.jpg/i.test(value)) return ''
+  if (/曲阜|孔庙|孔府|孔林|三孔/i.test(destination || '') && !/qufu|confuc|kong|wikimedia|wikipedia/i.test(value)) return ''
+  return value
 }
 
 function getPlanLeadPlace(plan) {
@@ -474,7 +603,7 @@ function getPlanLeadPlace(plan) {
 async function searchTravelImage(_query, destination, leadPlace) {
   const keywords = buildImageKeywords(destination, leadPlace)
   const query = `${keywords.join(' ')} travel landmark`
-  return await searchUnsplash(query) || await searchPexels(query) || await searchWikipediaImage(leadPlace) || await searchWikipediaImage(destination)
+  return await searchUnsplash(query) || await searchPexels(query) || curatedTravelImage(destination, leadPlace) || await searchCommonsImage(query) || await searchWikipediaImage(leadPlace) || await searchWikipediaImage(destination)
 }
 
 function buildImageKeywords(destination, leadPlace) {
@@ -565,6 +694,29 @@ async function searchPexels(query) {
   }
 }
 
+async function searchCommonsImage(query) {
+  if (!query) return null
+  try {
+    const url = [
+      'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*',
+      '&generator=search&gsrnamespace=6&gsrlimit=8',
+      `&gsrsearch=${encodeURIComponent(query)}`,
+      '&prop=imageinfo&iiprop=url|mime|size&iiurlwidth=1600'
+    ].join('')
+    const response = await fetchWithTimeout(url, { headers: { 'User-Agent': 'family-travel-planner/1.0' } }, IMAGE_REQUEST_TIMEOUT_MS)
+    if (!response.ok) return null
+    const data = await response.json()
+    const pages = Object.values(data.query?.pages || {})
+    const image = pages
+      .map((page) => page.imageinfo?.[0])
+      .filter((info) => info?.thumburl && /^image\/(jpeg|png|webp)$/i.test(info.mime || '') && Number(info.width || 0) >= 900)
+      .sort((a, b) => Number(b.width || 0) - Number(a.width || 0))[0]
+    return image ? { url: image.thumburl || image.url, alt: query, credit: 'Wikimedia Commons' } : null
+  } catch {
+    return null
+  }
+}
+
 async function searchWikipediaImage(query) {
   if (!query) return null
   const endpoints = [
@@ -578,6 +730,26 @@ async function searchWikipediaImage(query) {
       const data = await response.json()
       if (data.thumbnail?.source) return { url: data.thumbnail.source.replace(/\/\d+px-/, '/1200px-'), alt: data.title || query, credit: 'Wikipedia' }
     } catch {}
+  }
+  return null
+}
+
+function fallbackTravelImage(destination) {
+  const text = String(destination || '')
+  if (/京都|日本|奈良|大阪|东京/.test(text)) return 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=1600&q=84'
+  if (/海|岛|三亚|冲绳/.test(text)) return 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1600&q=84'
+  if (/山|谷|川|湖|林|自然/.test(text)) return 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=84'
+  return 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=84'
+}
+
+function curatedTravelImage(destination, leadPlace) {
+  const text = `${destination || ''} ${leadPlace || ''}`
+  if (/曲阜|孔庙|孔府|孔林|三孔|Confucius|Qufu/i.test(text)) {
+    return {
+      url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Qufu_Confucian_Temple_49189-Qufu_(49055643376).jpg?width=1600',
+      alt: '曲阜孔庙建筑照片',
+      credit: 'Wikimedia Commons'
+    }
   }
   return null
 }

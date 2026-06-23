@@ -16,19 +16,24 @@
           <i class="ph ph-sliders-horizontal text-2xl text-gray-700"></i>
         </div>
 
-        <div v-if="travelHistory.length" class="history-box">
+        <div v-if="isHistoryLoading || travelHistory.length" class="history-box">
           <div class="flex items-center justify-between gap-3 mb-3">
             <div>
               <p class="text-[11px] text-apple-blue font-semibold">Saved Trips</p>
-              <h3>之前保存的行程</h3>
+              <h3>{{ isHistoryLoading ? '正在同步历史' : '之前保存的行程' }}</h3>
             </div>
-            <button type="button" class="mini-pill" @click="clearHistory">清空</button>
+            <button v-if="travelHistory.length" type="button" class="mini-pill" :disabled="isSavingHistory" @click="clearHistory">清空</button>
           </div>
           <div class="history-list">
-            <button v-for="item in travelHistory" :key="item.id" type="button" @click="openHistoryPlan(item)">
-              <span>{{ item.destination }}</span>
-              <small>{{ item.dateRange }}</small>
-            </button>
+            <div v-for="item in travelHistory" :key="item.id" class="history-item">
+              <button type="button" @click="openHistoryPlan(item)">
+                <span>{{ item.destination }}</span>
+                <small>{{ item.dateRange }}</small>
+              </button>
+              <button type="button" class="history-delete" :disabled="deletingHistoryId === item.id" :aria-label="`删除${item.destination}行程`" @click.stop="deleteHistoryItem(item)">
+                <i class="ph ph-trash"></i>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -206,6 +211,26 @@
             </div>
           </div>
 
+          <section v-if="plan.weather" class="weather-card glass-card rounded-3xl p-5">
+            <div class="weather-card-head">
+              <div>
+                <p>天气和出门提醒</p>
+                <h3>{{ plan.weather.summary }}</h3>
+              </div>
+              <span>{{ plan.weather.source || 'Open-Meteo' }}</span>
+            </div>
+            <div v-if="plan.weather.days?.length" class="weather-days">
+              <div v-for="day in plan.weather.days" :key="day.date">
+                <strong>{{ formatDisplayDate(day.date) }}</strong>
+                <span>{{ day.condition }}</span>
+                <small>{{ day.temperatureMin }}°C - {{ day.temperatureMax }}°C · 降雨 {{ day.precipitationProbability }}%</small>
+              </div>
+            </div>
+            <ul class="weather-advice">
+              <li v-for="item in plan.weather.advice" :key="item">{{ item }}</li>
+            </ul>
+          </section>
+
           <div class="glass-card rounded-3xl p-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
             <button v-for="item in plan.plans" :key="item.variant" class="plan-tab" :class="{ active: activePlan.variant === item.variant }" @click="activeVariant = item.variant">
               <span>{{ variantLabel[item.variant] }}</span>
@@ -214,12 +239,15 @@
           </div>
 
           <article class="space-y-5">
-            <div class="px-1 flex items-start justify-between gap-4">
+            <div class="active-plan-heading px-1">
               <div>
-                <h3 class="text-xl font-semibold text-gray-900">{{ activePlan.title }}</h3>
-                <p class="text-sm text-gray-500 mt-1 leading-relaxed">{{ activePlan.positioning }}</p>
+                <h3>{{ activePlan.title }}</h3>
+                <p>{{ activePlan.positioning }}</p>
               </div>
-              <span class="fatigue" :class="activePlan.totalFatigueLevel">{{ activePlan.totalFatigueLevel }}</span>
+              <div class="active-plan-badges">
+                <span class="variant-badge">{{ variantLabel[activePlan.variant] }}</span>
+                <span class="fatigue" :class="activePlan.totalFatigueLevel">{{ fatigueLabel(activePlan.totalFatigueLevel) }}</span>
+              </div>
             </div>
 
             <section v-for="day in activePlan.days" :key="`${activePlan.variant}-${day.day}`" class="glass-card rounded-3xl p-5">
@@ -260,12 +288,12 @@
 
           <div class="result-actions glass-card rounded-3xl p-4">
             <div>
-              <p>确认后会留在历史里</p>
+              <p>确认后会同步到云端历史</p>
               <span v-if="saveStatus">{{ saveStatus }}</span>
-              <span v-else>行程满意后再保存，之后可以从左侧历史直接打开。</span>
+              <span v-else>行程满意后再保存，电脑和手机都能从历史里打开。</span>
             </div>
             <button class="save-history-btn" :disabled="isSavingHistory" @click="saveCurrentPlan">
-              <i class="ph ph-check-circle"></i>{{ isSavingHistory ? '保存中...' : '这版OK，保存到历史' }}
+              <i class="ph ph-check-circle"></i>{{ isSavingHistory ? '保存中...' : '这版OK，保存到云端' }}
             </button>
           </div>
 
@@ -310,7 +338,11 @@
                 <img class="download-hero" :src="safeTravelImageUrl(activePlan.heroImageUrl)" :alt="activePlan.heroImageAlt || activePlan.title" @error="useFamilyBg" />
                 <section class="download-summary">
                   <strong>{{ activePlan.title }}</strong>
-                  <p>{{ activePlan.positioning }}</p>
+                  <p>{{ variantLabel[activePlan.variant] }} · {{ activePlan.positioning }}</p>
+                </section>
+                <section v-if="plan.weather" class="download-weather">
+                  <strong>{{ plan.weather.summary }}</strong>
+                  <p>{{ (plan.weather.advice || []).slice(0, 2).join(' · ') }}</p>
                 </section>
                 <div class="download-days">
                   <section v-for="day in activePlan.days" :key="`download-${day.day}`">
@@ -366,8 +398,6 @@ const scenerySlogans = [
   { title: '自由有时候很简单，就是今天可以往远处走。', body: '把想去的地方放进地图，也把家人的体力、胃口和小脾气一起放进去。舒服地出门，比完美打卡更重要。' },
   { title: '我们把生活带上路，也把路上的光带回家。', body: '旅行不只是换一个地方睡觉，它会让普通的一天多一点开阔，也让一家人的记忆多一个共同坐标。' }
 ]
-const historyStorageKey = 'family_travel_history_v1'
-
 const form = ref({
   destination: '京都',
   startDate: todayString(),
@@ -390,6 +420,8 @@ const calendarMonth = ref(firstDayOfMonth(new Date()))
 const isLoading = ref(false)
 const isDownloading = ref(false)
 const isSavingHistory = ref(false)
+const isHistoryLoading = ref(false)
+const deletingHistoryId = ref('')
 const error = ref('')
 const saveStatus = ref('')
 const plan = ref(null)
@@ -425,7 +457,7 @@ const calendarTitle = computed(() => `${calendarMonth.value.getFullYear()} 年 $
 const calendarDays = computed(() => buildCalendarDays(calendarMonth.value, form.value.startDate, form.value.endDate))
 
 onMounted(() => {
-  travelHistory.value = readTravelHistory()
+  loadTravelHistory()
 })
 
 async function generate(useMock = false) {
@@ -496,7 +528,7 @@ async function downloadPlanCard() {
     isDownloading.value = false
   }
 }
-function saveCurrentPlan() {
+async function saveCurrentPlan() {
   if (!plan.value || !activePlan.value) return
   isSavingHistory.value = true
   saveStatus.value = ''
@@ -513,10 +545,15 @@ function saveCurrentPlan() {
         hotelStays: hotelStays.value
       })
     }
-    const next = [item, ...travelHistory.value.filter((history) => history.destination !== item.destination || history.dateRange !== item.dateRange)].slice(0, 12)
-    travelHistory.value = next
-    localStorage.setItem(historyStorageKey, JSON.stringify(next))
-    saveStatus.value = '已保存，下次可以从左侧历史直接打开。'
+    const response = await fetch('/api/travel-history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: sessionStorage.getItem('family_auth_token') || '' },
+      body: JSON.stringify({ item })
+    })
+    const data = await parseApiResponse(response)
+    if (!response.ok) throw new Error([data.error, data.detail].filter(Boolean).join(' '))
+    travelHistory.value = Array.isArray(data.history) ? data.history : [data.item, ...travelHistory.value].filter(Boolean)
+    saveStatus.value = '已保存到云端历史，电脑和手机都能看到。'
   } catch (err) {
     saveStatus.value = err instanceof Error ? err.message : '保存失败，请稍后再试。'
   } finally {
@@ -542,17 +579,56 @@ function openHistoryPlan(item) {
   error.value = ''
   saveStatus.value = '已打开保存过的行程。'
 }
-function clearHistory() {
-  travelHistory.value = []
-  localStorage.removeItem(historyStorageKey)
-  saveStatus.value = '历史记录已清空。'
-}
-function readTravelHistory() {
+async function deleteHistoryItem(item) {
+  if (!item?.id) return
+  deletingHistoryId.value = item.id
+  saveStatus.value = ''
   try {
-    const parsed = JSON.parse(localStorage.getItem(historyStorageKey) || '[]')
-    return Array.isArray(parsed) ? parsed.filter((item) => item?.plan).slice(0, 12) : []
-  } catch {
-    return []
+    const response = await fetch(`/api/travel-history?id=${encodeURIComponent(item.id)}`, {
+      method: 'DELETE',
+      headers: { Authorization: sessionStorage.getItem('family_auth_token') || '' }
+    })
+    const data = await parseApiResponse(response)
+    if (!response.ok) throw new Error([data.error, data.detail].filter(Boolean).join(' '))
+    travelHistory.value = Array.isArray(data.history) ? data.history : travelHistory.value.filter((history) => history.id !== item.id)
+    saveStatus.value = '这条历史行程已删除。'
+  } catch (err) {
+    saveStatus.value = err instanceof Error ? err.message : '删除失败，请稍后再试。'
+  } finally {
+    deletingHistoryId.value = ''
+  }
+}
+async function clearHistory() {
+  isSavingHistory.value = true
+  saveStatus.value = ''
+  try {
+    const response = await fetch('/api/travel-history', {
+      method: 'DELETE',
+      headers: { Authorization: sessionStorage.getItem('family_auth_token') || '' }
+    })
+    const data = await parseApiResponse(response)
+    if (!response.ok) throw new Error([data.error, data.detail].filter(Boolean).join(' '))
+    travelHistory.value = []
+    saveStatus.value = '云端历史记录已清空。'
+  } catch (err) {
+    saveStatus.value = err instanceof Error ? err.message : '清空失败，请稍后再试。'
+  } finally {
+    isSavingHistory.value = false
+  }
+}
+async function loadTravelHistory() {
+  isHistoryLoading.value = true
+  try {
+    const response = await fetch('/api/travel-history', {
+      headers: { Authorization: sessionStorage.getItem('family_auth_token') || '' }
+    })
+    const data = await parseApiResponse(response)
+    if (!response.ok) throw new Error([data.error, data.detail].filter(Boolean).join(' '))
+    travelHistory.value = Array.isArray(data.history) ? data.history : []
+  } catch (err) {
+    saveStatus.value = err instanceof Error ? err.message : '云端历史读取失败。'
+  } finally {
+    isHistoryLoading.value = false
   }
 }
 function structuredCloneSafe(value) {
@@ -566,7 +642,7 @@ function useFamilyBg(event) {
 }
 function safeTravelImageUrl(url) {
   const value = String(url || '').trim()
-  if (!value || /loremflickr\.com/i.test(value)) return '/bg.jpg'
+  if (!value || /loremflickr\.com/i.test(value)) return dailyScenery.value.image
   return value
 }
 function baiduMapSearchUrl(query, context = '') {
@@ -681,9 +757,12 @@ function fatigueLabel(value) {
 .history-box { margin:0 0 18px; padding:15px; border-radius:24px; background:rgba(239,246,255,.72); border:1px solid rgba(255,255,255,.74); }
 .history-box h3 { margin:2px 0 0; color:#1f2937; font-size:15px; font-weight:900; }
 .history-list { display:grid; gap:8px; }
-.history-list button { width:100%; display:flex; align-items:center; justify-content:space-between; gap:12px; border:0; border-radius:16px; background:rgba(255,255,255,.76); padding:11px 12px; text-align:left; color:#1f2937; }
-.history-list button span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:900; }
-.history-list button small { flex:none; color:#6b7280; font-size:11px; font-weight:800; }
+.history-item { display:grid; grid-template-columns:minmax(0,1fr) 38px; gap:8px; align-items:center; }
+.history-item > button:first-child { width:100%; min-width:0; display:flex; align-items:center; justify-content:space-between; gap:12px; border:0; border-radius:16px; background:rgba(255,255,255,.76); padding:11px 12px; text-align:left; color:#1f2937; }
+.history-item > button:first-child span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:900; }
+.history-item > button:first-child small { flex:none; color:#6b7280; font-size:11px; font-weight:800; }
+.history-delete { width:38px; height:38px; border:0; border-radius:999px; background:rgba(255,255,255,.68); color:#9ca3af; display:flex; align-items:center; justify-content:center; }
+.history-delete:hover { color:#d92d20; background:#fff0ee; }
 .field-label { display:flex; flex-direction:column; gap:7px; margin-bottom:12px; }
 .field-label span,.section-title { color:#6b7280; font-size:12px; font-weight:700; }
 .apple-input { width:100%; border:1px solid rgba(255,255,255,.78); background:rgba(255,255,255,.68); border-radius:16px; padding:11px 13px; color:#1f2937; outline:none; box-shadow:inset 0 0 0 1px rgba(0,0,0,.04); }
@@ -745,6 +824,17 @@ function fatigueLabel(value) {
 .hotel-map-list span { color:#6b7280; font-size:11px; font-weight:800; }
 .hotel-map-list strong { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
 .hotel-map-list i { color:#0066cc; justify-self:end; }
+.weather-card { display:grid; gap:14px; }
+.weather-card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.weather-card-head p { margin:0 0 4px; color:#0066cc; font-size:11px; font-weight:900; }
+.weather-card-head h3 { margin:0; color:#1f2937; font-size:17px; line-height:1.4; font-weight:900; }
+.weather-card-head > span { flex:none; color:#6b7280; font-size:11px; font-weight:800; }
+.weather-days { display:grid; grid-template-columns:repeat(auto-fit,minmax(138px,1fr)); gap:8px; }
+.weather-days div { border-radius:18px; background:rgba(255,255,255,.66); padding:11px 12px; display:grid; gap:4px; }
+.weather-days strong { color:#1f2937; font-size:13px; }
+.weather-days span { color:#0066cc; font-size:12px; font-weight:900; }
+.weather-days small { color:#6b7280; font-size:11px; line-height:1.45; }
+.weather-advice { margin:0; padding-left:18px; color:#4b5563; font-size:13px; line-height:1.7; }
 .pill-blue,.pill-gray { border-radius:999px; padding:7px 10px; font-size:12px; font-weight:800; }
 .pill-blue { background:#eff6ff; color:#0757a8; }
 .pill-gray { background:rgba(255,255,255,.72); color:#1f2937; }
@@ -757,6 +847,11 @@ function fatigueLabel(value) {
 .fatigue.low { background:#eaf8f1; color:#12805c; }
 .fatigue.medium { background:#fff4df; color:#a56315; }
 .fatigue.high { background:#fff0ee; color:#d92d20; }
+.active-plan-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; }
+.active-plan-heading h3 { margin:0; color:#1f2937; font-size:20px; line-height:1.35; font-weight:900; }
+.active-plan-heading p { margin:5px 0 0; color:#6b7280; font-size:13px; line-height:1.6; }
+.active-plan-badges { flex:none; display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; }
+.variant-badge { border-radius:999px; background:#1f2937; color:white; padding:7px 10px; font-size:11px; font-weight:900; }
 .slots-list { display:grid; gap:12px; }
 .slot-card { display:grid; grid-template-columns:86px minmax(0,1fr); gap:16px; padding:16px; border-radius:22px; background:rgba(255,255,255,.58); border:1px solid rgba(255,255,255,.76); box-shadow:inset 0 0 0 1px rgba(0,0,0,.025); }
 .slot-time { display:flex; flex-direction:column; gap:7px; align-items:flex-start; }
@@ -785,6 +880,9 @@ function fatigueLabel(value) {
 .download-summary { margin:42px 0 28px; border-radius:32px; background:rgba(239,246,255,.82); padding:28px; }
 .download-summary strong { display:block; margin-bottom:10px; font-size:28px; }
 .download-summary p,.download-days p { color:#6b7280; font-size:18px; line-height:1.55; }
+.download-weather { margin:0 0 28px; border-radius:28px; background:rgba(255,255,255,.78); padding:24px 28px; }
+.download-weather strong { display:block; margin-bottom:8px; font-size:22px; }
+.download-weather p { margin:0; color:#6b7280; font-size:16px; line-height:1.55; }
 .download-days { display:grid; gap:22px; }
 .download-days section { border-radius:30px; background:rgba(255,255,255,.74); padding:28px; }
 .download-day-head { display:flex; align-items:baseline; justify-content:space-between; gap:18px; }
@@ -813,6 +911,9 @@ function fatigueLabel(value) {
   .result-download-btn { display:none; }
   .mobile-download-btn { display:flex; position:sticky; top:70px; z-index:25; margin:0 0 12px; }
   .result-actions { flex-direction:column; align-items:stretch; }
+  .active-plan-heading { flex-direction:column; }
+  .active-plan-badges { justify-content:flex-start; }
+  .weather-card-head { flex-direction:column; gap:8px; }
   .hotel-map-card { grid-template-columns:1fr; }
   .hotel-map-list a { grid-template-columns:1fr 28px; }
   .hotel-map-list span { grid-column:1 / -1; }
