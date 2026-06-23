@@ -16,19 +16,42 @@
           <i class="ph ph-sliders-horizontal text-2xl text-gray-700"></i>
         </div>
 
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 gap-3">
           <label class="field-label col-span-2">
             <span>目的地</span>
             <input v-model="form.destination" class="apple-input" />
           </label>
-          <label class="field-label">
-            <span>开始日期</span>
-            <input v-model="form.startDate" type="date" class="apple-input" />
-          </label>
-          <label class="field-label">
-            <span>结束日期</span>
-            <input v-model="form.endDate" type="date" class="apple-input" />
-          </label>
+          <div class="field-label">
+            <span>出发和回来</span>
+            <button type="button" class="date-range-trigger" @click="datePickerOpen = !datePickerOpen">
+              <span><b>出发</b>{{ formatDisplayDate(form.startDate) }}</span>
+              <i class="ph ph-arrow-right"></i>
+              <span><b>回来</b>{{ formatDisplayDate(form.endDate) }}</span>
+            </button>
+            <div v-if="datePickerOpen" class="date-picker-panel">
+              <div class="date-picker-head">
+                <button type="button" aria-label="上个月" @click="moveCalendar(-1)"><i class="ph ph-caret-left"></i></button>
+                <strong>{{ calendarTitle }}</strong>
+                <button type="button" aria-label="下个月" @click="moveCalendar(1)"><i class="ph ph-caret-right"></i></button>
+              </div>
+              <div class="date-week-row">
+                <span v-for="day in weekDays" :key="day">{{ day }}</span>
+              </div>
+              <div class="date-grid">
+                <button
+                  v-for="day in calendarDays"
+                  :key="day.key"
+                  type="button"
+                  :class="day.className"
+                  :disabled="day.disabled"
+                  @click="pickDate(day.value)"
+                >
+                  {{ day.label }}
+                </button>
+              </div>
+              <p class="date-picker-hint">{{ datePickingStep === 'start' ? '先点出发日期，再点回来日期。' : '再点一次回来日期，就完成啦。' }}</p>
+            </div>
+          </div>
         </div>
 
         <label class="field-label mt-3">
@@ -155,17 +178,21 @@
         </div>
 
         <div v-else class="space-y-5">
-          <header class="glass-card rounded-3xl overflow-hidden relative min-h-[220px] p-6 flex items-start justify-between gap-4">
-            <div class="relative z-10 max-w-md">
+          <header class="glass-card result-hero-card rounded-3xl overflow-hidden relative min-h-[220px] p-6 flex items-start justify-between gap-4">
+            <div class="result-hero-copy relative z-10 max-w-md">
               <p class="text-[11px] text-apple-blue font-semibold mb-2">这趟路</p>
               <h2 class="text-2xl md:text-3xl font-semibold text-gray-900">{{ plan.meta.destination }} 旅行安排</h2>
               <p class="text-sm text-gray-500 mt-2">{{ plan.meta.dateRange }}</p>
             </div>
-            <img class="absolute right-0 top-0 h-full w-[48%] object-cover opacity-90 hero-mask" :src="activePlan.heroImageUrl" :alt="activePlan.heroImageAlt || activePlan.title" @error="useFamilyBg" />
-            <button class="download-btn relative z-10" :disabled="isDownloading" @click="downloadPlanCard">
+            <img class="result-hero-image absolute right-0 top-0 h-full w-[48%] object-cover opacity-90 hero-mask" :src="activePlan.heroImageUrl" :alt="activePlan.heroImageAlt || activePlan.title" @error="useFamilyBg" />
+            <button class="download-btn result-download-btn relative z-10" :disabled="isDownloading" @click="downloadPlanCard">
               <i class="ph ph-download-simple"></i>{{ isDownloading ? '生成图片中' : '下载长图' }}
             </button>
           </header>
+
+          <button class="mobile-download-btn" :disabled="isDownloading" @click="downloadPlanCard">
+            <i class="ph ph-download-simple"></i>{{ isDownloading ? '正在生成长图' : '导出这份行程长图' }}
+          </button>
 
           <div class="glass-card rounded-3xl p-4 flex flex-wrap gap-2">
             <span v-for="item in plan.meta.assumptions" :key="item" class="pill-blue">{{ item }}</span>
@@ -302,6 +329,7 @@ const travelerControls = [
   { key: 'children', label: '儿童' },
   { key: 'seniors', label: '长辈' }
 ]
+const weekDays = ['日', '一', '二', '三', '四', '五', '六']
 const sceneryImages = [
   { place: '山谷清晨', image: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=82' },
   { place: '湖边日落', image: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=1600&q=82' },
@@ -336,6 +364,9 @@ const dailyHotels = ref({})
 const strategyImages = ref([])
 const referenceLinksText = ref('')
 const variantMenuOpen = ref(false)
+const datePickerOpen = ref(false)
+const datePickingStep = ref('start')
+const calendarMonth = ref(firstDayOfMonth(new Date()))
 const isLoading = ref(false)
 const isDownloading = ref(false)
 const error = ref('')
@@ -367,10 +398,13 @@ const rejectedItems = computed(() => {
 const dailyIndex = computed(() => daySeed(todayString()))
 const dailyScenery = computed(() => sceneryImages[dailyIndex.value % sceneryImages.length])
 const dailySlogan = computed(() => scenerySlogans[dailyIndex.value % scenerySlogans.length])
+const calendarTitle = computed(() => `${calendarMonth.value.getFullYear()} 年 ${calendarMonth.value.getMonth() + 1} 月`)
+const calendarDays = computed(() => buildCalendarDays(calendarMonth.value, form.value.startDate, form.value.endDate))
 
 async function generate(useMock = false) {
   isLoading.value = true
   error.value = ''
+  if (!form.value.feedback) plan.value = null
   try {
     const response = await fetch('/api/travel-plan', {
       method: 'POST',
@@ -385,7 +419,7 @@ async function generate(useMock = false) {
       })
     })
     const data = await response.json()
-    if (!response.ok) throw new Error(data.error || '生成失败')
+    if (!response.ok) throw new Error([data.error, data.detail].filter(Boolean).join(' '))
     plan.value = data
     activeVariant.value = data.plans?.[0]?.variant || 'classic'
   } catch (err) {
@@ -453,6 +487,64 @@ function baiduMapSearchUrl(query) {
 function todayString() {
   return formatDateInputValue(new Date())
 }
+function firstDayOfMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1)
+}
+function moveCalendar(delta) {
+  calendarMonth.value = new Date(calendarMonth.value.getFullYear(), calendarMonth.value.getMonth() + delta, 1)
+}
+function pickDate(value) {
+  if (datePickingStep.value === 'start') {
+    form.value.startDate = value
+    if (new Date(`${form.value.endDate}T00:00:00`) < new Date(`${value}T00:00:00`)) form.value.endDate = value
+    datePickingStep.value = 'end'
+    return
+  }
+  if (new Date(`${value}T00:00:00`) < new Date(`${form.value.startDate}T00:00:00`)) {
+    form.value.endDate = form.value.startDate
+    form.value.startDate = value
+  } else {
+    form.value.endDate = value
+  }
+  datePickingStep.value = 'start'
+  datePickerOpen.value = false
+}
+function buildCalendarDays(month, startDate, endDate) {
+  const first = new Date(month.getFullYear(), month.getMonth(), 1)
+  const gridStart = new Date(first)
+  gridStart.setDate(first.getDate() - first.getDay())
+  const today = new Date(`${todayString()}T00:00:00`)
+  const start = new Date(`${startDate}T00:00:00`)
+  const end = new Date(`${endDate}T00:00:00`)
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(gridStart)
+    date.setDate(gridStart.getDate() + index)
+    const value = formatDateInputValue(date)
+    const inMonth = date.getMonth() === month.getMonth()
+    const disabled = date < today
+    const isStart = value === startDate
+    const isEnd = value === endDate
+    const inRange = date > start && date < end
+    return {
+      key: value,
+      value,
+      label: date.getDate(),
+      disabled,
+      className: {
+        muted: !inMonth,
+        selected: isStart || isEnd,
+        'in-range': inRange,
+        disabled
+      }
+    }
+  })
+}
+function formatDisplayDate(value) {
+  if (!value) return '未选择'
+  const date = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return value
+  return `${date.getMonth() + 1}月${date.getDate()}日`
+}
 function daySeed(value) {
   return value.split('-').reduce((sum, part) => sum + Number(part || 0), 0)
 }
@@ -497,6 +589,22 @@ function fatigueLabel(value) {
 .field-label span,.section-title { color:#6b7280; font-size:12px; font-weight:700; }
 .apple-input { width:100%; border:1px solid rgba(255,255,255,.78); background:rgba(255,255,255,.68); border-radius:16px; padding:11px 13px; color:#1f2937; outline:none; box-shadow:inset 0 0 0 1px rgba(0,0,0,.04); }
 .apple-input:focus { box-shadow:inset 0 0 0 1.5px #0066cc, 0 0 0 4px rgba(0,102,204,.12); background:#fff; }
+.date-range-trigger { width:100%; min-height:58px; display:grid; grid-template-columns:1fr 24px 1fr; align-items:center; gap:8px; border:1px solid rgba(255,255,255,.78); border-radius:18px; background:rgba(255,255,255,.68); color:#1f2937; padding:10px 12px; text-align:left; box-shadow:inset 0 0 0 1px rgba(0,0,0,.04); }
+.date-range-trigger span { min-width:0; display:grid; gap:3px; color:#1f2937; font-size:15px; font-weight:800; }
+.date-range-trigger b { color:#6b7280; font-size:11px; font-weight:800; }
+.date-range-trigger i { justify-self:center; color:#0066cc; }
+.date-picker-panel { position:relative; z-index:20; margin-top:8px; padding:12px; border:1px solid rgba(255,255,255,.8); border-radius:22px; background:rgba(255,255,255,.92); box-shadow:0 18px 48px rgba(31,41,55,.12); backdrop-filter:blur(18px); }
+.date-picker-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
+.date-picker-head button { width:36px; height:36px; border:0; border-radius:999px; background:#f3f4f6; color:#1f2937; display:flex; align-items:center; justify-content:center; }
+.date-picker-head strong { font-size:14px; color:#1f2937; }
+.date-week-row,.date-grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:5px; }
+.date-week-row span { text-align:center; color:#9ca3af; font-size:11px; font-weight:800; padding:4px 0; }
+.date-grid button { min-width:0; min-height:36px; border:0; border-radius:12px; background:transparent; color:#1f2937; font-size:13px; font-weight:800; }
+.date-grid button.muted { color:#c7cbd1; }
+.date-grid button.in-range { background:#eff6ff; color:#0757a8; }
+.date-grid button.selected { background:#1f2937; color:white; box-shadow:0 8px 18px rgba(31,41,55,.16); }
+.date-grid button.disabled { color:#d1d5db; opacity:.55; cursor:not-allowed; }
+.date-picker-hint { margin:10px 2px 0; color:#6b7280; font-size:12px; font-weight:700; }
 .mini-pill,.chip,.primary-btn,.secondary-btn,.download-btn { display:inline-flex; align-items:center; justify-content:center; gap:7px; border:0; border-radius:999px; font-weight:700; text-decoration:none; transition:.18s ease; }
 .mini-pill { padding:8px 12px; background:rgba(255,255,255,.65); color:#374151; font-size:12px; }
 .chip { padding:8px 12px; background:rgba(255,255,255,.65); color:#6b7280; font-size:12px; }
@@ -526,6 +634,7 @@ function fatigueLabel(value) {
 .stepper-box strong { min-width:20px; text-align:center; }
 .hero-mask { mask-image:linear-gradient(to left,#000 58%,transparent); }
 .download-btn { min-height:38px; padding:0 14px; background:#1f2937; color:white; font-size:12px; box-shadow:0 12px 28px rgba(0,0,0,.16); }
+.mobile-download-btn { display:none; width:100%; min-height:48px; align-items:center; justify-content:center; gap:8px; border:0; border-radius:999px; background:#1f2937; color:white; font-size:14px; font-weight:900; box-shadow:0 16px 36px rgba(31,41,55,.18); }
 .pill-blue,.pill-gray { border-radius:999px; padding:7px 10px; font-size:12px; font-weight:800; }
 .pill-blue { background:#eff6ff; color:#0757a8; }
 .pill-gray { background:rgba(255,255,255,.72); color:#1f2937; }
@@ -568,12 +677,22 @@ function fatigueLabel(value) {
 .download-days li em { color:#86868b; font-size:15px; font-style:normal; text-align:right; }
 .download-note { border-top:1px solid rgba(0,0,0,.07); padding-top:14px; font-weight:700; }
 @media (max-width:768px) {
+  main { padding-left:14px !important; padding-right:14px !important; }
+  .travel-form-panel { padding:20px !important; border-radius:28px !important; }
   .travel-output-panel { min-height:auto; }
   .empty-travel-card { min-height:560px; }
   .empty-travel-content { padding:28px; }
   .empty-travel-content h2 { font-size:30px; }
-  .hero-mask { position:relative; width:100%; height:180px; border-radius:22px; mask-image:none; }
+  .result-hero-card { display:flex !important; flex-direction:column; padding:0 !important; min-height:auto; gap:0; background:rgba(255,255,255,.78); }
+  .result-hero-image { position:relative !important; order:1; width:100% !important; height:230px !important; border-radius:0 0 28px 28px; opacity:1; }
+  .hero-mask { mask-image:none; }
+  .result-hero-copy { order:2; width:100%; max-width:none; padding:22px 22px 6px; }
+  .result-hero-copy h2 { font-size:28px; line-height:1.15; word-break:keep-all; overflow-wrap:break-word; }
+  .result-download-btn { display:none; }
+  .mobile-download-btn { display:flex; position:sticky; top:70px; z-index:25; margin:0 0 12px; }
   .slot-card { border-left:0; border-top:1px solid rgba(0,0,0,.08); padding:14px 0; }
   .slot-card:first-child { border-top:0; }
+  .date-range-trigger { grid-template-columns:1fr 20px 1fr; padding:10px; }
+  .date-grid button { min-height:40px; border-radius:14px; }
 }
 </style>

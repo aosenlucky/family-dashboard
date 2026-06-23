@@ -82,9 +82,10 @@ export default async function handler(req, res) {
 
     const apiKey = getDeepSeekApiKey()
     if (!apiKey) {
-      const fallback = await enrichPlanImages(buildMockPlan(input), input.destination || mockPlan.meta.destination)
-      fallback.meta.warnings = [...fallback.meta.warnings, '未找到 DEEPSEEK_API_KEY，当前返回示例数据。']
-      return res.status(200).json(fallback)
+      return res.status(500).json({
+        error: '没有找到 DEEPSEEK_API_KEY，真实行程无法生成。',
+        detail: '请在 Vercel 环境变量中配置 DEEPSEEK_API_KEY。示例数据只会在点击“示例看看”时返回。'
+      })
     }
 
     const normalizedInput = await prepareInputMaterials(input)
@@ -397,7 +398,13 @@ function translateImageTerm(value = '') {
     ['苏州', 'Suzhou China'],
     ['广州', 'Guangzhou China'],
     ['深圳', 'Shenzhen China'],
-    ['三亚', 'Sanya China']
+    ['三亚', 'Sanya China'],
+    ['曲阜', 'Qufu Shandong China Confucius Temple'],
+    ['孔庙', 'Temple of Confucius Qufu'],
+    ['孔府', 'Kong Family Mansion Qufu'],
+    ['孔林', 'Cemetery of Confucius Qufu'],
+    ['三孔', 'Qufu Three Confucian Sites'],
+    ['尼山', 'Nishan Qufu']
   ]
   const hit = dictionary.find(([key]) => text.includes(key))
   return hit?.[1] || text
