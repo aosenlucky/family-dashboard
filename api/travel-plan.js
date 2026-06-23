@@ -474,7 +474,7 @@ function getPlanLeadPlace(plan) {
 async function searchTravelImage(_query, destination, leadPlace) {
   const keywords = buildImageKeywords(destination, leadPlace)
   const query = `${keywords.join(' ')} travel landmark`
-  return await searchUnsplash(query) || await searchPexels(query) || await searchLoremFlickr(keywords, destination, leadPlace) || await searchWikipediaImage(leadPlace) || await searchWikipediaImage(destination)
+  return await searchUnsplash(query) || await searchPexels(query) || await searchWikipediaImage(leadPlace) || await searchWikipediaImage(destination)
 }
 
 function buildImageKeywords(destination, leadPlace) {
@@ -580,31 +580,6 @@ async function searchWikipediaImage(query) {
     } catch {}
   }
   return null
-}
-
-async function searchLoremFlickr(keywords, destination, leadPlace) {
-  const tags = toFlickrTags(keywords)
-  if (!tags) return null
-  return {
-    url: `https://loremflickr.com/1200/720/${tags}`,
-    alt: `${destination}${leadPlace}旅行照片`,
-    credit: 'Flickr public image search'
-  }
-}
-
-function toFlickrTags(keywords) {
-  const tags = []
-  for (const item of uniqueText(keywords)) {
-    const ascii = item
-      .normalize('NFKD')
-      .replace(/[^\w\s-]/g, ' ')
-      .replace(/-/g, '')
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((word) => word.length > 2 && !['and', 'the', 'with'].includes(word))
-    tags.push(...ascii)
-  }
-  return uniqueText(tags).slice(0, 6).join(',')
 }
 
 function extractMeta(html, name) {

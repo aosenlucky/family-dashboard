@@ -178,7 +178,7 @@
               <h2 class="text-2xl md:text-3xl font-semibold text-gray-900">{{ plan.meta.destination }} 旅行安排</h2>
               <p class="text-sm text-gray-500 mt-2">{{ plan.meta.dateRange }}</p>
             </div>
-            <img class="result-hero-image absolute right-0 top-0 h-full w-[48%] object-cover opacity-90 hero-mask" :src="activePlan.heroImageUrl" :alt="activePlan.heroImageAlt || activePlan.title" @error="useFamilyBg" />
+            <img class="result-hero-image absolute right-0 top-0 h-full w-[48%] object-cover opacity-90 hero-mask" :src="safeTravelImageUrl(activePlan.heroImageUrl)" :alt="activePlan.heroImageAlt || activePlan.title" @error="useFamilyBg" />
             <button class="download-btn result-download-btn relative z-10" :disabled="isDownloading" @click="downloadPlanCard">
               <i class="ph ph-download-simple"></i>{{ isDownloading ? '生成图片中' : '下载长图' }}
             </button>
@@ -187,13 +187,6 @@
           <button class="mobile-download-btn" :disabled="isDownloading" @click="downloadPlanCard">
             <i class="ph ph-download-simple"></i>{{ isDownloading ? '正在生成长图' : '导出这份行程长图' }}
           </button>
-
-          <div class="result-actions glass-card rounded-3xl p-3">
-            <button class="save-history-btn" :disabled="isSavingHistory" @click="saveCurrentPlan">
-              <i class="ph ph-check-circle"></i>{{ isSavingHistory ? '保存中...' : '这版OK，保存到历史' }}
-            </button>
-            <span v-if="saveStatus">{{ saveStatus }}</span>
-          </div>
 
           <div class="glass-card rounded-3xl p-4 flex flex-wrap gap-2">
             <span v-for="item in plan.meta.assumptions" :key="item" class="pill-blue">{{ item }}</span>
@@ -205,7 +198,7 @@
               <h3>按当天酒店来安排出发和回程</h3>
             </div>
             <div class="hotel-map-list">
-              <a v-for="stay in hotelStays" :key="stay.id" :href="baiduMapSearchUrl(stay.name)" target="_blank" :class="{ disabled: !stay.name }">
+              <a v-for="stay in hotelStays" :key="stay.id" :href="baiduMapSearchUrl(stay.name, plan.meta.destination)" target="_blank" rel="noopener noreferrer" :class="{ disabled: !stay.name }">
                 <span>{{ stay.startDate === stay.endDate ? stay.startDate : `${stay.startDate} 至 ${stay.endDate}` }}</span>
                 <strong>{{ stay.name || '未填写酒店' }}</strong>
                 <i class="ph ph-arrow-square-out"></i>
@@ -237,21 +230,25 @@
                 </div>
                 <p class="text-sm text-gray-500 leading-relaxed md:text-right max-w-md">{{ day.summary }}</p>
               </div>
-              <div class="grid grid-cols-1 md:grid-cols-5 gap-0 overflow-x-auto">
+              <div class="slots-list">
                 <div v-for="slot in day.slots" :key="`${day.day}-${slot.timeLabel}-${slot.placeName}`" class="slot-card">
-                  <div class="flex items-center justify-between gap-2">
-                    <span class="text-apple-blue text-xs font-bold">{{ slot.timeLabel }}</span>
-                    <span class="fatigue mini" :class="slot.fatigueLevel">{{ slot.fatigueLevel }}</span>
+                  <div class="slot-time">
+                    <span>{{ slot.timeLabel }}</span>
+                    <em>{{ slot.stayMinutes }} 分钟</em>
                   </div>
-                  <strong class="block text-sm text-gray-900 mt-3 mb-2 leading-snug">{{ slot.placeName }}</strong>
-                  <p class="text-xs text-gray-600 leading-relaxed">{{ slot.reason }}</p>
-                  <div class="space-y-1.5 text-[11px] text-gray-500 mt-3">
-                    <p><i class="ph ph-clock mr-1"></i>{{ slot.stayMinutes }} 分钟</p>
-                    <p><i class="ph ph-camera mr-1"></i>{{ slot.photoTips }}</p>
-                    <p><i class="ph ph-fork-knife mr-1"></i>{{ slot.foodTips }}</p>
-                    <p><b class="text-gray-800">家庭提醒：</b>{{ slot.familyFriendlyTips }}</p>
-                    <p><b class="text-gray-800">交通：</b>{{ slot.transportHint }}</p>
-                    <p><b class="text-gray-800">备选：</b>{{ slot.backupPlan }}</p>
+                  <div class="slot-main">
+                    <div class="slot-title-row">
+                      <strong>{{ slot.placeName }}</strong>
+                      <span class="fatigue mini" :class="slot.fatigueLevel">{{ fatigueLabel(slot.fatigueLevel) }}</span>
+                    </div>
+                    <p>{{ slot.reason }}</p>
+                    <div class="slot-detail-grid">
+                      <span><i class="ph ph-camera"></i>{{ slot.photoTips }}</span>
+                      <span><i class="ph ph-fork-knife"></i>{{ slot.foodTips }}</span>
+                      <span><b>家庭提醒：</b>{{ slot.familyFriendlyTips }}</span>
+                      <span><b>交通：</b>{{ slot.transportHint }}</span>
+                      <span><b>备选：</b>{{ slot.backupPlan }}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -260,6 +257,17 @@
               </footer>
             </section>
           </article>
+
+          <div class="result-actions glass-card rounded-3xl p-4">
+            <div>
+              <p>确认后会留在历史里</p>
+              <span v-if="saveStatus">{{ saveStatus }}</span>
+              <span v-else>行程满意后再保存，之后可以从左侧历史直接打开。</span>
+            </div>
+            <button class="save-history-btn" :disabled="isSavingHistory" @click="saveCurrentPlan">
+              <i class="ph ph-check-circle"></i>{{ isSavingHistory ? '保存中...' : '这版OK，保存到历史' }}
+            </button>
+          </div>
 
           <section class="glass-card rounded-3xl p-5">
             <h3 class="font-semibold text-gray-900 mb-3 flex items-center"><i class="ph ph-arrows-clockwise mr-2 text-apple-blue"></i>我帮你调整过的地方</h3>
@@ -299,7 +307,7 @@
                   <h2>{{ plan.meta.destination }} · {{ variantLabel[activePlan.variant] }}</h2>
                   <span>{{ plan.meta.dateRange }}</span>
                 </header>
-                <img class="download-hero" :src="activePlan.heroImageUrl" :alt="activePlan.heroImageAlt || activePlan.title" @error="useFamilyBg" />
+                <img class="download-hero" :src="safeTravelImageUrl(activePlan.heroImageUrl)" :alt="activePlan.heroImageAlt || activePlan.title" @error="useFamilyBg" />
                 <section class="download-summary">
                   <strong>{{ activePlan.title }}</strong>
                   <p>{{ activePlan.positioning }}</p>
@@ -556,8 +564,15 @@ function structuredCloneSafe(value) {
 function useFamilyBg(event) {
   event.currentTarget.src = '/bg.jpg'
 }
-function baiduMapSearchUrl(query) {
-  return `https://map.baidu.com/search/${encodeURIComponent((query || '').trim())}`
+function safeTravelImageUrl(url) {
+  const value = String(url || '').trim()
+  if (!value || /loremflickr\.com/i.test(value)) return '/bg.jpg'
+  return value
+}
+function baiduMapSearchUrl(query, context = '') {
+  const keyword = [context, query].map(item => String(item || '').trim()).filter(Boolean).join(' ')
+  const encoded = encodeURIComponent(keyword)
+  return `https://map.baidu.com/search/${encoded}/?querytype=s&wd=${encoded}`
 }
 function extractLinksFromText(text) {
   return [...new Set(String(text || '').match(/https?:\/\/[^\s，。；、]+/g) || [])]
@@ -716,9 +731,10 @@ function fatigueLabel(value) {
 .hero-mask { mask-image:linear-gradient(to left,#000 58%,transparent); }
 .download-btn { min-height:38px; padding:0 14px; background:#1f2937; color:white; font-size:12px; box-shadow:0 12px 28px rgba(0,0,0,.16); }
 .mobile-download-btn { display:none; width:100%; min-height:48px; align-items:center; justify-content:center; gap:8px; border:0; border-radius:999px; background:#1f2937; color:white; font-size:14px; font-weight:900; box-shadow:0 16px 36px rgba(31,41,55,.18); }
-.result-actions { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-.result-actions span { color:#0757a8; font-size:12px; font-weight:800; }
-.save-history-btn { min-height:42px; display:inline-flex; align-items:center; justify-content:center; gap:8px; border:0; border-radius:999px; background:#fff; color:#1f2937; padding:0 16px; font-size:13px; font-weight:900; box-shadow:0 10px 24px rgba(31,41,55,.08); }
+.result-actions { display:flex; align-items:center; justify-content:space-between; gap:16px; border:1px solid rgba(255,255,255,.72); background:rgba(255,255,255,.66); }
+.result-actions p { margin:0 0 4px; color:#1f2937; font-size:14px; font-weight:900; }
+.result-actions span { display:block; color:#6b7280; font-size:12px; font-weight:700; line-height:1.5; }
+.save-history-btn { min-height:42px; flex:none; display:inline-flex; align-items:center; justify-content:center; gap:8px; border:0; border-radius:999px; background:#1f2937; color:#fff; padding:0 16px; font-size:13px; font-weight:900; box-shadow:0 12px 28px rgba(31,41,55,.16); }
 .save-history-btn:disabled { opacity:.55; cursor:not-allowed; }
 .hotel-map-card { display:grid; grid-template-columns:minmax(0,220px) 1fr; gap:14px; align-items:start; }
 .hotel-map-card p { margin:0 0 4px; color:#0066cc; font-size:11px; font-weight:900; }
@@ -741,8 +757,19 @@ function fatigueLabel(value) {
 .fatigue.low { background:#eaf8f1; color:#12805c; }
 .fatigue.medium { background:#fff4df; color:#a56315; }
 .fatigue.high { background:#fff0ee; color:#d92d20; }
-.slot-card { min-width:168px; border-left:1px solid rgba(0,0,0,.08); padding:4px 15px 0; }
-.slot-card:first-child { border-left:0; padding-left:0; }
+.slots-list { display:grid; gap:12px; }
+.slot-card { display:grid; grid-template-columns:86px minmax(0,1fr); gap:16px; padding:16px; border-radius:22px; background:rgba(255,255,255,.58); border:1px solid rgba(255,255,255,.76); box-shadow:inset 0 0 0 1px rgba(0,0,0,.025); }
+.slot-time { display:flex; flex-direction:column; gap:7px; align-items:flex-start; }
+.slot-time span { color:#0066cc; font-size:13px; font-weight:900; }
+.slot-time em { color:#6b7280; font-size:11px; font-style:normal; font-weight:800; }
+.slot-main { min-width:0; }
+.slot-title-row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:7px; }
+.slot-title-row strong { color:#1f2937; font-size:16px; line-height:1.35; }
+.slot-main > p { margin:0 0 12px; color:#4b5563; font-size:13px; line-height:1.65; }
+.slot-detail-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px 12px; color:#6b7280; font-size:12px; line-height:1.55; }
+.slot-detail-grid span { min-width:0; }
+.slot-detail-grid i { margin-right:5px; color:#0066cc; }
+.slot-detail-grid b { color:#1f2937; }
 .priority-hint { display:flex; align-items:center; gap:5px; margin:0 0 12px; color:#6b7280; font-size:12px; font-weight:800; }
 .decision-list { margin:0; padding-left:18px; color:#6b7280; font-size:13px; line-height:1.65; }
 .download-stage { position:fixed; top:0; left:-12000px; width:1080px; pointer-events:none; }
@@ -791,8 +818,10 @@ function fatigueLabel(value) {
   .hotel-map-list span { grid-column:1 / -1; }
   .save-history-btn { width:100%; }
   .history-list button { align-items:flex-start; flex-direction:column; gap:4px; }
-  .slot-card { border-left:0; border-top:1px solid rgba(0,0,0,.08); padding:14px 0; }
-  .slot-card:first-child { border-top:0; }
+  .slot-card { grid-template-columns:1fr; gap:10px; padding:15px; }
+  .slot-time { flex-direction:row; align-items:center; justify-content:space-between; }
+  .slot-title-row { align-items:flex-start; }
+  .slot-detail-grid { grid-template-columns:1fr; }
   .date-range-trigger { grid-template-columns:1fr 20px 1fr; padding:10px; }
   .date-grid button { min-height:40px; border-radius:14px; }
 }
