@@ -1,11 +1,12 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { jsonrepair } from 'jsonrepair'
 
 const MODEL_NAME = process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro'
 const REQUEST_TIMEOUT_MS = 7000
-const DEEPSEEK_TIMEOUT_MS = Number(process.env.TRAVEL_DEEPSEEK_TIMEOUT_MS || 6500)
-const IMAGE_REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_IMAGE_TIMEOUT_MS || 1200)
-const SHOULD_FETCH_REFERENCE_LINKS = process.env.TRAVEL_FETCH_LINKS === 'true'
+const DEEPSEEK_TIMEOUT_MS = Number(process.env.TRAVEL_DEEPSEEK_TIMEOUT_MS || 55000)
+const IMAGE_REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_IMAGE_TIMEOUT_MS || 4000)
+const SHOULD_FETCH_REFERENCE_LINKS = process.env.TRAVEL_FETCH_LINKS !== 'false'
 
 export const config = {
   maxDuration: 60
@@ -104,8 +105,9 @@ export default async function handler(req, res) {
           { role: 'user', content: buildTravelPlannerPrompt(normalizedInput) }
         ],
         temperature: 0.35,
-        max_tokens: 6000,
-        reasoning_effort: process.env.TRAVEL_REASONING_EFFORT || 'medium',
+        max_tokens: Number(process.env.TRAVEL_MAX_TOKENS || 9000),
+        reasoning_effort: process.env.TRAVEL_REASONING_EFFORT || 'high',
+        thinking: { type: 'enabled' },
         response_format: { type: 'json_object' }
       })
     }, DEEPSEEK_TIMEOUT_MS)
@@ -133,14 +135,27 @@ export default async function handler(req, res) {
 
 function parseJsonContent(content) {
   const clean = String(content || '').trim().replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim()
-  try {
-    return JSON.parse(clean)
-  } catch {
-    const start = clean.indexOf('{')
-    const end = clean.lastIndexOf('}')
-    if (start >= 0 && end > start) return JSON.parse(clean.slice(start, end + 1))
-    throw new Error('DeepSeek 返回内容不是可解析的 JSON。')
+  const candidates = [clean, sliceJsonObject(clean)].filter(Boolean)
+  const errors = []
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate)
+    } catch (error) {
+      errors.push(error)
+      try {
+        return JSON.parse(jsonrepair(candidate))
+      } catch (repairError) {
+        errors.push(repairError)
+      }
+    }
   }
+  throw new Error(`DeepSeek 返回内容不是可解析的 JSON：${errors.at(-1)?.message || 'unknown parse error'}`)
+}
+
+function sliceJsonObject(value) {
+  const start = value.indexOf('{')
+  const end = value.lastIndexOf('}')
+  return start >= 0 && end > start ? value.slice(start, end + 1) : ''
 }
 
 function normalizePlan(plan, input = {}) {
@@ -152,7 +167,7 @@ function normalizePlan(plan, input = {}) {
   return {
     ...safePlan,
     meta: {
-      destination: meta.destination || input.destination || '目的地',
+      destination: input.destination || meta.destination || '目的地',
       dateRange: meta.dateRange || `${input.startDate || ''} 至 ${input.endDate || ''}`.trim(),
       generatedAt: meta.generatedAt || new Date().toISOString(),
       assumptions: Array.isArray(meta.assumptions) ? meta.assumptions : [],
@@ -270,7 +285,7 @@ async function prepareInputMaterials(input) {
     : referenceUrls.map((url) => ({
         url,
         status: 'linked',
-        error: '为避免 Vercel 函数超时，当前默认不抓取链接正文；请把关键攻略文字粘贴到输入框，AI 会优先使用。'
+        error: '当前配置为不抓取链接正文；请把关键攻略文字粘贴到输入框，AI 会优先使用。'
       }))
   if (!referenceMaterials.length) return input
   return {
@@ -280,7 +295,7 @@ async function prepareInputMaterials(input) {
       input.strategyText?.trim(),
       SHOULD_FETCH_REFERENCE_LINKS
         ? '以下是服务端解析参考链接得到的材料。请注意优先级低于用户直接粘贴的自制攻略文本，但高于你自行补充的常识信息：'
-        : '以下是用户提供的参考链接。当前部署默认不抓取链接正文，以避免生成超时；请只把这些链接作为参考线索，不要声称已经读取链接正文：',
+        : '以下是用户提供的参考链接。当前配置未抓取链接正文；请只把这些链接作为参考线索，不要声称已经读取链接正文：',
       referenceMaterials.map(formatReferenceMaterial).join('\n\n')
     ].filter(Boolean).join('\n\n')
   }
@@ -311,8 +326,16 @@ async function resolveReferenceLink(url) {
     const html = await response.text()
     const title = decodeHtml(extractMeta(html, 'og:title') || extractTag(html, 'title') || '')
     const description = decodeHtml(extractMeta(html, 'description') || extractMeta(html, 'og:description') || '')
-    const content = decodeHtml(stripHtml(html)).slice(0, 2400)
-    return { url, resolvedUrl: response.url, title: title.slice(0, 240), description: description.slice(0, 500), content, status: response.ok ? 'ok' : 'partial', error: response.ok ? undefined : `HTTP ${response.status}` }
+    const content = decodeHtml(extractReadableContent(html)).slice(0, 4200)
+    return {
+      url,
+      resolvedUrl: response.url,
+      title: title.slice(0, 240),
+      description: description.slice(0, 700),
+      content,
+      status: response.ok ? 'ok' : 'partial',
+      error: response.ok ? undefined : `HTTP ${response.status}`
+    }
   } catch (error) {
     return { url, status: 'failed', error: error instanceof Error ? error.message : String(error) }
   }
@@ -327,6 +350,43 @@ function formatReferenceMaterial(material) {
     material.content ? `正文摘录：${material.content}` : '',
     material.error ? `解析状态：${material.error}` : ''
   ].filter(Boolean).join('\n')
+}
+
+function extractReadableContent(html) {
+  return uniqueText([
+    extractJsonLdText(html),
+    extractMetaStateText(html),
+    stripHtml(html)
+  ]).join('\n')
+}
+
+function extractJsonLdText(html) {
+  return [...html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)]
+    .map((match) => normalizeScriptText(match[1]))
+    .join('\n')
+}
+
+function extractMetaStateText(html) {
+  const usefulPattern = /(?:note|detail|feed|share|initial|state|apollo|ld\+json)/i
+  return [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)]
+    .filter((match) => usefulPattern.test(match[0]) || /title|desc|description|tag|poi|location|address/i.test(match[1]))
+    .map((match) => match[1])
+    .slice(0, 4)
+    .map(normalizeScriptText)
+    .join('\n')
+}
+
+function normalizeScriptText(value) {
+  return String(value || '')
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/\\"/g, '"')
+    .replace(/\\n|\\r|\\t/g, ' ')
+    .replace(/https?:\/\/[^\s"'<>]+/g, ' ')
+    .replace(/[{}[\](),;:=|<>]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 3200)
 }
 
 function buildTravelPlannerPrompt(input) {
@@ -348,14 +408,15 @@ ${JSON.stringify(input, null, 2)}
 
 规划要求：
 1. 只输出严格 JSON，不要 Markdown，不要解释。
-2. 只生成用户勾选的版本：classic、photoFood、familyRelaxed。
-3. 每套行程按天展示，每天必须包含上午、午餐、下午、晚餐、晚上 5 个 slot。
-4. 每个地点必须包含推荐理由、停留时间、拍照建议、美食建议、家庭友好提醒、备选方案、交通提示、疲劳等级。
-5. 信息优先级必须严格遵守：用户直接粘贴的攻略文本 > 服务端解析出的参考链接内容 > 用户提供但未解析正文的链接线索 > 用户目的地和偏好 > AI 根据常识补充的信息。
-6. hotelStays 表示多日旅行的酒店安排。每天必须根据该日期对应酒店规划出发、回程和交通提示；如果只有一个酒店，则默认全程相同。
-7. 用户 feedback 可以是自然语言精确编辑指令，例如“把 Day 2 上午清水寺改成伏见稻荷”。若 previousPlan 存在，必须尽量保留未被用户点名修改的内容。
-8. priority 是候选点优先级，1 最低、5 最高。不要把它当作时间顺序。
-9. heroImageUrl 可以留空，服务端会用真实图库搜索补图；heroImageAlt 请写行程核心景点描述。
+2. 目的地是硬约束，最终 meta.destination、标题、地点池和每日行程都必须围绕用户输入的 destination：${input.destination}。如果参考链接正文与该目的地不一致，必须忽略冲突内容，并在 warnings 或 rejectedItems 里说明“参考链接疑似与目的地不一致”。
+3. 只生成用户勾选的版本：classic、photoFood、familyRelaxed。
+4. 每套行程按天展示，每天必须包含上午、午餐、下午、晚餐、晚上 5 个 slot。
+5. 每个地点必须包含推荐理由、停留时间、拍照建议、美食建议、家庭友好提醒、备选方案、交通提示、疲劳等级。
+6. 信息优先级必须严格遵守：用户直接填写的目的地/日期/酒店/反馈 > 用户直接粘贴的攻略文本 > 服务端解析出的参考链接内容 > 用户提供但未解析正文的链接线索 > AI 根据常识补充的信息。
+7. hotelStays 表示多日旅行的酒店安排。每天必须根据该日期对应酒店规划出发、回程和交通提示；如果只有一个酒店，则默认全程相同。
+8. 用户 feedback 可以是自然语言精确编辑指令，例如“把 Day 2 上午清水寺改成伏见稻荷”。若 previousPlan 存在，必须尽量保留未被用户点名修改的内容。
+9. priority 是候选点优先级，1 最低、5 最高。不要把它当作时间顺序。
+10. heroImageUrl 可以留空，服务端会用真实图库搜索补图；heroImageAlt 请写行程核心景点描述。
 
 JSON Schema 形状：
 {
