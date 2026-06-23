@@ -1,11 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { createWorker } from 'tesseract.js'
 
-const MODEL_NAME = 'deepseek-v4-pro'
-const OCR_TIMEOUT_MS = 45000
+const MODEL_NAME = process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro'
 const REQUEST_TIMEOUT_MS = 7000
-const DEEPSEEK_TIMEOUT_MS = 55000
+const DEEPSEEK_TIMEOUT_MS = Number(process.env.TRAVEL_DEEPSEEK_TIMEOUT_MS || 6500)
+const IMAGE_REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_IMAGE_TIMEOUT_MS || 1200)
+const SHOULD_FETCH_REFERENCE_LINKS = process.env.TRAVEL_FETCH_LINKS === 'true'
 
 export const config = {
   maxDuration: 60
@@ -103,9 +103,9 @@ export default async function handler(req, res) {
           { role: 'system', content: '你是一个只返回严格 JSON 的家庭旅行规划 API。不要输出 Markdown 代码块。' },
           { role: 'user', content: buildTravelPlannerPrompt(normalizedInput) }
         ],
-        temperature: 0.45,
-        reasoning_effort: 'high',
-        thinking: { type: 'enabled' },
+        temperature: 0.35,
+        max_tokens: 6000,
+        reasoning_effort: process.env.TRAVEL_REASONING_EFFORT || 'medium',
         response_format: { type: 'json_object' }
       })
     }, DEEPSEEK_TIMEOUT_MS)
@@ -125,7 +125,7 @@ export default async function handler(req, res) {
     const message = error instanceof Error ? error.message : String(error)
     const isTimeout = /abort|timeout|timed out/i.test(message)
     return res.status(isTimeout ? 504 : 500).json({
-      error: isTimeout ? 'DeepSeek 生成超时，请稍后重试。' : '生成行程失败。',
+      error: isTimeout ? 'DeepSeek 生成超时，请减少行程天数或先粘贴关键攻略文字后重试。' : '生成行程失败。',
       detail: message
     })
   }
@@ -264,62 +264,38 @@ function stripQuotes(value) {
 }
 
 async function prepareInputMaterials(input) {
-  const withOcr = await withImageOcrText(input)
-  const referenceMaterials = await resolveReferenceLinks(withOcr.referenceLinks || [])
-  if (!referenceMaterials.length) return withOcr
+  const referenceUrls = uniqueUrls([...(input.referenceLinks || []), ...extractLinksFromText(input.strategyText)])
+  const referenceMaterials = SHOULD_FETCH_REFERENCE_LINKS
+    ? await resolveReferenceLinks(referenceUrls)
+    : referenceUrls.map((url) => ({
+        url,
+        status: 'linked',
+        error: '为避免 Vercel 函数超时，当前默认不抓取链接正文；请把关键攻略文字粘贴到输入框，AI 会优先使用。'
+      }))
+  if (!referenceMaterials.length) return input
   return {
-    ...withOcr,
+    ...input,
     referenceMaterials,
     strategyText: [
-      withOcr.strategyText?.trim(),
-      '以下是服务端解析参考链接得到的材料。请注意优先级低于用户直接粘贴的自制攻略文本，但高于你自行补充的常识信息：',
+      input.strategyText?.trim(),
+      SHOULD_FETCH_REFERENCE_LINKS
+        ? '以下是服务端解析参考链接得到的材料。请注意优先级低于用户直接粘贴的自制攻略文本，但高于你自行补充的常识信息：'
+        : '以下是用户提供的参考链接。当前部署默认不抓取链接正文，以避免生成超时；请只把这些链接作为参考线索，不要声称已经读取链接正文：',
       referenceMaterials.map(formatReferenceMaterial).join('\n\n')
     ].filter(Boolean).join('\n\n')
   }
 }
 
-async function withImageOcrText(input) {
-  if (!input.strategyImages?.length) return input
-  const imageTexts = await Promise.all(input.strategyImages.map(async (image, index) => {
-    try {
-      const text = await recognizeStrategyImage(dataUrlToBuffer(image.dataUrl))
-      return text ? `【攻略图片 ${index + 1}：${image.name}】\n${text}` : `【攻略图片 ${index + 1}：${image.name}】未识别出清晰文字。`
-    } catch (error) {
-      return `【攻略图片 ${index + 1}：${image.name}】OCR 识别失败：${error instanceof Error ? error.message : String(error)}`
-    }
-  }))
-  return {
-    ...input,
-    strategyImages: [],
-    strategyText: [
-      input.strategyText?.trim(),
-      imageTexts.length ? `以下是用户上传攻略图片的 OCR 识别结果，请作为攻略材料解析，若识别结果明显有误请谨慎处理：\n${imageTexts.join('\n\n')}` : ''
-    ].filter(Boolean).join('\n\n')
-  }
+function extractLinksFromText(text) {
+  return String(text || '').match(/https?:\/\/[^\s，。；、]+/g) || []
 }
 
-function dataUrlToBuffer(dataUrl) {
-  const [, payload = ''] = dataUrl.split(',')
-  return Buffer.from(payload, 'base64')
-}
-
-async function recognizeStrategyImage(buffer) {
-  return withTimeout(async () => {
-    const worker = await createWorker(['chi_sim', 'eng'], 1, {
-      workerPath: join(process.cwd(), 'node_modules', 'tesseract.js', 'src', 'worker-script', 'node', 'index.js')
-    })
-    try {
-      const result = await worker.recognize(buffer)
-      return result.data.text.trim()
-    } finally {
-      await worker.terminate()
-    }
-  }, OCR_TIMEOUT_MS)
+function uniqueUrls(urls) {
+  return [...new Set(urls.map((url) => String(url || '').trim()).filter(Boolean))].slice(0, 6)
 }
 
 async function resolveReferenceLinks(urls) {
-  const uniqueUrls = [...new Set(urls.map((url) => url.trim()).filter(Boolean))].slice(0, 6)
-  return Promise.all(uniqueUrls.map(resolveReferenceLink))
+  return Promise.all(uniqueUrls(urls).map(resolveReferenceLink))
 }
 
 async function resolveReferenceLink(url) {
@@ -375,7 +351,7 @@ ${JSON.stringify(input, null, 2)}
 2. 只生成用户勾选的版本：classic、photoFood、familyRelaxed。
 3. 每套行程按天展示，每天必须包含上午、午餐、下午、晚餐、晚上 5 个 slot。
 4. 每个地点必须包含推荐理由、停留时间、拍照建议、美食建议、家庭友好提醒、备选方案、交通提示、疲劳等级。
-5. 信息优先级必须严格遵守：自制攻略文本/图片 OCR > 服务端解析出的参考链接内容 > 用户目的地和偏好 > AI 根据常识补充的信息。
+5. 信息优先级必须严格遵守：用户直接粘贴的攻略文本 > 服务端解析出的参考链接内容 > 用户提供但未解析正文的链接线索 > 用户目的地和偏好 > AI 根据常识补充的信息。
 6. hotelStays 表示多日旅行的酒店安排。每天必须根据该日期对应酒店规划出发、回程和交通提示；如果只有一个酒店，则默认全程相同。
 7. 用户 feedback 可以是自然语言精确编辑指令，例如“把 Day 2 上午清水寺改成伏见稻荷”。若 previousPlan 存在，必须尽量保留未被用户点名修改的内容。
 8. priority 是候选点优先级，1 最低、5 最高。不要把它当作时间顺序。
@@ -503,7 +479,7 @@ async function searchUnsplash(query) {
   if (!key) return null
   try {
     const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&orientation=landscape&per_page=1&content_filter=high`
-    const response = await fetchWithTimeout(url, { headers: { Authorization: `Client-ID ${key}` } })
+    const response = await fetchWithTimeout(url, { headers: { Authorization: `Client-ID ${key}` } }, IMAGE_REQUEST_TIMEOUT_MS)
     if (!response.ok) return null
     const data = await response.json()
     const photo = data.results?.[0]
@@ -518,7 +494,7 @@ async function searchPexels(query) {
   if (!key) return null
   try {
     const url = `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&orientation=landscape&per_page=1&locale=zh-CN`
-    const response = await fetchWithTimeout(url, { headers: { Authorization: key } })
+    const response = await fetchWithTimeout(url, { headers: { Authorization: key } }, IMAGE_REQUEST_TIMEOUT_MS)
     if (!response.ok) return null
     const data = await response.json()
     const photo = data.photos?.[0]
@@ -536,7 +512,7 @@ async function searchWikipediaImage(query) {
   ]
   for (const endpoint of endpoints) {
     try {
-      const response = await fetchWithTimeout(endpoint, { headers: { 'User-Agent': 'family-travel-planner/1.0' } }, 4000)
+      const response = await fetchWithTimeout(endpoint, { headers: { 'User-Agent': 'family-travel-planner/1.0' } }, IMAGE_REQUEST_TIMEOUT_MS)
       if (!response.ok) continue
       const data = await response.json()
       if (data.thumbnail?.source) return { url: data.thumbnail.source.replace(/\/\d+px-/, '/1200px-'), alt: data.title || query, credit: 'Wikipedia' }
@@ -598,19 +574,5 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = REQUEST_TIMEOUT_M
     return await fetch(url, { ...options, signal: controller.signal })
   } finally {
     clearTimeout(timer)
-  }
-}
-
-async function withTimeout(task, timeoutMs) {
-  let timer
-  try {
-    return await Promise.race([
-      task(),
-      new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`OCR 识别超过 ${Math.round(timeoutMs / 1000)} 秒，已跳过该图片。`)), timeoutMs)
-      })
-    ])
-  } finally {
-    if (timer) clearTimeout(timer)
   }
 }

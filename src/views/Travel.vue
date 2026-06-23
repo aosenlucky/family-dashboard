@@ -75,21 +75,15 @@
           <input v-model="form.hotelArea" class="apple-input" placeholder="输入具体酒店名称" />
         </label>
         <div class="flex flex-wrap gap-2 mb-4">
-          <a :href="baiduMapSearchUrl(form.hotelArea)" target="_blank" class="mini-pill" :class="{ 'pointer-events-none opacity-50': !form.hotelArea.trim() }">
-            <i class="ph ph-arrow-square-out"></i> 百度地图
-          </a>
           <button class="mini-pill" :class="{ 'bg-blue-50 text-apple-blue': useDailyHotels }" @click="useDailyHotels = !useDailyHotels">
             <i class="ph ph-buildings"></i> {{ useDailyHotels ? '按日期设置中' : '多酒店/换酒店' }}
           </button>
         </div>
 
         <div v-if="useDailyHotels" class="space-y-2 mb-4">
-          <div v-for="date in tripDates" :key="date" class="grid grid-cols-[92px_1fr_34px] gap-2 items-center bg-white/45 rounded-2xl p-2">
+          <div v-for="date in tripDates" :key="date" class="grid grid-cols-[92px_1fr] gap-2 items-center bg-white/45 rounded-2xl p-2">
             <span class="text-[11px] font-semibold text-gray-500">{{ date }}</span>
             <input v-model="dailyHotels[date]" class="apple-input !py-2" :placeholder="form.hotelArea || '默认酒店'" />
-            <a :href="baiduMapSearchUrl(dailyHotels[date] || form.hotelArea)" target="_blank" class="w-8 h-8 rounded-full bg-white flex items-center justify-center text-gray-600" :class="{ 'pointer-events-none opacity-40': !(dailyHotels[date] || form.hotelArea).trim() }">
-              <i class="ph ph-arrow-square-out"></i>
-            </a>
           </div>
         </div>
 
@@ -135,27 +129,8 @@
         </div>
 
         <label class="field-label">
-          <span>已经收藏的攻略</span>
-          <textarea v-model="form.strategyText" rows="5" class="apple-input resize-y" placeholder="粘贴小红书攻略、地点清单、餐厅备注、避坑提醒..." />
-        </label>
-
-        <div class="section-title">攻略截图</div>
-        <label class="upload-box">
-          <input type="file" accept="image/*" multiple class="hidden" @change="handleImageUpload" />
-          <i class="ph ph-image-square text-lg"></i>
-          <span>上传截图或地图</span>
-          <small>最多 6 张，单张 4MB 内</small>
-        </label>
-        <div v-if="strategyImages.length" class="grid grid-cols-3 gap-2 mb-4">
-          <div v-for="image in strategyImages" :key="image.id" class="image-thumb">
-            <img :src="image.dataUrl" :alt="image.name" />
-            <button @click="removeImage(image.id)"><i class="ph ph-trash"></i></button>
-          </div>
-        </div>
-
-        <label class="field-label">
-          <span>参考链接</span>
-          <textarea v-model="referenceLinksText" rows="3" class="apple-input resize-y" placeholder="每行一个链接，支持小红书短链解析" />
+          <span>收藏的攻略和参考链接</span>
+          <textarea v-model="form.strategyText" rows="7" class="apple-input resize-y" placeholder="粘贴你收藏的攻略、地点清单、餐厅备注、避坑提醒；也可以直接放小红书/网页链接。" />
         </label>
 
         <label class="field-label">
@@ -167,7 +142,7 @@
           <span>{{ form.travelers.adults }} 成人 · {{ form.travelers.children }} 儿童 · {{ form.travelers.seniors }} 长辈</span>
           <span>酒店：{{ useDailyHotels ? `${hotelStays.length} 天分别设置` : form.hotelArea }}</span>
           <span>版本：{{ selectedVariantLabel }}</span>
-          <span>攻略图片：{{ strategyImages.length ? `${strategyImages.length} 张` : '未上传' }}</span>
+          <span>攻略来源：{{ extractLinksFromText(form.strategyText).length ? '文字 + 链接' : form.strategyText.trim() ? '文字' : '未填写' }}</span>
         </div>
 
         <div class="flex flex-wrap gap-3 mt-5">
@@ -222,6 +197,20 @@
 
           <div class="glass-card rounded-3xl p-4 flex flex-wrap gap-2">
             <span v-for="item in plan.meta.assumptions" :key="item" class="pill-blue">{{ item }}</span>
+          </div>
+
+          <div v-if="hotelStays.length" class="hotel-map-card glass-card rounded-3xl p-4">
+            <div>
+              <p>住在哪里</p>
+              <h3>按当天酒店来安排出发和回程</h3>
+            </div>
+            <div class="hotel-map-list">
+              <a v-for="stay in hotelStays" :key="stay.id" :href="baiduMapSearchUrl(stay.name)" target="_blank" :class="{ disabled: !stay.name }">
+                <span>{{ stay.startDate === stay.endDate ? stay.startDate : `${stay.startDate} 至 ${stay.endDate}` }}</span>
+                <strong>{{ stay.name || '未填写酒店' }}</strong>
+                <i class="ph ph-arrow-square-out"></i>
+              </a>
+            </div>
           </div>
 
           <div class="glass-card rounded-3xl p-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -369,8 +358,6 @@ const scenerySlogans = [
   { title: '自由有时候很简单，就是今天可以往远处走。', body: '把想去的地方放进地图，也把家人的体力、胃口和小脾气一起放进去。舒服地出门，比完美打卡更重要。' },
   { title: '我们把生活带上路，也把路上的光带回家。', body: '旅行不只是换一个地方睡觉，它会让普通的一天多一点开阔，也让一家人的记忆多一个共同坐标。' }
 ]
-const maxImages = 6
-const maxImageSize = 4 * 1024 * 1024
 const historyStorageKey = 'family_travel_history_v1'
 
 const form = ref({
@@ -388,8 +375,6 @@ const form = ref({
 })
 const useDailyHotels = ref(false)
 const dailyHotels = ref({})
-const strategyImages = ref([])
-const referenceLinksText = ref('')
 const variantMenuOpen = ref(false)
 const datePickerOpen = ref(false)
 const datePickingStep = ref('start')
@@ -446,8 +431,7 @@ async function generate(useMock = false) {
       body: JSON.stringify({
         ...form.value,
         hotelStays: hotelStays.value,
-        strategyImages: strategyImages.value,
-        referenceLinks: referenceLinksText.value.split(/\r?\n/).map(item => item.trim()).filter(Boolean),
+        referenceLinks: extractLinksFromText(form.value.strategyText),
         previousPlan: form.value.feedback ? plan.value || undefined : undefined,
         useMock
       })
@@ -489,29 +473,6 @@ function toggleVariant(value) {
 function setTraveler(key, delta) {
   form.value.travelers[key] = Math.max(0, Number(form.value.travelers[key] || 0) + delta)
 }
-async function handleImageUpload(event) {
-  const files = Array.from(event.target.files || []).filter(file => file.type.startsWith('image/')).slice(0, maxImages - strategyImages.value.length)
-  event.target.value = ''
-  if (!files.length) return
-  const oversized = files.find(file => file.size > maxImageSize)
-  if (oversized) {
-    error.value = `${oversized.name} 超过 4MB，请先压缩后再上传。`
-    return
-  }
-  const images = await Promise.all(files.map(fileToStrategyImage))
-  strategyImages.value.push(...images)
-}
-function removeImage(id) {
-  strategyImages.value = strategyImages.value.filter(image => image.id !== id)
-}
-function fileToStrategyImage(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve({ id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`, name: file.name, mimeType: file.type, dataUrl: String(reader.result) })
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(file)
-  })
-}
 async function downloadPlanCard() {
   if (!downloadRef.value) return
   isDownloading.value = true
@@ -541,8 +502,7 @@ function saveCurrentPlan() {
       plan: structuredCloneSafe(plan.value),
       form: structuredCloneSafe({
         ...form.value,
-        hotelStays: hotelStays.value,
-        referenceLinksText: referenceLinksText.value
+        hotelStays: hotelStays.value
       })
     }
     const next = [item, ...travelHistory.value.filter((history) => history.destination !== item.destination || history.dateRange !== item.dateRange)].slice(0, 12)
@@ -567,7 +527,9 @@ function openHistoryPlan(item) {
       interests: Array.isArray(item.form.interests) ? item.form.interests : form.value.interests,
       selectedVariants: Array.isArray(item.form.selectedVariants) ? item.form.selectedVariants : form.value.selectedVariants
     }
-    referenceLinksText.value = item.form.referenceLinksText || ''
+    if (item.form.referenceLinksText && !form.value.strategyText.includes(item.form.referenceLinksText)) {
+      form.value.strategyText = [form.value.strategyText, item.form.referenceLinksText].filter(Boolean).join('\n')
+    }
   }
   error.value = ''
   saveStatus.value = '已打开保存过的行程。'
@@ -596,6 +558,9 @@ function useFamilyBg(event) {
 }
 function baiduMapSearchUrl(query) {
   return `https://map.baidu.com/search/${encodeURIComponent((query || '').trim())}`
+}
+function extractLinksFromText(text) {
+  return [...new Set(String(text || '').match(/https?:\/\/[^\s，。；、]+/g) || [])]
 }
 function todayString() {
   return formatDateInputValue(new Date())
@@ -737,11 +702,6 @@ function fatigueLabel(value) {
 .variant-option.active { color:#0066cc; background:#fff; }
 .variant-option span { display:flex; align-items:center; gap:6px; font-weight:800; }
 .variant-option small { color:#6b7280; font-size:12px; }
-.upload-box { display:flex; align-items:center; gap:9px; margin:8px 0 12px; padding:13px; border-radius:20px; border:1px dashed rgba(0,102,204,.28); background:rgba(239,246,255,.62); color:#0757a8; font-size:12px; font-weight:800; cursor:pointer; }
-.upload-box small { margin-left:auto; color:#6b7280; }
-.image-thumb { position:relative; overflow:hidden; border-radius:16px; background:#fff; }
-.image-thumb img { width:100%; aspect-ratio:4/3; object-fit:cover; display:block; }
-.image-thumb button { position:absolute; right:6px; bottom:6px; width:26px; height:26px; border:0; border-radius:999px; background:#fff0ee; color:#d92d20; display:flex; align-items:center; justify-content:center; }
 .summary-box { display:grid; gap:6px; padding:13px; border-radius:20px; background:rgba(239,246,255,.75); color:#0757a8; font-size:12px; font-weight:800; }
 .loading-note { display:flex; align-items:center; gap:8px; margin-top:12px; border-radius:18px; padding:11px 12px; background:rgba(255,255,255,.72); color:#6b7280; font-size:12px; font-weight:800; line-height:1.5; }
 .loading-note i { color:#0066cc; animation:travel-spin 1s linear infinite; }
@@ -760,6 +720,15 @@ function fatigueLabel(value) {
 .result-actions span { color:#0757a8; font-size:12px; font-weight:800; }
 .save-history-btn { min-height:42px; display:inline-flex; align-items:center; justify-content:center; gap:8px; border:0; border-radius:999px; background:#fff; color:#1f2937; padding:0 16px; font-size:13px; font-weight:900; box-shadow:0 10px 24px rgba(31,41,55,.08); }
 .save-history-btn:disabled { opacity:.55; cursor:not-allowed; }
+.hotel-map-card { display:grid; grid-template-columns:minmax(0,220px) 1fr; gap:14px; align-items:start; }
+.hotel-map-card p { margin:0 0 4px; color:#0066cc; font-size:11px; font-weight:900; }
+.hotel-map-card h3 { margin:0; color:#1f2937; font-size:16px; font-weight:900; line-height:1.35; }
+.hotel-map-list { display:grid; gap:8px; }
+.hotel-map-list a { display:grid; grid-template-columns:118px 1fr 24px; align-items:center; gap:10px; min-height:46px; padding:8px 10px; border-radius:16px; background:rgba(255,255,255,.72); color:#1f2937; text-decoration:none; }
+.hotel-map-list a.disabled { pointer-events:none; opacity:.55; }
+.hotel-map-list span { color:#6b7280; font-size:11px; font-weight:800; }
+.hotel-map-list strong { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
+.hotel-map-list i { color:#0066cc; justify-self:end; }
 .pill-blue,.pill-gray { border-radius:999px; padding:7px 10px; font-size:12px; font-weight:800; }
 .pill-blue { background:#eff6ff; color:#0757a8; }
 .pill-gray { background:rgba(255,255,255,.72); color:#1f2937; }
@@ -817,6 +786,9 @@ function fatigueLabel(value) {
   .result-download-btn { display:none; }
   .mobile-download-btn { display:flex; position:sticky; top:70px; z-index:25; margin:0 0 12px; }
   .result-actions { flex-direction:column; align-items:stretch; }
+  .hotel-map-card { grid-template-columns:1fr; }
+  .hotel-map-list a { grid-template-columns:1fr 28px; }
+  .hotel-map-list span { grid-column:1 / -1; }
   .save-history-btn { width:100%; }
   .history-list button { align-items:flex-start; flex-direction:column; gap:4px; }
   .slot-card { border-left:0; border-top:1px solid rgba(0,0,0,.08); padding:14px 0; }
