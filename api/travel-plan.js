@@ -882,7 +882,7 @@ function curatedTravelImage(destination, leadPlace) {
   const text = `${destination || ''} ${leadPlace || ''}`
   if (/曲阜|孔庙|孔府|孔林|三孔|Confucius|Qufu/i.test(text)) {
     return {
-      url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Qufu_Confucian_Temple_49189-Qufu_(49055643376).jpg?width=1600',
+      url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/38/Qufu_Confucian_Temple_49189-Qufu_%2849055643376%29.jpg/1920px-Qufu_Confucian_Temple_49189-Qufu_%2849055643376%29.jpg',
       alt: '曲阜孔庙建筑照片',
       credit: 'Wikimedia Commons'
     }

@@ -176,14 +176,14 @@
           </div>
         </div>
 
-        <div v-else class="space-y-5">
+        <div v-else ref="resultTop" class="space-y-5">
           <header class="glass-card result-hero-card rounded-3xl overflow-hidden relative min-h-[220px] p-6 flex items-start justify-between gap-4">
             <div class="result-hero-copy relative z-10 max-w-md">
               <p class="text-[11px] text-apple-blue font-semibold mb-2">这趟路</p>
               <h2 class="text-2xl md:text-3xl font-semibold text-gray-900">{{ plan.meta.destination }} 旅行安排</h2>
               <p class="text-sm text-gray-500 mt-2">{{ plan.meta.dateRange }}</p>
             </div>
-            <img class="result-hero-image absolute right-0 top-0 h-full w-[48%] object-cover opacity-90 hero-mask" :src="safeTravelImageUrl(activePlan.heroImageUrl)" :alt="activePlan.heroImageAlt || activePlan.title" crossorigin="anonymous" @error="useFamilyBg" />
+            <img class="result-hero-image absolute right-0 top-0 h-full w-[48%] object-cover opacity-90 hero-mask" :src="safeTravelImageUrl(activePlan.heroImageUrl)" :alt="activePlan.heroImageAlt || activePlan.title" @error="useFamilyBg" />
             <button class="download-btn result-download-btn relative z-10" :disabled="isDownloading" @click="downloadPlanCard">
               <i class="ph ph-download-simple"></i>{{ isDownloading ? '生成图片中' : '下载长图' }}
             </button>
@@ -328,14 +328,25 @@
 
           <div class="download-stage" aria-hidden="true">
             <div ref="downloadRef" class="download-card">
-              <div class="download-bg" :style="{ backgroundImage: `url(${safeTravelImageUrl(activePlan.heroImageUrl)})` }"></div>
               <div class="download-content">
-                <header>
+                <header class="download-cover">
                   <p>AI Family Travel Planner</p>
-                  <h2>{{ plan.meta.destination }} · {{ variantLabel[activePlan.variant] }}</h2>
-                  <span>{{ plan.meta.dateRange }}</span>
+                  <div class="download-cover-main">
+                    <div>
+                      <h2>{{ plan.meta.destination }}</h2>
+                      <span>{{ plan.meta.dateRange }} · {{ variantLabel[activePlan.variant] }}</span>
+                    </div>
+                    <strong>{{ activePlan.totalFatigueLevel ? fatigueLabel(activePlan.totalFatigueLevel) : '轻松出发' }}</strong>
+                  </div>
+                  <div v-if="plan.weather" class="download-weather-strip">
+                    <div v-for="day in (plan.weather.days || []).slice(0, 4)" :key="`download-weather-${day.date}`">
+                      <b>{{ formatDisplayDate(day.date) }}</b>
+                      <span>{{ day.condition }}</span>
+                      <small>{{ day.temperatureMin }}°C - {{ day.temperatureMax }}°C</small>
+                    </div>
+                  </div>
+                  <em>{{ plan.weather?.summary || activePlan.positioning }}</em>
                 </header>
-                <img class="download-hero" :src="safeTravelImageUrl(activePlan.heroImageUrl)" :alt="activePlan.heroImageAlt || activePlan.title" crossorigin="anonymous" @error="useFamilyBg" />
                 <section class="download-summary">
                   <strong>{{ activePlan.title }}</strong>
                   <p>{{ variantLabel[activePlan.variant] }} · {{ activePlan.positioning }}</p>
@@ -368,7 +379,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { toPng } from 'html-to-image'
 
 const variantOptions = [
@@ -430,6 +441,7 @@ const saveStatus = ref('')
 const plan = ref(null)
 const activeVariant = ref('classic')
 const downloadRef = ref(null)
+const resultTop = ref(null)
 const travelHistory = ref([])
 
 const tripDates = computed(() => enumerateDates(form.value.startDate, form.value.endDate))
@@ -473,6 +485,7 @@ async function generate(useMock = false) {
     const data = useMock ? await requestTravelPlan(payload) : await requestTravelPlanStream(payload)
     plan.value = data
     activeVariant.value = data.plans?.[0]?.variant || 'classic'
+    scrollToResult()
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
   } finally {
@@ -666,6 +679,11 @@ function openHistoryPlan(item) {
   }
   error.value = ''
   saveStatus.value = '已打开保存过的行程。'
+  scrollToResult()
+}
+async function scrollToResult() {
+  await nextTick()
+  resultTop.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 async function deleteHistoryItem(item) {
   if (!item?.id) return
@@ -748,6 +766,12 @@ function useFamilyBg(event) {
 function safeTravelImageUrl(url) {
   const value = String(url || '').trim()
   if (!value || /loremflickr\.com/i.test(value)) return dailyScenery.value.image
+  return normalizeTravelImageUrl(value)
+}
+function normalizeTravelImageUrl(value) {
+  if (/Qufu_Confucian_Temple_49189-Qufu/i.test(value)) {
+    return 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/38/Qufu_Confucian_Temple_49189-Qufu_%2849055643376%29.jpg/1920px-Qufu_Confucian_Temple_49189-Qufu_%2849055643376%29.jpg'
+  }
   return value
 }
 function baiduMapSearchUrl(query, context = '') {
@@ -973,16 +997,22 @@ function fatigueLabel(value) {
 .priority-hint { display:flex; align-items:center; gap:5px; margin:0 0 12px; color:#6b7280; font-size:12px; font-weight:800; }
 .decision-list { margin:0; padding-left:18px; color:#6b7280; font-size:13px; line-height:1.65; }
 .download-stage { position:fixed; top:0; left:-12000px; width:1080px; pointer-events:none; }
-.download-card { position:relative; overflow:hidden; width:1080px; min-height:1440px; background:#f5f5f7; padding:64px; color:#1d1d1f; }
-.download-bg,.download-card::after { position:absolute; inset:0; content:''; }
-.download-bg { background:center/cover; filter:blur(22px) saturate(1.05) brightness(1.04); transform:scale(1.08); }
-.download-card::after { background:rgba(245,245,247,.56); }
-.download-content { position:relative; z-index:1; min-height:1312px; border:1px solid rgba(255,255,255,.74); border-radius:48px; background:rgba(255,255,255,.78); box-shadow:0 36px 110px rgba(0,0,0,.16); padding:54px; }
-.download-content header p { color:#0066cc; font-size:18px; font-weight:900; margin-bottom:12px; }
-.download-content header h2 { max-width:800px; margin:0 0 12px; font-size:58px; line-height:1.05; }
-.download-content header span { color:#6b7280; font-size:22px; font-weight:800; }
-.download-hero { display:block; width:100%; height:280px; margin:34px 0 0; border-radius:34px; object-fit:cover; box-shadow:0 24px 60px rgba(0,0,0,.14); }
-.download-summary { margin:42px 0 28px; border-radius:32px; background:rgba(239,246,255,.82); padding:28px; }
+.download-card { position:relative; overflow:hidden; width:1080px; min-height:1440px; background:linear-gradient(145deg,#eef6ff 0%,#f7f7f4 42%,#fff8ed 100%); padding:64px; color:#1d1d1f; }
+.download-card::before { position:absolute; inset:0; content:''; background:radial-gradient(circle at 18% 12%,rgba(0,102,204,.14),transparent 30%),radial-gradient(circle at 82% 8%,rgba(217,119,6,.12),transparent 28%),linear-gradient(180deg,rgba(255,255,255,.2),rgba(255,255,255,.78)); }
+.download-content { position:relative; z-index:1; min-height:1312px; border:1px solid rgba(255,255,255,.74); border-radius:48px; background:rgba(255,255,255,.82); box-shadow:0 36px 110px rgba(0,0,0,.14); padding:54px; }
+.download-cover { border-radius:38px; padding:42px; color:#0f172a; background:linear-gradient(135deg,rgba(239,246,255,.96),rgba(255,255,255,.88)); border:1px solid rgba(255,255,255,.82); box-shadow:inset 0 0 0 1px rgba(0,102,204,.04); }
+.download-cover p { color:#0066cc; font-size:18px; font-weight:900; margin:0 0 18px; }
+.download-cover-main { display:flex; align-items:flex-start; justify-content:space-between; gap:28px; }
+.download-cover-main h2 { max-width:680px; margin:0 0 14px; font-size:68px; line-height:1.02; letter-spacing:0; }
+.download-cover-main span { color:#475569; font-size:22px; font-weight:900; }
+.download-cover-main strong { flex:none; border-radius:999px; background:#1f2937; color:#fff; padding:13px 18px; font-size:16px; font-weight:900; }
+.download-cover em { display:block; margin-top:26px; color:#475569; font-size:20px; line-height:1.55; font-style:normal; font-weight:800; }
+.download-weather-strip { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-top:34px; }
+.download-weather-strip div { display:grid; gap:6px; border-radius:24px; background:rgba(255,255,255,.76); padding:18px; }
+.download-weather-strip b { color:#0f172a; font-size:17px; }
+.download-weather-strip span { color:#0066cc; font-size:16px; font-weight:900; }
+.download-weather-strip small { color:#64748b; font-size:14px; font-weight:800; }
+.download-summary { margin:28px 0; border-radius:32px; background:rgba(239,246,255,.82); padding:28px; }
 .download-summary strong { display:block; margin-bottom:10px; font-size:28px; }
 .download-summary p,.download-days p { color:#6b7280; font-size:18px; line-height:1.55; }
 .download-weather { margin:0 0 28px; border-radius:28px; background:rgba(255,255,255,.78); padding:24px 28px; }
