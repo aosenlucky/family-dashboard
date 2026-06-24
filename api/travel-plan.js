@@ -4,8 +4,9 @@ import { jsonrepair } from 'jsonrepair'
 
 const MODEL_NAME = process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro'
 const REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_LINK_TIMEOUT_MS || 3500)
-const DEEPSEEK_TIMEOUT_MS = Number(process.env.TRAVEL_DEEPSEEK_TIMEOUT_MS || 47000)
-const IMAGE_REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_IMAGE_TIMEOUT_MS || 1800)
+const DEEPSEEK_TIMEOUT_MS = Number(process.env.TRAVEL_DEEPSEEK_TIMEOUT_MS || 45000)
+const IMAGE_REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_IMAGE_TIMEOUT_MS || 1500)
+const WEATHER_REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_WEATHER_TIMEOUT_MS || 1200)
 const SHOULD_FETCH_REFERENCE_LINKS = process.env.TRAVEL_FETCH_LINKS !== 'false'
 const MAX_REFERENCE_LINKS = Number(process.env.TRAVEL_MAX_REFERENCE_LINKS || 2)
 
@@ -483,7 +484,7 @@ async function fetchTravelWeather(destination, startDate, endDate) {
       '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max',
       '&timezone=auto'
     ].join('')
-    const response = await fetchWithTimeout(url, {}, 5000)
+    const response = await fetchWithTimeout(url, {}, WEATHER_REQUEST_TIMEOUT_MS)
     if (!response.ok) return buildWeatherFallback(startDate, endDate, '出行日期可能离现在较远，天气预报暂未开放，建议临近出发前再确认。')
     const data = await response.json()
     const days = (data.daily?.time || []).map((date, index) => ({
@@ -501,11 +502,11 @@ async function fetchTravelWeather(destination, startDate, endDate) {
 }
 
 async function geocodeDestination(destination) {
-  const candidates = uniqueText([destination, translateImageTerm(destination), `${destination} China`])
+  const candidates = uniqueText([destination, translateImageTerm(destination), `${destination} China`]).slice(0, 2)
   for (const candidate of candidates) {
     try {
       const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(candidate)}&count=1&language=zh&format=json`
-      const response = await fetchWithTimeout(url, {}, 5000)
+      const response = await fetchWithTimeout(url, {}, WEATHER_REQUEST_TIMEOUT_MS)
       if (!response.ok) continue
       const data = await response.json()
       if (data.results?.[0]) return data.results[0]
