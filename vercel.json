@@ -1,7 +1,11 @@
 {
+  "fluid": true,
   "functions": {
     "api/travel-plan.js": {
-      "maxDuration": 60
+      "maxDuration": 300
+    },
+    "api/travel-plan-stream.js": {
+      "maxDuration": 300
     }
   },
   "rewrites": [

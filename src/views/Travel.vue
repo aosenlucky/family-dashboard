@@ -157,7 +157,7 @@
           <button class="secondary-btn" :disabled="isLoading" @click="generate(true)">示例看看</button>
         </div>
         <div v-if="isLoading" class="loading-note">
-          <i class="ph ph-circle-notch"></i> 正在认真安排行程，通常需要 20-50 秒。页面可以停在这里等一会儿。
+          <i class="ph ph-circle-notch"></i> {{ loadingMessage || '正在认真安排行程，通常需要 20-50 秒。页面可以停在这里等一会儿。' }}
         </div>
         <p v-if="error" class="text-xs text-rose-500 mt-3">{{ error }}</p>
       </section>
@@ -420,6 +420,7 @@ const datePickerOpen = ref(false)
 const datePickingStep = ref('start')
 const calendarMonth = ref(firstDayOfMonth(new Date()))
 const isLoading = ref(false)
+const loadingMessage = ref('')
 const isDownloading = ref(false)
 const isSavingHistory = ref(false)
 const isHistoryLoading = ref(false)
@@ -464,28 +465,102 @@ onMounted(() => {
 
 async function generate(useMock = false) {
   isLoading.value = true
+  loadingMessage.value = useMock ? '正在整理示例行程。' : '行程生成已开始，正在连接服务端。'
   error.value = ''
   saveStatus.value = ''
   try {
-    const response = await fetch('/api/travel-plan', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: sessionStorage.getItem('family_auth_token') || '' },
-      body: JSON.stringify({
-        ...form.value,
-        hotelStays: hotelStays.value,
-        referenceLinks: extractLinksFromText(form.value.strategyText),
-        previousPlan: form.value.feedback ? plan.value || undefined : undefined,
-        useMock
-      })
-    })
-    const data = await parseApiResponse(response)
-    if (!response.ok) throw new Error([data.error, data.detail].filter(Boolean).join(' '))
+    const payload = buildTravelPayload(useMock)
+    const data = useMock ? await requestTravelPlan(payload) : await requestTravelPlanStream(payload)
     plan.value = data
     activeVariant.value = data.plans?.[0]?.variant || 'classic'
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
   } finally {
     isLoading.value = false
+    loadingMessage.value = ''
+  }
+}
+
+function buildTravelPayload(useMock = false) {
+  return {
+    ...form.value,
+    hotelStays: hotelStays.value,
+    referenceLinks: extractLinksFromText(form.value.strategyText),
+    previousPlan: form.value.feedback ? plan.value || undefined : undefined,
+    useMock
+  }
+}
+
+async function requestTravelPlan(payload) {
+  const response = await fetch('/api/travel-plan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: sessionStorage.getItem('family_auth_token') || '' },
+    body: JSON.stringify(payload)
+  })
+  const data = await parseApiResponse(response)
+  if (!response.ok) throw new Error([data.error, data.detail].filter(Boolean).join(' '))
+  return data
+}
+
+async function requestTravelPlanStream(payload) {
+  const response = await fetch('/api/travel-plan-stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: sessionStorage.getItem('family_auth_token') || '' },
+    body: JSON.stringify(payload)
+  })
+  if (!response.ok) {
+    const data = await parseApiResponse(response)
+    throw new Error([data.error, data.detail].filter(Boolean).join(' ') || `服务端请求失败：${response.status}`)
+  }
+  if (!response.body) throw new Error('当前浏览器不支持流式生成，请更新浏览器后重试。')
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let finalPlan = null
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const events = buffer.split('\n\n')
+    buffer = events.pop() || ''
+    for (const eventText of events) {
+      finalPlan = handleTravelStreamEvent(eventText, finalPlan)
+    }
+  }
+  if (buffer.trim()) finalPlan = handleTravelStreamEvent(buffer, finalPlan)
+
+  if (!finalPlan) throw new Error('流式生成中断，没有收到最终行程，请重试。')
+  return finalPlan
+}
+
+function handleTravelStreamEvent(eventText, currentPlan) {
+  const event = parseServerSentEvent(eventText)
+  if (!event) return currentPlan
+  if (event.type === 'progress') {
+    loadingMessage.value = event.data?.message || loadingMessage.value
+    return currentPlan
+  }
+  if (event.type === 'result') return event.data
+  if (event.type === 'error') {
+    throw new Error([event.data?.error, event.data?.detail].filter(Boolean).join(' ') || '生成行程失败。')
+  }
+  return currentPlan
+}
+
+function parseServerSentEvent(eventText) {
+  const lines = eventText.split(/\r?\n/)
+  const type = lines.find(line => line.startsWith('event:'))?.replace(/^event:\s*/, '').trim() || 'message'
+  const dataText = lines
+    .filter(line => line.startsWith('data:'))
+    .map(line => line.replace(/^data:\s*/, ''))
+    .join('\n')
+  if (!dataText) return { type, data: null }
+  try {
+    return { type, data: JSON.parse(dataText) }
+  } catch {
+    return { type, data: dataText }
   }
 }
 

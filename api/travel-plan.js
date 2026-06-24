@@ -4,7 +4,7 @@ import { jsonrepair } from 'jsonrepair'
 
 const MODEL_NAME = process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro'
 const REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_LINK_TIMEOUT_MS || 3500)
-const DEEPSEEK_TIMEOUT_MS = Number(process.env.TRAVEL_DEEPSEEK_TIMEOUT_MS || 45000)
+const DEEPSEEK_TIMEOUT_MS = Number(process.env.TRAVEL_DEEPSEEK_TIMEOUT_MS || 240000)
 const IMAGE_REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_IMAGE_TIMEOUT_MS || 1500)
 const WEATHER_REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_WEATHER_TIMEOUT_MS || 2500)
 const FORECAST_HORIZON_DAYS = 16
@@ -12,7 +12,7 @@ const SHOULD_FETCH_REFERENCE_LINKS = process.env.TRAVEL_FETCH_LINKS !== 'false'
 const MAX_REFERENCE_LINKS = Number(process.env.TRAVEL_MAX_REFERENCE_LINKS || 2)
 
 export const config = {
-  maxDuration: 60
+  maxDuration: 300
 }
 
 const mockPlan = {
