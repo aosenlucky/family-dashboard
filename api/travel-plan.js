@@ -6,7 +6,8 @@ const MODEL_NAME = process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro'
 const REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_LINK_TIMEOUT_MS || 3500)
 const DEEPSEEK_TIMEOUT_MS = Number(process.env.TRAVEL_DEEPSEEK_TIMEOUT_MS || 45000)
 const IMAGE_REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_IMAGE_TIMEOUT_MS || 1500)
-const WEATHER_REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_WEATHER_TIMEOUT_MS || 1200)
+const WEATHER_REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_WEATHER_TIMEOUT_MS || 2500)
+const FORECAST_HORIZON_DAYS = 16
 const SHOULD_FETCH_REFERENCE_LINKS = process.env.TRAVEL_FETCH_LINKS !== 'false'
 const MAX_REFERENCE_LINKS = Number(process.env.TRAVEL_MAX_REFERENCE_LINKS || 2)
 
@@ -475,33 +476,45 @@ async function fetchTravelWeather(destination, startDate, endDate) {
   try {
     const geo = await geocodeDestination(destination)
     if (!geo) return buildWeatherFallback(startDate, endDate, '暂时没有定位到目的地，建议出发前再看一次天气。')
+    const useSeasonal = daysFromToday(startDate) > FORECAST_HORIZON_DAYS
+    const endpoint = useSeasonal ? 'https://seasonal-api.open-meteo.com/v1/seasonal' : 'https://api.open-meteo.com/v1/forecast'
+    const dailyParams = useSeasonal
+      ? 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum'
+      : 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max'
     const url = [
-      'https://api.open-meteo.com/v1/forecast',
+      endpoint,
       `?latitude=${encodeURIComponent(geo.latitude)}`,
       `&longitude=${encodeURIComponent(geo.longitude)}`,
       `&start_date=${encodeURIComponent(startDate)}`,
       `&end_date=${encodeURIComponent(endDate)}`,
-      '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max',
+      `&daily=${dailyParams}`,
       '&timezone=auto'
     ].join('')
     const response = await fetchWithTimeout(url, {}, WEATHER_REQUEST_TIMEOUT_MS)
-    if (!response.ok) return buildWeatherFallback(startDate, endDate, '出行日期可能离现在较远，天气预报暂未开放，建议临近出发前再确认。')
+    if (!response.ok) return buildWeatherFallback(startDate, endDate, useSeasonal ? '远期天气趋势暂时不可用，建议临近出发前再刷新。' : '出行日期可能离现在较远，天气预报暂未开放，建议临近出发前再确认。')
     const data = await response.json()
     const days = (data.daily?.time || []).map((date, index) => ({
       date,
-      condition: weatherCodeLabel(data.daily?.weather_code?.[index]),
-      temperatureMin: Math.round(Number(data.daily?.temperature_2m_min?.[index] ?? 0)),
-      temperatureMax: Math.round(Number(data.daily?.temperature_2m_max?.[index] ?? 0)),
-      precipitationProbability: Math.round(Number(data.daily?.precipitation_probability_max?.[index] ?? 0))
+      condition: weatherCodeLabel(getDailyValue(data.daily?.weather_code, index)),
+      temperatureMin: Math.round(Number(getDailyValue(data.daily?.temperature_2m_min, index) ?? 0)),
+      temperatureMax: Math.round(Number(getDailyValue(data.daily?.temperature_2m_max, index) ?? 0)),
+      precipitationProbability: useSeasonal
+        ? precipitationProbabilityFromSum(getDailyValue(data.daily?.precipitation_sum, index))
+        : Math.round(Number(getDailyValue(data.daily?.precipitation_probability_max, index) ?? 0)),
+      precipitationLabel: useSeasonal
+        ? `降水趋势 ${formatPrecipitationSum(getDailyValue(data.daily?.precipitation_sum, index))}`
+        : ''
     }))
     if (!days.length) return buildWeatherFallback(startDate, endDate, '出行日期可能离现在较远，天气预报暂未开放，建议临近出发前再确认。')
-    return buildWeatherSummary(days, geo.name || destination)
+    return buildWeatherSummary(days, geo.name || destination, useSeasonal)
   } catch {
     return buildWeatherFallback(startDate, endDate, '天气服务暂时不可用，建议出发前再刷新一次。')
   }
 }
 
 async function geocodeDestination(destination) {
+  const known = knownDestinationGeo(destination)
+  if (known) return known
   const candidates = uniqueText([destination, translateImageTerm(destination), `${destination} China`]).slice(0, 2)
   for (const candidate of candidates) {
     try {
@@ -515,19 +528,63 @@ async function geocodeDestination(destination) {
   return null
 }
 
-function buildWeatherSummary(days, destination) {
+function knownDestinationGeo(destination) {
+  const text = String(destination || '')
+  const known = [
+    { keys: ['曲阜', '孔庙', '孔府', '孔林', '三孔', 'Qufu'], name: '曲阜', latitude: 35.5809, longitude: 116.9865 },
+    { keys: ['北京', 'Beijing'], name: '北京', latitude: 39.9042, longitude: 116.4074 },
+    { keys: ['上海', 'Shanghai'], name: '上海', latitude: 31.2304, longitude: 121.4737 },
+    { keys: ['西安', 'Xian', "Xi'an"], name: '西安', latitude: 34.3416, longitude: 108.9398 },
+    { keys: ['成都', 'Chengdu'], name: '成都', latitude: 30.5728, longitude: 104.0668 },
+    { keys: ['杭州', 'Hangzhou'], name: '杭州', latitude: 30.2741, longitude: 120.1551 },
+    { keys: ['苏州', 'Suzhou'], name: '苏州', latitude: 31.2989, longitude: 120.5853 },
+    { keys: ['广州', 'Guangzhou'], name: '广州', latitude: 23.1291, longitude: 113.2644 },
+    { keys: ['深圳', 'Shenzhen'], name: '深圳', latitude: 22.5431, longitude: 114.0579 },
+    { keys: ['三亚', 'Sanya'], name: '三亚', latitude: 18.2528, longitude: 109.5119 },
+    { keys: ['京都', 'Kyoto'], name: '京都', latitude: 35.0116, longitude: 135.7681 },
+    { keys: ['东京', 'Tokyo'], name: '东京', latitude: 35.6762, longitude: 139.6503 },
+    { keys: ['大阪', 'Osaka'], name: '大阪', latitude: 34.6937, longitude: 135.5023 },
+    { keys: ['奈良', 'Nara'], name: '奈良', latitude: 34.6851, longitude: 135.8048 }
+  ]
+  return known.find((item) => item.keys.some((key) => text.toLowerCase().includes(key.toLowerCase()))) || null
+}
+
+function getDailyValue(value, index) {
+  return Array.isArray(value) ? value[index] : value
+}
+
+function daysFromToday(dateString) {
+  const target = new Date(`${dateString}T00:00:00`)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  if (Number.isNaN(target.getTime())) return 0
+  return Math.ceil((target.getTime() - today.getTime()) / 86400000)
+}
+
+function precipitationProbabilityFromSum(value) {
+  const amount = Number(value || 0)
+  return Math.max(0, Math.min(90, Math.round(amount * 18)))
+}
+
+function formatPrecipitationSum(value) {
+  const amount = Number(value || 0)
+  return `${Number.isFinite(amount) ? amount.toFixed(amount >= 10 ? 0 : 1) : '0'}mm`
+}
+
+function buildWeatherSummary(days, destination, isSeasonal = false) {
   const min = Math.min(...days.map((day) => day.temperatureMin))
   const max = Math.max(...days.map((day) => day.temperatureMax))
   const rainyDays = days.filter((day) => day.precipitationProbability >= 45)
   const hotDays = days.filter((day) => day.temperatureMax >= 30)
   const advice = [
-    rainyDays.length ? '有较高降雨概率，建议带轻便雨具，鞋子优先选防滑好走的。' : '降雨概率不高，但长时间户外仍建议带一把轻便伞。',
+    isSeasonal ? '这是远期天气趋势预估，适合做衣物和节奏准备，出发前 1-3 天建议再看精确预报。' : '这是临近天气预报，可用于安排室内外顺序。',
+    rainyDays.length ? '有较高降雨风险，建议带轻便雨具，鞋子优先选防滑好走的。' : '降雨风险不高，但长时间户外仍建议带一把轻便伞。',
     hotDays.length ? '白天温度偏高，上午优先安排户外，午后多留室内和休息点。' : '温度整体适中，可以按原计划安排步行，但仍要预留补水和休息。',
     '天气会影响排队和拍照体验，出发前一天建议再刷新确认。'
   ]
   return {
     summary: `${destination}行程期间约 ${min}°C - ${max}°C，${rainyDays.length ? '有降雨风险' : '整体适合出行'}`,
-    source: 'Open-Meteo',
+    source: isSeasonal ? 'Open-Meteo 远期趋势' : 'Open-Meteo',
     days,
     advice
   }

@@ -223,7 +223,7 @@
               <div v-for="day in plan.weather.days" :key="day.date">
                 <strong>{{ formatDisplayDate(day.date) }}</strong>
                 <span>{{ day.condition }}</span>
-                <small>{{ day.temperatureMin }}°C - {{ day.temperatureMax }}°C · 降雨 {{ day.precipitationProbability }}%</small>
+                <small>{{ day.temperatureMin }}°C - {{ day.temperatureMax }}°C · {{ day.precipitationLabel || `降雨 ${day.precipitationProbability}%` }}</small>
               </div>
             </div>
             <ul class="weather-advice">
@@ -231,7 +231,7 @@
             </ul>
           </section>
 
-          <div class="glass-card rounded-3xl p-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div v-if="plan.plans?.length > 1" class="glass-card rounded-3xl p-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
             <button v-for="item in plan.plans" :key="item.variant" class="plan-tab" :class="{ active: activePlan.variant === item.variant }" @click="activeVariant = item.variant">
               <span>{{ variantLabel[item.variant] }}</span>
               <small>{{ fatigueLabel(item.totalFatigueLevel) }}</small>
@@ -328,7 +328,7 @@
 
           <div class="download-stage" aria-hidden="true">
             <div ref="downloadRef" class="download-card">
-              <div class="download-bg"></div>
+              <div class="download-bg" :style="{ backgroundImage: `url(${safeTravelImageUrl(activePlan.heroImageUrl)})` }"></div>
               <div class="download-content">
                 <header>
                   <p>AI Family Travel Planner</p>
@@ -668,7 +668,7 @@ function withClientTimeout(promise, timeoutMs) {
   })
 }
 function useFamilyBg(event) {
-  event.currentTarget.src = '/bg.jpg'
+  event.currentTarget.src = dailyScenery.value.image
 }
 function safeTravelImageUrl(url) {
   const value = String(url || '').trim()
@@ -900,7 +900,7 @@ function fatigueLabel(value) {
 .download-stage { position:fixed; top:0; left:-12000px; width:1080px; pointer-events:none; }
 .download-card { position:relative; overflow:hidden; width:1080px; min-height:1440px; background:#f5f5f7; padding:64px; color:#1d1d1f; }
 .download-bg,.download-card::after { position:absolute; inset:0; content:''; }
-.download-bg { background:url('/bg.jpg') center/cover; filter:blur(22px) saturate(1.05) brightness(1.04); transform:scale(1.08); }
+.download-bg { background:center/cover; filter:blur(22px) saturate(1.05) brightness(1.04); transform:scale(1.08); }
 .download-card::after { background:rgba(245,245,247,.56); }
 .download-content { position:relative; z-index:1; min-height:1312px; border:1px solid rgba(255,255,255,.74); border-radius:48px; background:rgba(255,255,255,.78); box-shadow:0 36px 110px rgba(0,0,0,.16); padding:54px; }
 .download-content header p { color:#0066cc; font-size:18px; font-weight:900; margin-bottom:12px; }
