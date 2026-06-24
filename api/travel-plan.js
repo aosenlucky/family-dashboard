@@ -85,47 +85,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: '目的地、开始日期和结束日期必填。' })
     }
 
-    if (input.useMock) {
-      return res.status(200).json(await enrichPlanImages(await enrichPlanWeather(buildMockPlan(input), input), input.destination))
-    }
-
-    const apiKey = getDeepSeekApiKey()
-    if (!apiKey) {
-      return res.status(500).json({
-        error: '没有找到 DEEPSEEK_API_KEY，真实行程无法生成。',
-        detail: '请在 Vercel 环境变量中配置 DEEPSEEK_API_KEY。示例数据只会在点击“示例看看”时返回。'
-      })
-    }
-
-    const normalizedInput = await prepareInputMaterials(input)
-    const response = await fetchWithTimeout('https://api.deepseek.com/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: MODEL_NAME,
-        messages: [
-          { role: 'system', content: '你是一个只返回严格 JSON 的家庭旅行规划 API。不要输出 Markdown 代码块。' },
-          { role: 'user', content: buildTravelPlannerPrompt(normalizedInput) }
-        ],
-        temperature: 0.35,
-        max_tokens: Number(process.env.TRAVEL_MAX_TOKENS || 9000),
-        reasoning_effort: process.env.TRAVEL_REASONING_EFFORT || 'high',
-        thinking: { type: 'enabled' },
-        response_format: { type: 'json_object' }
-      })
-    }, DEEPSEEK_TIMEOUT_MS)
-
-    if (!response.ok) {
-      const detail = await response.text()
-      return res.status(502).json({ error: `DeepSeek 请求失败：${response.status}`, detail })
-    }
-
-    const payload = await response.json()
-    const content = payload.choices?.[0]?.message?.content
-    if (!content) return res.status(502).json({ error: 'DeepSeek 返回内容为空。' })
-
-    const plan = await enrichPlanWeather(normalizePlan(parseJsonContent(content), input), input)
-    return res.status(200).json(await enrichPlanImages(plan, input.destination))
+    return res.status(200).json(await createTravelPlan(input))
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     const isTimeout = /abort|timeout|timed out/i.test(message)
@@ -225,6 +185,111 @@ function normalizeVariantPlan(plan, input, index) {
       dailyBudgetHint: day.dailyBudgetHint || '',
       riskCheck: day.riskCheck || ''
     }))
+  }
+}
+
+export async function createTravelPlan(input, options = {}) {
+  if (input.useMock) {
+    options.onProgress?.({ stage: 'mock', message: '正在整理示例行程。' })
+    return enrichPlanImages(await enrichPlanWeather(buildMockPlan(input), input), input.destination)
+  }
+
+  const apiKey = getDeepSeekApiKey()
+  if (!apiKey) {
+    throw new Error('没有找到 DEEPSEEK_API_KEY，真实行程无法生成。请在 Vercel 环境变量中配置 DEEPSEEK_API_KEY。')
+  }
+
+  options.onProgress?.({ stage: 'references', message: '正在读取攻略材料和参考链接。' })
+  const normalizedInput = await prepareInputMaterials(input)
+  options.onProgress?.({ stage: 'deepseek', message: 'DeepSeek 正在推理行程，请保持页面打开。' })
+  const content = options.stream
+    ? await requestDeepSeekStream(apiKey, normalizedInput, options.onProgress)
+    : await requestDeepSeek(apiKey, normalizedInput)
+
+  options.onProgress?.({ stage: 'normalize', message: '正在整理行程结构。' })
+  const plan = await enrichPlanWeather(normalizePlan(parseJsonContent(content), input), input)
+  options.onProgress?.({ stage: 'images', message: '正在补充封面图和天气。' })
+  return enrichPlanImages(plan, input.destination)
+}
+
+async function requestDeepSeek(apiKey, input) {
+  const response = await fetchWithTimeout('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify(buildDeepSeekRequest(input, false))
+  }, DEEPSEEK_TIMEOUT_MS)
+
+  if (!response.ok) {
+    const detail = await response.text()
+    throw new Error(`DeepSeek 请求失败：${response.status} ${detail}`)
+  }
+
+  const payload = await response.json()
+  const content = payload.choices?.[0]?.message?.content
+  if (!content) throw new Error('DeepSeek 返回内容为空。')
+  return content
+}
+
+async function requestDeepSeekStream(apiKey, input, onProgress) {
+  const response = await fetchWithTimeout('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify(buildDeepSeekRequest(input, true))
+  }, DEEPSEEK_TIMEOUT_MS)
+
+  if (!response.ok) {
+    const detail = await response.text()
+    throw new Error(`DeepSeek 请求失败：${response.status} ${detail}`)
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('DeepSeek 流式响应不可读。')
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let content = ''
+  let lastProgressAt = Date.now()
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const parts = buffer.split('\n\n')
+    buffer = parts.pop() || ''
+    for (const part of parts) {
+      const lines = part.split('\n').filter((line) => line.startsWith('data:'))
+      for (const line of lines) {
+        const data = line.replace(/^data:\s*/, '').trim()
+        if (!data || data === '[DONE]') continue
+        try {
+          const parsed = JSON.parse(data)
+          const delta = parsed.choices?.[0]?.delta
+          if (delta?.content) content += delta.content
+          if (Date.now() - lastProgressAt > 2500) {
+            lastProgressAt = Date.now()
+            onProgress?.({ stage: 'deepseek', message: 'DeepSeek 仍在生成行程内容。' })
+          }
+        } catch {}
+      }
+    }
+  }
+
+  if (!content.trim()) throw new Error('DeepSeek 流式返回内容为空。')
+  return content
+}
+
+function buildDeepSeekRequest(input, stream) {
+  return {
+    model: MODEL_NAME,
+    messages: [
+      { role: 'system', content: '你是一个只返回严格 JSON 的家庭旅行规划 API。不要输出 Markdown 代码块。' },
+      { role: 'user', content: buildTravelPlannerPrompt(input) }
+    ],
+    temperature: 0.35,
+    max_tokens: Number(process.env.TRAVEL_MAX_TOKENS || 9000),
+    reasoning_effort: process.env.TRAVEL_REASONING_EFFORT || 'high',
+    thinking: { type: 'enabled' },
+    response_format: { type: 'json_object' },
+    stream
   }
 }
 
