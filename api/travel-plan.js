@@ -3,10 +3,11 @@ import { join } from 'node:path'
 import { jsonrepair } from 'jsonrepair'
 
 const MODEL_NAME = process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro'
-const REQUEST_TIMEOUT_MS = 7000
-const DEEPSEEK_TIMEOUT_MS = Number(process.env.TRAVEL_DEEPSEEK_TIMEOUT_MS || 55000)
-const IMAGE_REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_IMAGE_TIMEOUT_MS || 4000)
+const REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_LINK_TIMEOUT_MS || 3500)
+const DEEPSEEK_TIMEOUT_MS = Number(process.env.TRAVEL_DEEPSEEK_TIMEOUT_MS || 47000)
+const IMAGE_REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_IMAGE_TIMEOUT_MS || 1800)
 const SHOULD_FETCH_REFERENCE_LINKS = process.env.TRAVEL_FETCH_LINKS !== 'false'
+const MAX_REFERENCE_LINKS = Number(process.env.TRAVEL_MAX_REFERENCE_LINKS || 2)
 
 export const config = {
   maxDuration: 60
@@ -321,7 +322,7 @@ function uniqueUrls(urls) {
 }
 
 async function resolveReferenceLinks(urls) {
-  return Promise.all(uniqueUrls(urls).map(resolveReferenceLink))
+  return Promise.all(uniqueUrls(urls).slice(0, MAX_REFERENCE_LINKS).map(resolveReferenceLink))
 }
 
 async function resolveReferenceLink(url) {
@@ -603,7 +604,16 @@ function getPlanLeadPlace(plan) {
 async function searchTravelImage(_query, destination, leadPlace) {
   const keywords = buildImageKeywords(destination, leadPlace)
   const query = `${keywords.join(' ')} travel landmark`
-  return await searchUnsplash(query) || await searchPexels(query) || curatedTravelImage(destination, leadPlace) || await searchCommonsImage(query) || await searchWikipediaImage(leadPlace) || await searchWikipediaImage(destination)
+  const curated = curatedTravelImage(destination, leadPlace)
+  if (curated) return curated
+  const results = await Promise.all([
+    searchUnsplash(query),
+    searchPexels(query),
+    searchCommonsImage(query),
+    searchWikipediaImage(leadPlace),
+    searchWikipediaImage(destination)
+  ])
+  return results.find(Boolean) || null
 }
 
 function buildImageKeywords(destination, leadPlace) {
@@ -723,15 +733,18 @@ async function searchWikipediaImage(query) {
     `https://zh.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query)}`,
     `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query)}`
   ]
-  for (const endpoint of endpoints) {
+  const results = await Promise.all(endpoints.map(async (endpoint) => {
     try {
       const response = await fetchWithTimeout(endpoint, { headers: { 'User-Agent': 'family-travel-planner/1.0' } }, IMAGE_REQUEST_TIMEOUT_MS)
-      if (!response.ok) continue
+      if (!response.ok) return null
       const data = await response.json()
       if (data.thumbnail?.source) return { url: data.thumbnail.source.replace(/\/\d+px-/, '/1200px-'), alt: data.title || query, credit: 'Wikipedia' }
-    } catch {}
-  }
-  return null
+    } catch {
+      return null
+    }
+    return null
+  }))
+  return results.find(Boolean) || null
 }
 
 function fallbackTravelImage(destination) {

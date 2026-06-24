@@ -183,7 +183,7 @@
               <h2 class="text-2xl md:text-3xl font-semibold text-gray-900">{{ plan.meta.destination }} 旅行安排</h2>
               <p class="text-sm text-gray-500 mt-2">{{ plan.meta.dateRange }}</p>
             </div>
-            <img class="result-hero-image absolute right-0 top-0 h-full w-[48%] object-cover opacity-90 hero-mask" :src="safeTravelImageUrl(activePlan.heroImageUrl)" :alt="activePlan.heroImageAlt || activePlan.title" @error="useFamilyBg" />
+            <img class="result-hero-image absolute right-0 top-0 h-full w-[48%] object-cover opacity-90 hero-mask" :src="safeTravelImageUrl(activePlan.heroImageUrl)" :alt="activePlan.heroImageAlt || activePlan.title" crossorigin="anonymous" @error="useFamilyBg" />
             <button class="download-btn result-download-btn relative z-10" :disabled="isDownloading" @click="downloadPlanCard">
               <i class="ph ph-download-simple"></i>{{ isDownloading ? '生成图片中' : '下载长图' }}
             </button>
@@ -335,7 +335,7 @@
                   <h2>{{ plan.meta.destination }} · {{ variantLabel[activePlan.variant] }}</h2>
                   <span>{{ plan.meta.dateRange }}</span>
                 </header>
-                <img class="download-hero" :src="safeTravelImageUrl(activePlan.heroImageUrl)" :alt="activePlan.heroImageAlt || activePlan.title" @error="useFamilyBg" />
+                <img class="download-hero" :src="safeTravelImageUrl(activePlan.heroImageUrl)" :alt="activePlan.heroImageAlt || activePlan.title" crossorigin="anonymous" @error="useFamilyBg" />
                 <section class="download-summary">
                   <strong>{{ activePlan.title }}</strong>
                   <p>{{ variantLabel[activePlan.variant] }} · {{ activePlan.positioning }}</p>
@@ -398,6 +398,8 @@ const scenerySlogans = [
   { title: '自由有时候很简单，就是今天可以往远处走。', body: '把想去的地方放进地图，也把家人的体力、胃口和小脾气一起放进去。舒服地出门，比完美打卡更重要。' },
   { title: '我们把生活带上路，也把路上的光带回家。', body: '旅行不只是换一个地方睡觉，它会让普通的一天多一点开阔，也让一家人的记忆多一个共同坐标。' }
 ]
+const transparentPixel = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='
+
 const form = ref({
   destination: '京都',
   startDate: todayString(),
@@ -516,14 +518,25 @@ function setTraveler(key, delta) {
 async function downloadPlanCard() {
   if (!downloadRef.value) return
   isDownloading.value = true
+  error.value = ''
   try {
-    const dataUrl = await toPng(downloadRef.value, { cacheBust: true, pixelRatio: 2, backgroundColor: '#f5f5f7', skipFonts: true })
+    await waitForNextFrame()
+    const dataUrl = await withClientTimeout(
+      toPng(downloadRef.value, {
+        cacheBust: true,
+        pixelRatio: isSmallScreen() ? 1.35 : 2,
+        backgroundColor: '#f5f5f7',
+        imagePlaceholder: transparentPixel,
+        skipFonts: true
+      }),
+      isSmallScreen() ? 18000 : 25000
+    )
     const link = document.createElement('a')
     link.download = `${plan.value.meta.destination}-${variantLabel[activePlan.value.variant]}-行程长图.png`
     link.href = dataUrl
     link.click()
   } catch (err) {
-    error.value = err instanceof Error ? `导出图片失败：${err.message}` : '导出图片失败，请稍后再试。'
+    error.value = err instanceof Error ? `导出长图失败：${err.message}` : '导出长图失败，请稍后再试。'
   } finally {
     isDownloading.value = false
   }
@@ -636,6 +649,23 @@ function structuredCloneSafe(value) {
     if (typeof structuredClone === 'function') return structuredClone(value)
   } catch {}
   return JSON.parse(JSON.stringify(value))
+}
+function isSmallScreen() {
+  return window.matchMedia?.('(max-width: 768px)').matches
+}
+function waitForNextFrame() {
+  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+}
+function withClientTimeout(promise, timeoutMs) {
+  let timer
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`生成超过 ${Math.round(timeoutMs / 1000)} 秒，请稍后重试或先在电脑端导出。`)), timeoutMs)
+    })
+  ]).finally(() => {
+    if (timer) clearTimeout(timer)
+  })
 }
 function useFamilyBg(event) {
   event.currentTarget.src = '/bg.jpg'
