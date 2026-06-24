@@ -30,9 +30,16 @@
                 <span>{{ item.destination }}</span>
                 <small>{{ item.dateRange }}</small>
               </button>
-              <button type="button" class="history-delete" :disabled="deletingHistoryId === item.id" :aria-label="`删除${item.destination}行程`" @click.stop="deleteHistoryItem(item)">
+              <button type="button" class="history-delete" :disabled="deletingHistoryId === item.id" :aria-label="`删除${item.destination}行程`" @click.stop="requestDeleteHistoryItem(item)">
                 <i class="ph ph-trash"></i>
               </button>
+              <div v-if="confirmingDeleteId === item.id" class="history-confirm">
+                <span>确认删除这份行程？</span>
+                <button type="button" @click.stop="confirmingDeleteId = ''">取消</button>
+                <button type="button" class="danger" :disabled="deletingHistoryId === item.id" @click.stop="deleteHistoryItem(item)">
+                  {{ deletingHistoryId === item.id ? '删除中' : '删除' }}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -286,7 +293,7 @@
             </section>
           </article>
 
-          <div class="result-actions glass-card rounded-3xl p-4">
+          <div v-if="!isViewingSavedPlan" class="result-actions glass-card rounded-3xl p-4">
             <div>
               <p>确认后会同步到云端历史</p>
               <span v-if="saveStatus">{{ saveStatus }}</span>
@@ -295,6 +302,13 @@
             <button class="save-history-btn" :disabled="isSavingHistory" @click="saveCurrentPlan">
               <i class="ph ph-check-circle"></i>{{ isSavingHistory ? '保存中...' : '这版OK，保存到云端' }}
             </button>
+          </div>
+          <div v-else class="saved-history-note glass-card rounded-3xl p-4">
+            <i class="ph ph-cloud-check"></i>
+            <div>
+              <p>已在云端历史里</p>
+              <span>这份行程已经保存过，电脑和手机都可以从历史行程打开。</span>
+            </div>
           </div>
 
           <section class="glass-card rounded-3xl p-5">
@@ -436,6 +450,7 @@ const isDownloading = ref(false)
 const isSavingHistory = ref(false)
 const isHistoryLoading = ref(false)
 const deletingHistoryId = ref('')
+const confirmingDeleteId = ref('')
 const error = ref('')
 const saveStatus = ref('')
 const plan = ref(null)
@@ -443,6 +458,8 @@ const activeVariant = ref('classic')
 const downloadRef = ref(null)
 const resultTop = ref(null)
 const travelHistory = ref([])
+const isViewingSavedPlan = ref(false)
+const currentHistoryId = ref('')
 
 const tripDates = computed(() => enumerateDates(form.value.startDate, form.value.endDate))
 const hotelStays = computed(() => buildHotelStays(tripDates.value, form.value.hotelArea, dailyHotels.value, useDailyHotels.value))
@@ -480,6 +497,9 @@ async function generate(useMock = false) {
   loadingMessage.value = useMock ? '正在整理示例行程。' : '行程生成已开始，正在连接服务端。'
   error.value = ''
   saveStatus.value = ''
+  confirmingDeleteId.value = ''
+  isViewingSavedPlan.value = false
+  currentHistoryId.value = ''
   try {
     const payload = buildTravelPayload(useMock)
     const data = useMock ? await requestTravelPlan(payload) : await requestTravelPlanStream(payload)
@@ -655,6 +675,8 @@ async function saveCurrentPlan() {
     if (!response.ok) throw new Error([data.error, data.detail].filter(Boolean).join(' '))
     travelHistory.value = Array.isArray(data.history) ? data.history : [data.item, ...travelHistory.value].filter(Boolean)
     saveStatus.value = '已保存到云端历史，电脑和手机都能看到。'
+    isViewingSavedPlan.value = true
+    currentHistoryId.value = data.item?.id || item.id
   } catch (err) {
     saveStatus.value = err instanceof Error ? err.message : '保存失败，请稍后再试。'
   } finally {
@@ -679,11 +701,18 @@ function openHistoryPlan(item) {
   }
   error.value = ''
   saveStatus.value = '已打开保存过的行程。'
+  confirmingDeleteId.value = ''
+  isViewingSavedPlan.value = true
+  currentHistoryId.value = item.id
   scrollToResult()
 }
 async function scrollToResult() {
   await nextTick()
   resultTop.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+function requestDeleteHistoryItem(item) {
+  if (!item?.id) return
+  confirmingDeleteId.value = confirmingDeleteId.value === item.id ? '' : item.id
 }
 async function deleteHistoryItem(item) {
   if (!item?.id) return
@@ -697,6 +726,11 @@ async function deleteHistoryItem(item) {
     const data = await parseApiResponse(response)
     if (!response.ok) throw new Error([data.error, data.detail].filter(Boolean).join(' '))
     travelHistory.value = Array.isArray(data.history) ? data.history : travelHistory.value.filter((history) => history.id !== item.id)
+    if (confirmingDeleteId.value === item.id) confirmingDeleteId.value = ''
+    if (currentHistoryId.value === item.id) {
+      currentHistoryId.value = ''
+      isViewingSavedPlan.value = false
+    }
     saveStatus.value = '这条历史行程已删除。'
   } catch (err) {
     saveStatus.value = err instanceof Error ? err.message : '删除失败，请稍后再试。'
@@ -715,6 +749,9 @@ async function clearHistory() {
     const data = await parseApiResponse(response)
     if (!response.ok) throw new Error([data.error, data.detail].filter(Boolean).join(' '))
     travelHistory.value = []
+    confirmingDeleteId.value = ''
+    currentHistoryId.value = ''
+    isViewingSavedPlan.value = false
     saveStatus.value = '云端历史记录已清空。'
   } catch (err) {
     saveStatus.value = err instanceof Error ? err.message : '清空失败，请稍后再试。'
@@ -886,12 +923,18 @@ function fatigueLabel(value) {
 .history-box { margin:0 0 18px; padding:15px; border-radius:24px; background:rgba(239,246,255,.72); border:1px solid rgba(255,255,255,.74); }
 .history-box h3 { margin:2px 0 0; color:#1f2937; font-size:15px; font-weight:900; }
 .history-list { display:grid; gap:8px; }
-.history-item { display:grid; grid-template-columns:minmax(0,1fr) 38px; gap:8px; align-items:center; }
+.history-item { display:grid; grid-template-columns:minmax(0,1fr) 44px; gap:8px; align-items:center; }
 .history-item > button:first-child { width:100%; min-width:0; display:flex; align-items:center; justify-content:space-between; gap:12px; border:0; border-radius:16px; background:rgba(255,255,255,.76); padding:11px 12px; text-align:left; color:#1f2937; }
 .history-item > button:first-child span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:900; }
 .history-item > button:first-child small { flex:none; color:#6b7280; font-size:11px; font-weight:800; }
-.history-delete { width:38px; height:38px; border:0; border-radius:999px; background:rgba(255,255,255,.68); color:#9ca3af; display:flex; align-items:center; justify-content:center; }
+.history-delete { width:44px; height:44px; border:0; border-radius:999px; background:rgba(255,255,255,.68); color:#9ca3af; display:flex; align-items:center; justify-content:center; padding:0; line-height:1; justify-self:center; align-self:center; }
+.history-delete i { display:block; font-size:18px; line-height:1; }
 .history-delete:hover { color:#d92d20; background:#fff0ee; }
+.history-confirm { grid-column:1 / -1; display:flex; align-items:center; justify-content:flex-end; gap:8px; min-height:44px; padding:8px 10px; border-radius:16px; background:rgba(255,240,238,.78); color:#8f1d16; }
+.history-confirm span { margin-right:auto; font-size:12px; font-weight:900; }
+.history-confirm button { min-height:32px; border:0; border-radius:999px; padding:0 12px; background:rgba(255,255,255,.82); color:#374151; font-size:12px; font-weight:900; }
+.history-confirm button.danger { background:#d92d20; color:#fff; }
+.history-confirm button:disabled { opacity:.55; cursor:not-allowed; }
 .field-label { display:flex; flex-direction:column; gap:7px; margin-bottom:12px; }
 .field-label span,.section-title { color:#6b7280; font-size:12px; font-weight:700; }
 .apple-input { width:100%; border:1px solid rgba(255,255,255,.78); background:rgba(255,255,255,.68); border-radius:16px; padding:11px 13px; color:#1f2937; outline:none; box-shadow:inset 0 0 0 1px rgba(0,0,0,.04); }
@@ -942,6 +985,10 @@ function fatigueLabel(value) {
 .result-actions { display:flex; align-items:center; justify-content:space-between; gap:16px; border:1px solid rgba(255,255,255,.72); background:rgba(255,255,255,.66); }
 .result-actions p { margin:0 0 4px; color:#1f2937; font-size:14px; font-weight:900; }
 .result-actions span { display:block; color:#6b7280; font-size:12px; font-weight:700; line-height:1.5; }
+.saved-history-note { display:flex; align-items:center; gap:12px; border:1px solid rgba(255,255,255,.72); background:rgba(239,246,255,.68); }
+.saved-history-note > i { width:42px; height:42px; border-radius:999px; display:flex; align-items:center; justify-content:center; flex:none; background:#eff6ff; color:#0066cc; font-size:22px; }
+.saved-history-note p { margin:0 0 4px; color:#1f2937; font-size:14px; font-weight:900; }
+.saved-history-note span { display:block; color:#6b7280; font-size:12px; line-height:1.5; font-weight:700; }
 .save-history-btn { min-height:42px; flex:none; display:inline-flex; align-items:center; justify-content:center; gap:8px; border:0; border-radius:999px; background:#1f2937; color:#fff; padding:0 16px; font-size:13px; font-weight:900; box-shadow:0 12px 28px rgba(31,41,55,.16); }
 .save-history-btn:disabled { opacity:.55; cursor:not-allowed; }
 .hotel-map-card { display:grid; grid-template-columns:minmax(0,220px) 1fr; gap:14px; align-items:start; }
@@ -1053,7 +1100,10 @@ function fatigueLabel(value) {
   .hotel-map-list a { grid-template-columns:1fr 28px; }
   .hotel-map-list span { grid-column:1 / -1; }
   .save-history-btn { width:100%; }
-  .history-list button { align-items:flex-start; flex-direction:column; gap:4px; }
+  .history-item > button:first-child { align-items:flex-start; flex-direction:column; gap:4px; }
+  .history-delete { width:44px; height:44px; }
+  .history-confirm { align-items:stretch; flex-wrap:wrap; }
+  .history-confirm span { width:100%; margin:0; }
   .slot-card { grid-template-columns:1fr; gap:10px; padding:15px; }
   .slot-time { flex-direction:row; align-items:center; justify-content:space-between; }
   .slot-title-row { align-items:flex-start; }
