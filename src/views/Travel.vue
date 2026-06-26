@@ -545,6 +545,12 @@ async function requestTravelPlanStream(payload) {
     const data = await parseApiResponse(response)
     throw new Error([data.error, data.detail].filter(Boolean).join(' ') || `服务端请求失败：${response.status}`)
   }
+
+  const contentType = response.headers.get('content-type') || ''
+  if (contentType.includes('application/json')) {
+    return parseApiResponse(response)
+  }
+
   if (!response.body) throw new Error('当前浏览器不支持流式生成，请更新浏览器后重试。')
 
   const reader = response.body.getReader()

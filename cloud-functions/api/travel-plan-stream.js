@@ -1,5 +1,5 @@
-import handler from '../../api/travel-plan-stream.js'
-import { runNodeStreamHandler } from '../_node-handler-adapter.js'
+import handler from '../../api/travel-plan.js'
+import { runNodeHandler } from '../_node-handler-adapter.js'
 
 export default async function onRequest(context) {
   const request = context.request || context
@@ -17,7 +17,7 @@ export default async function onRequest(context) {
     return jsonResponse({ error: '目的地、开始日期和结束日期必填。' }, 400)
   }
 
-  return runNodeStreamHandler(handler, context)
+  return runNodeHandler(handler, context)
 }
 
 function jsonResponse(payload, status) {
