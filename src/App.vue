@@ -126,8 +126,8 @@ const triggerPushNotification = async (title, content) => {
     if (!auth.value.isLoggedIn || token === 'local_dummy_token' || token === '0000') return; 
     try {
         const res = await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': token }, body: JSON.stringify({ action: 'notify', title, content }) });
-        if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.success === false) {
             console.error('Push Failed', data);
             showNotification('提醒推送失败，请检查 PushPlus 环境变量');
         }

@@ -27,7 +27,12 @@ export default async function handler(req, res) {
       if (body?.action === 'notify') {
         const result = await sendPushNotifications(body.title, body.content)
         const failed = result.results.filter((item) => !item.ok)
-        return res.status(failed.length ? 502 : 200).json({
+        console.log('[push-notify]', JSON.stringify({
+          success: failed.length === 0,
+          configured: result.configured,
+          results: result.results
+        }))
+        return res.status(200).json({
           success: failed.length === 0,
           message: failed.length ? 'Some push notifications failed' : 'Push notifications sent',
           ...result
