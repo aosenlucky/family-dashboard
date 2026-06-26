@@ -1,0 +1,17 @@
+{
+  "installCommand": "npm ci",
+  "buildCommand": "VITE_ROUTER_MODE=hash npm run build",
+  "outputDirectory": "dist",
+  "nodeVersion": "22.11.0",
+  "cloudFunctions": {
+    "nodejs": {
+      "maxDuration": 120
+    }
+  },
+  "redirects": [
+    { "source": "/life", "destination": "/#/life", "statusCode": 302 },
+    { "source": "/travel", "destination": "/#/travel", "statusCode": 302 },
+    { "source": "/wealth", "destination": "/#/wealth", "statusCode": 302 },
+    { "source": "/gallery", "destination": "/#/gallery", "statusCode": 302 }
+  ]
+}

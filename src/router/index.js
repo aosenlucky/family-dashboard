@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHashHistory, createWebHistory } from 'vue-router'
 import Life from '../views/Life.vue'
 
 const routes = [
@@ -10,6 +10,6 @@ const routes = [
 ]
 
 export default createRouter({
-  history: createWebHistory(),
+  history: import.meta.env.VITE_ROUTER_MODE === 'hash' ? createWebHashHistory() : createWebHistory(),
   routes
 })
