@@ -279,19 +279,20 @@ async function requestDeepSeekStream(apiKey, input, onProgress, options = {}) {
 
 function buildDeepSeekRequest(input, stream, options = {}) {
   const compact = Boolean(options.compact)
+  const prompt = options.prompt || (compact ? buildCompactTravelPlannerPrompt(input) : buildTravelPlannerPrompt(input))
+  const maxTokens = options.maxTokens || (compact ? Math.min(Number(process.env.TRAVEL_MAX_TOKENS || 4200), 4200) : Number(process.env.TRAVEL_MAX_TOKENS || 9000))
+  const reasoningEffort = options.reasoningEffort || (compact
+    ? process.env.TRAVEL_COMPACT_REASONING_EFFORT || 'medium'
+    : process.env.TRAVEL_REASONING_EFFORT || 'high')
   return {
     model: MODEL_NAME,
     messages: [
       { role: 'system', content: '你是一个只返回严格 JSON 的家庭旅行规划 API。不要输出 Markdown 代码块。' },
-      { role: 'user', content: compact ? buildCompactTravelPlannerPrompt(input) : buildTravelPlannerPrompt(input) }
+      { role: 'user', content: prompt }
     ],
     temperature: 0.35,
-    max_tokens: compact
-      ? Math.min(Number(process.env.TRAVEL_MAX_TOKENS || 4200), 4200)
-      : Number(process.env.TRAVEL_MAX_TOKENS || 9000),
-    reasoning_effort: compact
-      ? process.env.TRAVEL_COMPACT_REASONING_EFFORT || 'medium'
-      : process.env.TRAVEL_REASONING_EFFORT || 'high',
+    max_tokens: maxTokens,
+    reasoning_effort: reasoningEffort,
     thinking: { type: 'enabled' },
     response_format: { type: 'json_object' },
     stream
@@ -360,6 +361,93 @@ function buildMockPlan(input = {}) {
 
 function stripQuotes(value) {
   return value.replace(/^["']|["']$/g, '')
+}
+
+export async function createTravelPlanFoundation(input, options = {}) {
+  const apiKey = getDeepSeekApiKey()
+  if (!apiKey) throw new Error('没有找到 DEEPSEEK_API_KEY，真实行程无法生成。')
+  const normalizedInput = await prepareInputMaterials(input)
+  const content = await requestDeepSeekStream(apiKey, normalizedInput, options.onProgress, {
+    prompt: buildTravelFoundationPrompt(normalizedInput),
+    maxTokens: Number(process.env.TRAVEL_FOUNDATION_MAX_TOKENS || 3200),
+    reasoningEffort: process.env.TRAVEL_WORKFLOW_REASONING_EFFORT || 'high'
+  })
+  return parseJsonContent(content)
+}
+
+export async function createTravelPlanDay(input, foundation, dayContext, options = {}) {
+  const apiKey = getDeepSeekApiKey()
+  if (!apiKey) throw new Error('没有找到 DEEPSEEK_API_KEY，真实行程无法生成。')
+  const content = await requestDeepSeekStream(apiKey, input, options.onProgress, {
+    prompt: buildTravelDayPrompt(input, foundation, dayContext),
+    maxTokens: Number(process.env.TRAVEL_DAY_MAX_TOKENS || 4200),
+    reasoningEffort: process.env.TRAVEL_WORKFLOW_REASONING_EFFORT || 'high'
+  })
+  return parseJsonContent(content)
+}
+
+export async function finalizeTravelPlanWorkflow(input, foundation, dayResults = []) {
+  const selectedVariants = Array.isArray(input.selectedVariants) && input.selectedVariants.length ? input.selectedVariants : ['classic']
+  const planDaysByVariant = new Map(selectedVariants.map((variant) => [variant, []]))
+  const critique = { initialIssues: [], revisionsApplied: [] }
+
+  for (const result of dayResults) {
+    for (const item of result?.plans || []) {
+      const variant = item.variant || 'classic'
+      if (!planDaysByVariant.has(variant)) planDaysByVariant.set(variant, [])
+      if (item.day) planDaysByVariant.get(variant).push(item.day)
+    }
+    if (Array.isArray(result?.critique?.initialIssues)) critique.initialIssues.push(...result.critique.initialIssues)
+    if (Array.isArray(result?.critique?.revisionsApplied)) critique.revisionsApplied.push(...result.critique.revisionsApplied)
+  }
+
+  const plans = selectedVariants.map((variant) => {
+    const guidance = foundation?.variantGuidance?.[variant] || {}
+    return {
+      variant,
+      title: guidance.title || `${input.destination}旅行安排`,
+      positioning: guidance.positioning || '按家人的节奏整理出的旅行安排。',
+      heroImageUrl: '',
+      heroImageAlt: guidance.heroImageAlt || `${input.destination}核心景点`,
+      totalFatigueLevel: guidance.totalFatigueLevel || inferPlanFatigue(planDaysByVariant.get(variant)),
+      bestFor: guidance.bestFor || '',
+      days: (planDaysByVariant.get(variant) || []).sort((a, b) => Number(a.day || 0) - Number(b.day || 0))
+    }
+  })
+
+  const rawPlan = {
+    meta: {
+      destination: input.destination,
+      dateRange: `${input.startDate || ''} 至 ${input.endDate || ''}`,
+      generatedAt: new Date().toISOString(),
+      assumptions: Array.isArray(foundation?.meta?.assumptions) ? foundation.meta.assumptions : [],
+      warnings: Array.isArray(foundation?.meta?.warnings) ? foundation.meta.warnings : []
+    },
+    extractedStrategy: {
+      places: Array.isArray(foundation?.extractedStrategy?.places) ? foundation.extractedStrategy.places : [],
+      restaurants: Array.isArray(foundation?.extractedStrategy?.restaurants) ? foundation.extractedStrategy.restaurants : [],
+      notes: Array.isArray(foundation?.extractedStrategy?.notes) ? foundation.extractedStrategy.notes : [],
+      rejectedItems: Array.isArray(foundation?.extractedStrategy?.rejectedItems) ? foundation.extractedStrategy.rejectedItems : [],
+      selectionRationale: Array.isArray(foundation?.extractedStrategy?.selectionRationale) ? foundation.extractedStrategy.selectionRationale : []
+    },
+    grouping: foundation?.grouping || { byArea: {}, byTheme: {} },
+    plans,
+    weather: { summary: '', source: '', days: [], advice: [] },
+    critique: {
+      initialIssues: uniqueText([...(foundation?.critique?.initialIssues || []), ...critique.initialIssues]).slice(0, 8),
+      revisionsApplied: uniqueText([...(foundation?.critique?.revisionsApplied || []), ...critique.revisionsApplied]).slice(0, 8)
+    }
+  }
+
+  const normalized = normalizePlan(rawPlan, input)
+  return enrichPlanImages(await enrichPlanWeather(normalized, input), input.destination)
+}
+
+function inferPlanFatigue(days = []) {
+  const levels = days.flatMap((day) => day.slots || []).map((slot) => slot.fatigueLevel)
+  if (levels.includes('high')) return 'high'
+  if (levels.includes('medium')) return 'medium'
+  return 'low'
 }
 
 async function prepareInputMaterials(input) {
@@ -471,6 +559,119 @@ function normalizeScriptText(value) {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 3200)
+}
+
+function buildTravelFoundationPrompt(input) {
+  const foundationInput = {
+    destination: input.destination,
+    startDate: input.startDate,
+    endDate: input.endDate,
+    travelers: input.travelers,
+    hotelArea: input.hotelArea,
+    hotelStays: input.hotelStays,
+    budget: input.budget,
+    pace: input.pace,
+    interests: input.interests,
+    selectedVariants: input.selectedVariants,
+    strategyText: String(input.strategyText || '').slice(0, 7000),
+    feedback: input.feedback
+  }
+
+  return `
+你是一个严谨、会自我审查的家庭旅行总规划师。请先做全局规划，不要生成每日完整行程。
+
+用户输入：
+${JSON.stringify(foundationInput, null, 2)}
+
+要求：
+1. 只输出严格 JSON。
+2. 目的地 "${input.destination}" 是硬约束；如果参考链接与目的地冲突，必须忽略并写入 warnings/rejectedItems。
+3. 深度分析用户需求、攻略文本、酒店位置、同行人、预算、节奏和兴趣。
+4. 输出候选地点池、餐厅池、区域分组、主题分组、每个版本的风格指导、整体路线原则。
+5. 不要输出每天的上午/午餐/下午/晚餐/晚上安排，每日安排由后续步骤单独生成。
+6. 质量优先，可以使用 high reasoning，但最终 JSON 要紧凑。
+
+返回 JSON：
+{
+  "meta": { "destination": "string", "assumptions": ["string"], "warnings": ["string"] },
+  "extractedStrategy": {
+    "places": [{ "id": "string", "name": "string", "type": "attraction | restaurant | cafe | shopping | hotel | transport | experience | other", "area": "string", "priority": 1, "estimatedStayMinutes": 90, "notes": "string", "sourceHint": "string", "familyFit": "high | medium | low" }],
+    "restaurants": [{ "id": "string", "name": "string", "type": "restaurant | cafe | snack | other", "area": "string", "priority": 1, "estimatedStayMinutes": 60, "notes": "string", "sourceHint": "string", "familyFit": "high | medium | low" }],
+    "notes": ["string"],
+    "rejectedItems": ["string"],
+    "selectionRationale": ["string"]
+  },
+  "grouping": { "byArea": { "区域名": ["地点名"] }, "byTheme": { "主题名": ["地点名"] } },
+  "routePrinciples": ["string"],
+  "variantGuidance": {
+    "classic": { "title": "string", "positioning": "string", "totalFatigueLevel": "low | medium | high", "bestFor": "string", "heroImageAlt": "string" },
+    "photoFood": { "title": "string", "positioning": "string", "totalFatigueLevel": "low | medium | high", "bestFor": "string", "heroImageAlt": "string" },
+    "familyRelaxed": { "title": "string", "positioning": "string", "totalFatigueLevel": "low | medium | high", "bestFor": "string", "heroImageAlt": "string" }
+  },
+  "critique": { "initialIssues": ["string"], "revisionsApplied": ["string"] }
+}`
+}
+
+function buildTravelDayPrompt(input, foundation, dayContext = {}) {
+  const selectedVariants = Array.isArray(input.selectedVariants) && input.selectedVariants.length ? input.selectedVariants : ['classic']
+  const compactFoundation = {
+    extractedStrategy: foundation?.extractedStrategy,
+    grouping: foundation?.grouping,
+    routePrinciples: foundation?.routePrinciples,
+    variantGuidance: foundation?.variantGuidance,
+    critique: foundation?.critique
+  }
+  const dayInput = {
+    destination: input.destination,
+    date: dayContext.date,
+    dayIndex: dayContext.dayIndex,
+    dayCount: dayContext.dayCount,
+    travelers: input.travelers,
+    hotel: dayContext.hotel || input.hotelArea,
+    pace: input.pace,
+    budget: input.budget,
+    interests: input.interests,
+    selectedVariants,
+    previousDays: (dayContext.previousDays || []).slice(-2),
+    feedback: input.feedback
+  }
+
+  return `
+你是家庭旅行每日行程规划师。请只生成第 ${dayContext.dayIndex} 天的详细安排，并对每个用户选择的版本都给出当天安排。
+
+全局规划：
+${JSON.stringify(compactFoundation, null, 2)}
+
+当天输入：
+${JSON.stringify(dayInput, null, 2)}
+
+要求：
+1. 只输出严格 JSON。
+2. 当天目的地和地点必须围绕 "${input.destination}"。
+3. 每个版本当天必须包含 5 个 slot：上午、午餐、下午、晚餐、晚上。
+4. 每个 slot 必须有推荐理由、停留时间、拍照建议、美食建议、家庭友好提醒、备选方案、交通提示、疲劳等级。
+5. 必须结合当天酒店 "${dayInput.hotel || ''}" 规划出发、转场和回程。
+6. 深度检查饭点是否合理、是否绕路、是否过累；修正后再输出。
+7. 文案生活化、具体、可执行。不要堆砌模板话。
+8. 不要输出其他天。
+
+返回 JSON：
+{
+  "plans": [{
+    "variant": "classic | photoFood | familyRelaxed",
+    "day": {
+      "day": 1,
+      "date": "YYYY-MM-DD",
+      "theme": "string",
+      "areaFocus": "string",
+      "summary": "string",
+      "slots": [{ "timeLabel": "上午 | 午餐 | 下午 | 晚餐 | 晚上", "placeName": "string", "area": "string", "reason": "string", "stayMinutes": 90, "photoTips": "string", "foodTips": "string", "familyFriendlyTips": "string", "backupPlan": "string", "transportHint": "string", "fatigueLevel": "low | medium | high" }],
+      "dailyBudgetHint": "string",
+      "riskCheck": "string"
+    }
+  }],
+  "critique": { "initialIssues": ["string"], "revisionsApplied": ["string"] }
+}`
 }
 
 function buildCompactTravelPlannerPrompt(input) {

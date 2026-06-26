@@ -502,7 +502,7 @@ async function generate(useMock = false) {
   currentHistoryId.value = ''
   try {
     const payload = buildTravelPayload(useMock)
-    const data = useMock ? await requestTravelPlan(payload) : await requestTravelPlanStream(payload)
+    const data = useMock ? await requestTravelPlan(payload) : await requestTravelPlanWorkflow(payload)
     plan.value = data
     activeVariant.value = data.plans?.[0]?.variant || 'classic'
     scrollToResult()
@@ -533,6 +533,70 @@ async function requestTravelPlan(payload) {
   const data = await parseApiResponse(response)
   if (!response.ok) throw new Error(formatApiError(response, data))
   return data
+}
+
+async function requestTravelPlanWorkflow(payload) {
+  const dates = enumerateDates(payload.startDate, payload.endDate)
+  loadingMessage.value = '正在分析攻略、酒店和候选地点。'
+  const foundationResponse = await requestTravelWorkflowStep({
+    action: 'foundation',
+    input: payload
+  })
+  const foundation = foundationResponse.foundation
+  const dayResults = []
+
+  for (let index = 0; index < dates.length; index += 1) {
+    const date = dates[index]
+    loadingMessage.value = `正在生成 Day ${index + 1}/${dates.length} 的详细安排。`
+    const dayResponse = await requestTravelWorkflowStep({
+      action: 'day',
+      input: payload,
+      foundation,
+      dayContext: {
+        date,
+        dayIndex: index + 1,
+        dayCount: dates.length,
+        hotel: findHotelForDate(payload.hotelStays, date) || payload.hotelArea,
+        previousDays: dayResults.map(summarizeDayResult)
+      }
+    })
+    dayResults.push(dayResponse.dayResult)
+  }
+
+  loadingMessage.value = '正在补充天气、封面和最终结构。'
+  return requestTravelWorkflowStep({
+    action: 'finalize',
+    input: payload,
+    foundation,
+    dayResults
+  })
+}
+
+async function requestTravelWorkflowStep(body) {
+  const response = await fetch('/api/travel-plan-workflow', {
+    method: 'POST',
+    headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body)
+  })
+  const data = await parseApiResponse(response)
+  if (!response.ok) throw new Error(formatApiError(response, data))
+  return data
+}
+
+function findHotelForDate(stays = [], date) {
+  const stay = (stays || []).find((item) => item.startDate <= date && item.endDate >= date)
+  return stay?.name || ''
+}
+
+function summarizeDayResult(result) {
+  return (result?.plans || []).map((item) => ({
+    variant: item.variant,
+    day: item.day?.day,
+    date: item.day?.date,
+    theme: item.day?.theme,
+    areaFocus: item.day?.areaFocus,
+    places: (item.day?.slots || []).map((slot) => slot.placeName).filter(Boolean)
+  }))
 }
 
 async function requestTravelPlanStream(payload) {
