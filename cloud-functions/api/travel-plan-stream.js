@@ -21,7 +21,7 @@ export default async function onRequest(context) {
     }
 
     const plan = await withTimeout(
-      createTravelPlan(input, { stream: true }),
+      createTravelPlan(input, { stream: true, compact: true }),
       EDGEONE_TIMEOUT_MS,
       'EdgeOne 函数即将超过 120 秒上限，请减少旅行天数或先粘贴核心攻略文字后重试。'
     )

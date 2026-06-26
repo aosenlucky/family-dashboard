@@ -4,7 +4,7 @@ import { jsonrepair } from 'jsonrepair'
 
 const MODEL_NAME = process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro'
 const REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_LINK_TIMEOUT_MS || 3500)
-const DEEPSEEK_TIMEOUT_MS = Number(process.env.TRAVEL_DEEPSEEK_TIMEOUT_MS || 95000)
+const DEEPSEEK_TIMEOUT_MS = Math.min(Number(process.env.TRAVEL_DEEPSEEK_TIMEOUT_MS || 85000), 85000)
 const IMAGE_REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_IMAGE_TIMEOUT_MS || 1500)
 const WEATHER_REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_WEATHER_TIMEOUT_MS || 2500)
 const FORECAST_HORIZON_DAYS = 16
@@ -203,8 +203,8 @@ export async function createTravelPlan(input, options = {}) {
   const normalizedInput = await prepareInputMaterials(input)
   options.onProgress?.({ stage: 'deepseek', message: 'DeepSeek 正在推理行程，请保持页面打开。' })
   const content = options.stream
-    ? await requestDeepSeekStream(apiKey, normalizedInput, options.onProgress)
-    : await requestDeepSeek(apiKey, normalizedInput)
+    ? await requestDeepSeekStream(apiKey, normalizedInput, options.onProgress, options)
+    : await requestDeepSeek(apiKey, normalizedInput, options)
 
   options.onProgress?.({ stage: 'normalize', message: '正在整理行程结构。' })
   const plan = await enrichPlanWeather(normalizePlan(parseJsonContent(content), input), input)
@@ -212,11 +212,11 @@ export async function createTravelPlan(input, options = {}) {
   return enrichPlanImages(plan, input.destination)
 }
 
-async function requestDeepSeek(apiKey, input) {
+async function requestDeepSeek(apiKey, input, options = {}) {
   const response = await fetchWithTimeout('https://api.deepseek.com/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify(buildDeepSeekRequest(input, false))
+    body: JSON.stringify(buildDeepSeekRequest(input, false, options))
   }, DEEPSEEK_TIMEOUT_MS)
 
   if (!response.ok) {
@@ -230,11 +230,11 @@ async function requestDeepSeek(apiKey, input) {
   return content
 }
 
-async function requestDeepSeekStream(apiKey, input, onProgress) {
+async function requestDeepSeekStream(apiKey, input, onProgress, options = {}) {
   const response = await fetchWithTimeout('https://api.deepseek.com/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify(buildDeepSeekRequest(input, true))
+    body: JSON.stringify(buildDeepSeekRequest(input, true, options))
   }, DEEPSEEK_TIMEOUT_MS)
 
   if (!response.ok) {
@@ -277,16 +277,21 @@ async function requestDeepSeekStream(apiKey, input, onProgress) {
   return content
 }
 
-function buildDeepSeekRequest(input, stream) {
+function buildDeepSeekRequest(input, stream, options = {}) {
+  const compact = Boolean(options.compact)
   return {
     model: MODEL_NAME,
     messages: [
       { role: 'system', content: '你是一个只返回严格 JSON 的家庭旅行规划 API。不要输出 Markdown 代码块。' },
-      { role: 'user', content: buildTravelPlannerPrompt(input) }
+      { role: 'user', content: compact ? buildCompactTravelPlannerPrompt(input) : buildTravelPlannerPrompt(input) }
     ],
     temperature: 0.35,
-    max_tokens: Number(process.env.TRAVEL_MAX_TOKENS || 9000),
-    reasoning_effort: process.env.TRAVEL_REASONING_EFFORT || 'high',
+    max_tokens: compact
+      ? Math.min(Number(process.env.TRAVEL_MAX_TOKENS || 4200), 4200)
+      : Number(process.env.TRAVEL_MAX_TOKENS || 9000),
+    reasoning_effort: compact
+      ? process.env.TRAVEL_COMPACT_REASONING_EFFORT || 'medium'
+      : process.env.TRAVEL_REASONING_EFFORT || 'high',
     thinking: { type: 'enabled' },
     response_format: { type: 'json_object' },
     stream
@@ -466,6 +471,91 @@ function normalizeScriptText(value) {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 3200)
+}
+
+function buildCompactTravelPlannerPrompt(input) {
+  const compactInput = {
+    destination: input.destination,
+    startDate: input.startDate,
+    endDate: input.endDate,
+    travelers: input.travelers,
+    hotelArea: input.hotelArea,
+    hotelStays: input.hotelStays,
+    budget: input.budget,
+    pace: input.pace,
+    interests: input.interests,
+    selectedVariants: input.selectedVariants,
+    feedback: input.feedback,
+    strategyText: String(input.strategyText || '').slice(0, 3200),
+    previousPlan: input.previousPlan ? {
+      meta: input.previousPlan.meta,
+      plans: (input.previousPlan.plans || []).map((plan) => ({
+        variant: plan.variant,
+        title: plan.title,
+        days: (plan.days || []).map((day) => ({
+          day: day.day,
+          date: day.date,
+          theme: day.theme,
+          slots: (day.slots || []).map((slot) => ({
+            timeLabel: slot.timeLabel,
+            placeName: slot.placeName,
+            area: slot.area
+          }))
+        }))
+      }))
+    } : undefined
+  }
+
+  return `
+你是一个严谨、会自我审查的家庭旅行规划师。请在保持深度判断的前提下，输出紧凑但可直接渲染的 JSON。
+
+用户输入：
+${JSON.stringify(compactInput, null, 2)}
+
+核心要求：
+1. 只输出严格 JSON，不要 Markdown。
+2. 目的地 "${input.destination}" 是硬约束；如果参考内容与目的地冲突，忽略冲突并写入 warnings/rejectedItems。
+3. 只生成 selectedVariants 中的版本。每个版本每天必须有 5 个 slot：上午、午餐、下午、晚餐、晚上。
+4. 每个 slot 必须包含 placeName、area、reason、stayMinutes、photoTips、foodTips、familyFriendlyTips、backupPlan、transportHint、fatigueLevel。
+5. 交通提示必须结合当天 hotelStays；如果只有一个酒店，默认每天从该酒店出发并回到该酒店。
+6. 对饭点、绕路、疲劳做自我批判并修正，但只把结论写进 critique，避免长篇推理。
+7. 文案要生活化、具体、可执行；每个说明控制在 18 个中文字符以内。
+8. heroImageUrl 留空，weather 可留空对象，服务端会补天气和图片。
+9. extractedStrategy 只保留最多 8 个核心地点、5 个餐厅；grouping 可简短。
+
+必须返回这个 JSON 形状：
+{
+  "meta": { "destination": "string", "dateRange": "string", "generatedAt": "ISO string", "assumptions": ["string"], "warnings": ["string"] },
+  "extractedStrategy": {
+    "places": [{ "id": "string", "name": "string", "type": "attraction | restaurant | cafe | shopping | hotel | transport | experience | other", "area": "string", "priority": 1, "estimatedStayMinutes": 90, "notes": "string", "sourceHint": "string", "familyFit": "high | medium | low" }],
+    "restaurants": [],
+    "notes": ["string"],
+    "rejectedItems": ["string"],
+    "selectionRationale": ["string"]
+  },
+  "grouping": { "byArea": { "区域名": ["地点名"] }, "byTheme": { "主题名": ["地点名"] } },
+  "plans": [{
+    "variant": "classic | photoFood | familyRelaxed",
+    "title": "string",
+    "positioning": "string",
+    "heroImageUrl": "",
+    "heroImageAlt": "string",
+    "totalFatigueLevel": "low | medium | high",
+    "bestFor": "string",
+    "days": [{
+      "day": 1,
+      "date": "YYYY-MM-DD",
+      "theme": "string",
+      "areaFocus": "string",
+      "summary": "string",
+      "slots": [{ "timeLabel": "上午 | 午餐 | 下午 | 晚餐 | 晚上", "placeName": "string", "area": "string", "reason": "string", "stayMinutes": 90, "photoTips": "string", "foodTips": "string", "familyFriendlyTips": "string", "backupPlan": "string", "transportHint": "string", "fatigueLevel": "low | medium | high" }],
+      "dailyBudgetHint": "string",
+      "riskCheck": "string"
+    }]
+  }],
+  "weather": { "summary": "", "source": "", "days": [], "advice": [] },
+  "critique": { "initialIssues": ["string"], "revisionsApplied": ["string"] }
+}`
 }
 
 function buildTravelPlannerPrompt(input) {
