@@ -527,23 +527,23 @@ function buildTravelPayload(useMock = false) {
 async function requestTravelPlan(payload) {
   const response = await fetch('/api/travel-plan', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: sessionStorage.getItem('family_auth_token') || '' },
+    headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload)
   })
   const data = await parseApiResponse(response)
-  if (!response.ok) throw new Error([data.error, data.detail].filter(Boolean).join(' '))
+  if (!response.ok) throw new Error(formatApiError(response, data))
   return data
 }
 
 async function requestTravelPlanStream(payload) {
   const response = await fetch('/api/travel-plan-stream', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: sessionStorage.getItem('family_auth_token') || '' },
+    headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload)
   })
   if (!response.ok) {
     const data = await parseApiResponse(response)
-    throw new Error([data.error, data.detail].filter(Boolean).join(' ') || `服务端请求失败：${response.status}`)
+    throw new Error(formatApiError(response, data))
   }
 
   const contentType = response.headers.get('content-type') || ''
@@ -616,6 +616,22 @@ async function parseApiResponse(response) {
   }
 }
 
+function buildAuthHeaders(extra = {}) {
+  const token = sessionStorage.getItem('family_auth_token') || ''
+  if (!token || token === 'local_dummy_token' || token === '0000') {
+    throw new Error('请先用家庭密码重新登录，再使用云端旅行功能。')
+  }
+  return { ...extra, Authorization: token }
+}
+
+function formatApiError(response, data = {}) {
+  if (response.status === 401) {
+    sessionStorage.removeItem('family_auth_token')
+    return '登录已失效，请刷新页面后重新输入家庭密码。'
+  }
+  return [data.error, data.detail].filter(Boolean).join(' ') || `服务端请求失败：${response.status}`
+}
+
 function toggleList(list, value) {
   const index = list.indexOf(value)
   if (index >= 0) list.splice(index, 1)
@@ -674,11 +690,11 @@ async function saveCurrentPlan() {
     }
     const response = await fetch('/api/travel-history', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: sessionStorage.getItem('family_auth_token') || '' },
+      headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ item })
     })
     const data = await parseApiResponse(response)
-    if (!response.ok) throw new Error([data.error, data.detail].filter(Boolean).join(' '))
+    if (!response.ok) throw new Error(formatApiError(response, data))
     travelHistory.value = Array.isArray(data.history) ? data.history : [data.item, ...travelHistory.value].filter(Boolean)
     saveStatus.value = '已保存到云端历史，电脑和手机都能看到。'
     isViewingSavedPlan.value = true
@@ -727,10 +743,10 @@ async function deleteHistoryItem(item) {
   try {
     const response = await fetch(`/api/travel-history?id=${encodeURIComponent(item.id)}`, {
       method: 'DELETE',
-      headers: { Authorization: sessionStorage.getItem('family_auth_token') || '' }
+      headers: buildAuthHeaders()
     })
     const data = await parseApiResponse(response)
-    if (!response.ok) throw new Error([data.error, data.detail].filter(Boolean).join(' '))
+    if (!response.ok) throw new Error(formatApiError(response, data))
     travelHistory.value = Array.isArray(data.history) ? data.history : travelHistory.value.filter((history) => history.id !== item.id)
     if (confirmingDeleteId.value === item.id) confirmingDeleteId.value = ''
     if (currentHistoryId.value === item.id) {
@@ -750,10 +766,10 @@ async function clearHistory() {
   try {
     const response = await fetch('/api/travel-history', {
       method: 'DELETE',
-      headers: { Authorization: sessionStorage.getItem('family_auth_token') || '' }
+      headers: buildAuthHeaders()
     })
     const data = await parseApiResponse(response)
-    if (!response.ok) throw new Error([data.error, data.detail].filter(Boolean).join(' '))
+    if (!response.ok) throw new Error(formatApiError(response, data))
     travelHistory.value = []
     confirmingDeleteId.value = ''
     currentHistoryId.value = ''
@@ -769,10 +785,10 @@ async function loadTravelHistory() {
   isHistoryLoading.value = true
   try {
     const response = await fetch('/api/travel-history', {
-      headers: { Authorization: sessionStorage.getItem('family_auth_token') || '' }
+      headers: buildAuthHeaders()
     })
     const data = await parseApiResponse(response)
-    if (!response.ok) throw new Error([data.error, data.detail].filter(Boolean).join(' '))
+    if (!response.ok) throw new Error(formatApiError(response, data))
     travelHistory.value = Array.isArray(data.history) ? data.history : []
   } catch (err) {
     saveStatus.value = err instanceof Error ? err.message : '云端历史读取失败。'
