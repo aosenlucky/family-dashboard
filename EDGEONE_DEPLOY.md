@@ -11,7 +11,7 @@
 在 EdgeOne Pages 中导入 GitHub 仓库后，推荐使用：
 
 ```text
-Install Command: npm ci
+Install Command: npm ci --include=optional && npm install @rolldown/binding-linux-x64-gnu@1.0.3 --no-save
 Build Command: npm run build:edgeone
 Output Directory: dist
 Node Version: 22.11.0

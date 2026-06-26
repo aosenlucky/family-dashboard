@@ -1,5 +1,5 @@
 {
-  "installCommand": "npm ci",
+  "installCommand": "npm ci --include=optional && npm install @rolldown/binding-linux-x64-gnu@1.0.3 --no-save",
   "buildCommand": "npm run build:edgeone",
   "outputDirectory": "dist",
   "nodeVersion": "22.11.0",
