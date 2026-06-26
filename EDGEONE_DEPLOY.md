@@ -12,7 +12,7 @@
 
 ```text
 Install Command: npm ci
-Build Command: VITE_ROUTER_MODE=hash npm run build
+Build Command: npm run build:edgeone
 Output Directory: dist
 Node Version: 22.11.0
 ```
