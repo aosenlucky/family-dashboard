@@ -16,7 +16,7 @@ body {
 body::before { 
     content: '';
     position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; 
-    background-image: url('https://senyuefamily.obs.cn-east-3.myhuaweicloud.com/photos/bg.jpg'); 
+    background-image: url('/bg.jpg');
     background-size: cover; 
     background-position: center; 
     background-repeat: no-repeat;

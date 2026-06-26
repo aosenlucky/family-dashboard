@@ -125,8 +125,13 @@ const triggerPushNotification = async (title, content) => {
     const token = sessionStorage.getItem('family_auth_token');
     if (!auth.value.isLoggedIn || token === 'local_dummy_token' || token === '0000') return; 
     try {
-        await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': token }, body: JSON.stringify({ action: 'notify', title, content }) });
-    } catch(e) { console.error('Push Failed'); }
+        const res = await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': token }, body: JSON.stringify({ action: 'notify', title, content }) });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            console.error('Push Failed', data);
+            showNotification('提醒推送失败，请检查 PushPlus 环境变量');
+        }
+    } catch(e) { console.error('Push Failed', e); showNotification('提醒推送失败，请稍后再试'); }
 }
 
 const saveConfig = async () => {
