@@ -11,6 +11,7 @@
                 <button @click="configTab = 'life'" :class="configTab === 'life' ? 'border-apple-blue text-apple-blue' : 'border-transparent text-gray-500'" class="px-4 py-3 border-b-2 text-sm font-medium whitespace-nowrap shrink-0">日常与相册</button>
                 <button @click="configTab = 'assets'" :class="configTab === 'assets' ? 'border-apple-blue text-apple-blue' : 'border-transparent text-gray-500'" class="px-4 py-3 border-b-2 text-sm font-medium whitespace-nowrap shrink-0">资产与股市</button>
                 <button @click="configTab = 'loans'" :class="configTab === 'loans' ? 'border-apple-blue text-apple-blue' : 'border-transparent text-gray-500'" class="px-4 py-3 border-b-2 text-sm font-medium whitespace-nowrap shrink-0">负债与转账</button>
+                <button @click="configTab = 'data'" :class="configTab === 'data' ? 'border-apple-blue text-apple-blue' : 'border-transparent text-gray-500'" class="px-4 py-3 border-b-2 text-sm font-medium whitespace-nowrap shrink-0">数据安全</button>
             </div>
 
             <div class="flex-1 overflow-y-auto modal-scroll p-4 md:p-6 bg-gray-50 relative">
@@ -361,6 +362,28 @@
                         </div>
                     </div>
                 </div>
+
+                <div v-if="configTab === 'data'" class="space-y-6">
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                        <div class="flex items-start justify-between gap-4 mb-4">
+                            <div>
+                                <h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-database mr-2 text-apple-blue"></i>数据备份与恢复</h4>
+                                <p class="text-xs text-gray-500 mt-1 leading-relaxed">导出会包含家庭配置和旅行历史详情。恢复会覆盖云端数据，建议只使用自己导出的备份文件。</p>
+                            </div>
+                            <span class="text-[10px] text-gray-400 bg-gray-50 border border-gray-100 rounded-full px-2 py-1">JSON</span>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <button @click="exportDataBackup" :disabled="isExportingBackup" class="w-full bg-gray-900 text-white rounded-2xl px-4 py-3 text-sm font-medium hover:bg-gray-700 disabled:bg-gray-400 flex items-center justify-center">
+                                <i class="ph mr-2" :class="isExportingBackup ? 'ph-spinner animate-spin' : 'ph-download-simple'"></i>{{ isExportingBackup ? '正在导出...' : '导出完整备份' }}
+                            </button>
+                            <button @click="backupFileInput?.click()" :disabled="isRestoringBackup" class="w-full bg-white border border-gray-200 text-gray-800 rounded-2xl px-4 py-3 text-sm font-medium hover:border-apple-blue hover:text-apple-blue disabled:text-gray-400 flex items-center justify-center">
+                                <i class="ph mr-2" :class="isRestoringBackup ? 'ph-spinner animate-spin' : 'ph-upload-simple'"></i>{{ isRestoringBackup ? '正在恢复...' : '从备份恢复' }}
+                            </button>
+                        </div>
+                        <input ref="backupFileInput" type="file" accept="application/json,.json" class="hidden" @change="restoreDataBackup" />
+                        <p v-if="backupStatus" class="text-xs mt-3 text-gray-500">{{ backupStatus }}</p>
+                    </div>
+                </div>
             </div>
 
             <!-- 底部按钮 -->
@@ -385,6 +408,10 @@ const saveConfig = inject('saveConfig')
 const showNotification = inject('showNotification')
 
 const configTab = ref('life')
+const backupFileInput = ref(null)
+const isExportingBackup = ref(false)
+const isRestoringBackup = ref(false)
+const backupStatus = ref('')
 
 const activeSections = ref({
     photos: true,
@@ -398,6 +425,61 @@ const activeSections = ref({
     reading: true
 });
 const toggle = (sec) => { activeSections.value[sec] = !activeSections.value[sec]; };
+
+const exportDataBackup = async () => {
+    isExportingBackup.value = true;
+    backupStatus.value = '';
+    try {
+        const res = await fetch('/api/data-backup', {
+            headers: { 'Authorization': sessionStorage.getItem('family_auth_token') || '' }
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `senyue-family-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+        backupStatus.value = '备份已导出，请妥善保存。';
+        showNotification?.('完整备份已导出');
+    } catch (error) {
+        backupStatus.value = `导出失败：${error instanceof Error ? error.message : String(error)}`;
+    } finally {
+        isExportingBackup.value = false;
+    }
+}
+
+const restoreDataBackup = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!window.confirm('恢复备份会覆盖当前云端数据，确定继续吗？')) return;
+
+    isRestoringBackup.value = true;
+    backupStatus.value = '';
+    try {
+        const backup = JSON.parse(await file.text());
+        const res = await fetch('/api/data-backup', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': sessionStorage.getItem('family_auth_token') || ''
+            },
+            body: JSON.stringify({ backup })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error([data.error, data.detail].filter(Boolean).join(' ') || '恢复失败');
+        backupStatus.value = '恢复完成，页面将刷新读取云端数据。';
+        showNotification?.('备份恢复完成');
+        setTimeout(() => window.location.reload(), 800);
+    } catch (error) {
+        backupStatus.value = `恢复失败：${error instanceof Error ? error.message : String(error)}`;
+    } finally {
+        isRestoringBackup.value = false;
+    }
+}
 
 // 🌟 纯前端 AI 魔法生成引擎 🌟
 const rawWeReadNote = ref('')

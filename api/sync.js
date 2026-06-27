@@ -1,9 +1,9 @@
+import { readMainRecord, writeMainRecord } from './_data-store.js'
+
 export default async function handler(req, res) {
   const { method, headers, body } = req
 
   const pin = process.env.SYSTEM_PASSWORD
-  const apiKey = process.env.JSONBIN_API_KEY
-  const binId = process.env.JSONBIN_BIN_ID
   const authHeader = headers.authorization || ''
 
   if (pin && authHeader !== pin) {
@@ -12,13 +12,9 @@ export default async function handler(req, res) {
 
   if (method === 'GET') {
     try {
-      const response = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
-        headers: { 'X-Master-Key': apiKey }
-      })
-      const data = await response.json()
-      return res.status(200).json(data.record || {})
+      return res.status(200).json(await readMainRecord())
     } catch (error) {
-      return res.status(500).json({ error: 'Failed to read JSONBin', detail: getErrorMessage(error) })
+      return res.status(500).json({ error: 'Failed to read data store', detail: getErrorMessage(error) })
     }
   }
 
@@ -39,16 +35,7 @@ export default async function handler(req, res) {
         })
       }
 
-      const response = await fetch(`https://api.jsonbin.io/v3/b/${binId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-Master-Key': apiKey },
-        body: JSON.stringify(body)
-      })
-
-      if (!response.ok) {
-        return res.status(502).json({ error: 'Failed to write JSONBin', detail: await safeResponseText(response) })
-      }
-
+      await writeMainRecord(body)
       return res.status(200).json({ success: true })
     } catch (error) {
       return res.status(500).json({ error: 'Failed to process request', detail: getErrorMessage(error) })

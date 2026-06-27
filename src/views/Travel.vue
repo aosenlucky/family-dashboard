@@ -805,7 +805,25 @@ async function saveCurrentPlan() {
     isSavingHistory.value = false
   }
 }
-function openHistoryPlan(item) {
+async function openHistoryPlan(item) {
+  if (!item?.id) return
+  if (!item.plan) {
+    isHistoryLoading.value = true
+    saveStatus.value = ''
+    try {
+      const response = await fetch(`/api/travel-history?id=${encodeURIComponent(item.id)}`, {
+        headers: buildAuthHeaders()
+      })
+      const data = await parseApiResponse(response)
+      if (!response.ok) throw new Error(formatApiError(response, data))
+      item = data.item
+    } catch (err) {
+      saveStatus.value = err instanceof Error ? err.message : '历史行程详情读取失败。'
+      return
+    } finally {
+      isHistoryLoading.value = false
+    }
+  }
   if (!item?.plan) return
   plan.value = structuredCloneSafe(item.plan)
   activeVariant.value = item.activeVariant || item.plan.plans?.[0]?.variant || 'classic'
