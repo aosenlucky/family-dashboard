@@ -543,11 +543,20 @@ async function requestTravelPlanWorkflow(payload) {
     input: payload
   })
   const foundation = foundationResponse.foundation
+  loadingMessage.value = '正在制定整趟路线骨架，避免重复和绕远。'
+  const skeletonResponse = await requestTravelWorkflowStep({
+    action: 'skeleton',
+    input: payload,
+    foundation
+  })
+  const skeleton = skeletonResponse.skeleton
   const dayResults = []
 
   for (let index = 0; index < dates.length; index += 1) {
     const date = dates[index]
     loadingMessage.value = `正在生成 Day ${index + 1}/${dates.length} 的详细安排。`
+    const usedPlaces = collectUsedPlaces(dayResults)
+    const usedAreas = collectUsedAreas(dayResults)
     const dayResponse = await requestTravelWorkflowStep({
       action: 'day',
       input: payload,
@@ -556,8 +565,12 @@ async function requestTravelPlanWorkflow(payload) {
         date,
         dayIndex: index + 1,
         dayCount: dates.length,
+        skeletonDay: findSkeletonDay(skeleton, index + 1, date),
+        tripSkeleton: skeleton,
+        usedPlaces,
+        usedAreas,
         hotel: findHotelForDate(payload.hotelStays, date) || payload.hotelArea,
-        previousDays: dayResults.map(summarizeDayResult)
+        previousDays: dayResults.flatMap(summarizeDayResult)
       }
     })
     dayResults.push(dayResponse.dayResult)
@@ -568,6 +581,7 @@ async function requestTravelPlanWorkflow(payload) {
     action: 'finalize',
     input: payload,
     foundation,
+    skeleton,
     dayResults
   })
 }
@@ -586,6 +600,28 @@ async function requestTravelWorkflowStep(body) {
 function findHotelForDate(stays = [], date) {
   const stay = (stays || []).find((item) => item.startDate <= date && item.endDate >= date)
   return stay?.name || ''
+}
+
+function findSkeletonDay(skeleton, dayIndex, date) {
+  const days = Array.isArray(skeleton?.tripSkeleton) ? skeleton.tripSkeleton : []
+  return days.find((item) => item.date === date) || days.find((item) => Number(item.day) === dayIndex) || null
+}
+
+function collectUsedPlaces(dayResults = []) {
+  const names = dayResults
+    .flatMap((result) => result?.plans || [])
+    .flatMap((item) => item.day?.slots || [])
+    .map((slot) => slot.placeName)
+    .filter(Boolean)
+  return [...new Set(names)]
+}
+
+function collectUsedAreas(dayResults = []) {
+  const areas = dayResults
+    .flatMap((result) => result?.plans || [])
+    .flatMap((item) => [item.day?.areaFocus, ...(item.day?.slots || []).map((slot) => slot.area)])
+    .filter(Boolean)
+  return [...new Set(areas)]
 }
 
 function summarizeDayResult(result) {

@@ -1,4 +1,4 @@
-import { createTravelPlanDay, createTravelPlanFoundation, finalizeTravelPlanWorkflow } from './travel-plan.js'
+import { createTravelPlanDay, createTravelPlanFoundation, createTravelPlanSkeleton, finalizeTravelPlanWorkflow } from './travel-plan.js'
 
 export const config = {
   maxDuration: 300
@@ -13,7 +13,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { action, input, foundation, dayContext, dayResults } = req.body || {}
+    const { action, input, foundation, skeleton, dayContext, dayResults } = req.body || {}
     if (!input?.destination || !input?.startDate || !input?.endDate) {
       return res.status(400).json({ error: '目的地、开始日期和结束日期必填。' })
     }
@@ -26,6 +26,11 @@ export default async function handler(req, res) {
       return res.status(200).json({ foundation: await createTravelPlanFoundation(input) })
     }
 
+    if (action === 'skeleton') {
+      if (!foundation) return res.status(400).json({ error: '缺少 foundation。' })
+      return res.status(200).json({ skeleton: await createTravelPlanSkeleton(input, foundation) })
+    }
+
     if (action === 'day') {
       if (!foundation || !dayContext) return res.status(400).json({ error: '缺少 foundation 或 dayContext。' })
       return res.status(200).json({ dayResult: await createTravelPlanDay(input, foundation, dayContext) })
@@ -33,7 +38,7 @@ export default async function handler(req, res) {
 
     if (action === 'finalize') {
       if (!foundation || !Array.isArray(dayResults)) return res.status(400).json({ error: '缺少 foundation 或 dayResults。' })
-      return res.status(200).json(await finalizeTravelPlanWorkflow(input, foundation, dayResults))
+      return res.status(200).json(await finalizeTravelPlanWorkflow(input, foundation, dayResults, skeleton))
     }
 
     return res.status(400).json({ error: '未知的旅行生成步骤。' })

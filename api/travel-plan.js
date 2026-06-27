@@ -375,6 +375,17 @@ export async function createTravelPlanFoundation(input, options = {}) {
   return parseJsonContent(content)
 }
 
+export async function createTravelPlanSkeleton(input, foundation, options = {}) {
+  const apiKey = getDeepSeekApiKey()
+  if (!apiKey) throw new Error('没有找到 DEEPSEEK_API_KEY，真实行程无法生成。')
+  const content = await requestDeepSeekStream(apiKey, input, options.onProgress, {
+    prompt: buildTravelSkeletonPrompt(input, foundation),
+    maxTokens: Number(process.env.TRAVEL_SKELETON_MAX_TOKENS || 3600),
+    reasoningEffort: process.env.TRAVEL_WORKFLOW_REASONING_EFFORT || 'high'
+  })
+  return parseJsonContent(content)
+}
+
 export async function createTravelPlanDay(input, foundation, dayContext, options = {}) {
   const apiKey = getDeepSeekApiKey()
   if (!apiKey) throw new Error('没有找到 DEEPSEEK_API_KEY，真实行程无法生成。')
@@ -386,7 +397,7 @@ export async function createTravelPlanDay(input, foundation, dayContext, options
   return parseJsonContent(content)
 }
 
-export async function finalizeTravelPlanWorkflow(input, foundation, dayResults = []) {
+export async function finalizeTravelPlanWorkflow(input, foundation, dayResults = [], skeleton = null) {
   const selectedVariants = Array.isArray(input.selectedVariants) && input.selectedVariants.length ? input.selectedVariants : ['classic']
   const planDaysByVariant = new Map(selectedVariants.map((variant) => [variant, []]))
   const critique = { initialIssues: [], revisionsApplied: [] }
@@ -428,9 +439,13 @@ export async function finalizeTravelPlanWorkflow(input, foundation, dayResults =
       restaurants: Array.isArray(foundation?.extractedStrategy?.restaurants) ? foundation.extractedStrategy.restaurants : [],
       notes: Array.isArray(foundation?.extractedStrategy?.notes) ? foundation.extractedStrategy.notes : [],
       rejectedItems: Array.isArray(foundation?.extractedStrategy?.rejectedItems) ? foundation.extractedStrategy.rejectedItems : [],
-      selectionRationale: Array.isArray(foundation?.extractedStrategy?.selectionRationale) ? foundation.extractedStrategy.selectionRationale : []
+      selectionRationale: uniqueText([
+        ...(foundation?.extractedStrategy?.selectionRationale || []),
+        ...(skeleton?.routeChecks || [])
+      ]).slice(0, 10)
     },
     grouping: foundation?.grouping || { byArea: {}, byTheme: {} },
+    routeSkeleton: Array.isArray(skeleton?.tripSkeleton) ? skeleton.tripSkeleton : [],
     plans,
     weather: { summary: '', source: '', days: [], advice: [] },
     critique: {
@@ -612,6 +627,66 @@ ${JSON.stringify(foundationInput, null, 2)}
 }`
 }
 
+function buildTravelSkeletonPrompt(input, foundation) {
+  const dates = enumerateDateStrings(input.startDate, input.endDate)
+  const compactFoundation = {
+    extractedStrategy: foundation?.extractedStrategy,
+    grouping: foundation?.grouping,
+    routePrinciples: foundation?.routePrinciples,
+    variantGuidance: foundation?.variantGuidance,
+    critique: foundation?.critique
+  }
+  const skeletonInput = {
+    destination: input.destination,
+    dates,
+    hotelStays: input.hotelStays,
+    hotelArea: input.hotelArea,
+    travelers: input.travelers,
+    pace: input.pace,
+    budget: input.budget,
+    interests: input.interests,
+    selectedVariants: input.selectedVariants
+  }
+
+  return `
+你是整趟旅行的路线总控。请基于全局规划，先生成 ${dates.length} 天路线骨架，后续每天详细行程必须遵守它。
+
+用户旅行信息：
+${JSON.stringify(skeletonInput, null, 2)}
+
+全局规划：
+${JSON.stringify(compactFoundation, null, 2)}
+
+骨架要求：
+1. 只输出严格 JSON。
+2. 每一天必须对应一个 date，不要漏天，不要多天。
+3. 每一天必须有 primaryArea、theme、anchorPlaces、mealArea、hotel、transportLogic、avoidRepeating、fatigueTarget。
+4. anchorPlaces 是当天核心地点，后续每日详情必须优先使用；不同天不要重复核心地点。
+5. 相邻天区域要有逻辑：同区域集中、远距离移动安排在换酒店或轻松日，不要每天跨很远。
+6. 若 7 天以上，要安排节奏波峰波谷：连续两天高强度后必须有较轻松的一天。
+7. 若用户有多酒店，骨架必须体现换酒店当天的交通和低强度安排。
+8. 不要生成上午/午餐/下午/晚餐/晚上 slot，只生成路线骨架。
+
+返回 JSON：
+{
+  "tripSkeleton": [{
+    "day": 1,
+    "date": "YYYY-MM-DD",
+    "theme": "string",
+    "primaryArea": "string",
+    "anchorPlaces": ["string"],
+    "mealArea": "string",
+    "hotel": "string",
+    "transportLogic": "string",
+    "avoidRepeating": ["string"],
+    "fatigueTarget": "low | medium | high",
+    "whyThisDay": "string"
+  }],
+  "globalUsedPlacePolicy": ["string"],
+  "routeChecks": ["string"]
+}`
+}
+
 function buildTravelDayPrompt(input, foundation, dayContext = {}) {
   const selectedVariants = Array.isArray(input.selectedVariants) && input.selectedVariants.length ? input.selectedVariants : ['classic']
   const compactFoundation = {
@@ -621,18 +696,27 @@ function buildTravelDayPrompt(input, foundation, dayContext = {}) {
     variantGuidance: foundation?.variantGuidance,
     critique: foundation?.critique
   }
+  const tripSkeleton = Array.isArray(dayContext.tripSkeleton?.tripSkeleton)
+    ? dayContext.tripSkeleton.tripSkeleton
+    : Array.isArray(dayContext.tripSkeleton)
+      ? dayContext.tripSkeleton
+      : []
   const dayInput = {
     destination: input.destination,
     date: dayContext.date,
     dayIndex: dayContext.dayIndex,
     dayCount: dayContext.dayCount,
+    skeletonDay: dayContext.skeletonDay,
+    tripSkeleton,
+    usedPlaces: dayContext.usedPlaces || [],
+    usedAreas: dayContext.usedAreas || [],
     travelers: input.travelers,
     hotel: dayContext.hotel || input.hotelArea,
     pace: input.pace,
     budget: input.budget,
     interests: input.interests,
     selectedVariants,
-    previousDays: (dayContext.previousDays || []).slice(-2),
+    previousDays: dayContext.previousDays || [],
     feedback: input.feedback
   }
 
@@ -651,9 +735,12 @@ ${JSON.stringify(dayInput, null, 2)}
 3. 每个版本当天必须包含 5 个 slot：上午、午餐、下午、晚餐、晚上。
 4. 每个 slot 必须有推荐理由、停留时间、拍照建议、美食建议、家庭友好提醒、备选方案、交通提示、疲劳等级。
 5. 必须结合当天酒店 "${dayInput.hotel || ''}" 规划出发、转场和回程。
-6. 深度检查饭点是否合理、是否绕路、是否过累；修正后再输出。
-7. 文案生活化、具体、可执行。不要堆砌模板话。
-8. 不要输出其他天。
+6. 必须遵守 skeletonDay：当天主题、主区域、核心地点和疲劳目标不能随意偏离。
+7. 不要重复 usedPlaces 中已经作为核心游览的地点，除非是酒店、交通或用户反馈明确要求。
+8. 必须参考 tripSkeleton，保证当天和前后天区域衔接自然，不要突然跨很远。
+9. 深度检查饭点是否合理、是否绕路、是否过累；修正后再输出。
+10. 文案生活化、具体、可执行。不要堆砌模板话。
+11. 不要输出其他天。
 
 返回 JSON：
 {
