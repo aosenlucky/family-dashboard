@@ -1,15 +1,36 @@
-# 数据存储与备份方案
+# Supabase 数据存储方案
 
-## 当前推荐
+## 结论
 
-短期继续兼容 JsonBin，新增 `JSONBIN_TRAVEL_BIN_ID` 把旅行数据从主家庭配置中拆出去。
+本项目现在以 Supabase 作为正式数据层。JsonBin 只作为旧数据迁移来源和临时回退。
 
-长期建议迁移到 Supabase：
-- 主数据、旅行索引、旅行详情可以分 key 存储，避免整包 JSON 越来越大。
-- 查询历史列表时只读索引，点开后再读详情。
-- 后续可以继续拆成真正的表结构，例如 `travel_plans`、`books`、`photos`、`todos`。
+Supabase 的优势：
+- 旅行历史列表和详情分表存储，避免每次加载整包大 JSON。
+- 后续可以继续拆分照片、书籍、待办、资产等数据表。
+- 支持 Postgres / JSONB / REST API，适合长期维护。
 
-## JsonBin 环境变量
+JsonBin 的定位：
+- 轻量配置或临时备份可以用。
+- 不适合长期承载旅行计划、照片元数据、读书笔记等持续增长的数据。
+
+## EdgeOne 环境变量
+
+必填：
+
+```text
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+```
+
+可选，默认如下：
+
+```text
+SUPABASE_MAIN_TABLE=family_records
+SUPABASE_TRAVEL_INDEX_TABLE=travel_history_index
+SUPABASE_TRAVEL_DETAILS_TABLE=travel_plan_details
+```
+
+迁移旧 JsonBin 数据时临时保留：
 
 ```text
 JSONBIN_API_KEY=
@@ -17,21 +38,11 @@ JSONBIN_BIN_ID=
 JSONBIN_TRAVEL_BIN_ID=
 ```
 
-`JSONBIN_TRAVEL_BIN_ID` 可选；不配置时，旅行数据会继续保存在主 Bin 内，但代码会尽量避免主数据保存时覆盖旅行字段。
-
-## Supabase 环境变量
-
-```text
-SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
-SUPABASE_TABLE=family_records
-```
-
-只要同时配置 `SUPABASE_URL` 和 `SUPABASE_SERVICE_ROLE_KEY`，服务端会优先使用 Supabase；否则回退到 JsonBin。
-
-`SUPABASE_SERVICE_ROLE_KEY` 只能放在服务端环境变量中，不能暴露给前端。
+迁移完成并确认数据无误后，可以删除 JsonBin 相关变量。
 
 ## Supabase 建表 SQL
+
+在 Supabase Dashboard 的 SQL Editor 中执行：
 
 ```sql
 create table if not exists public.family_records (
@@ -40,33 +51,65 @@ create table if not exists public.family_records (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.travel_history_index (
+  id text primary key,
+  destination text not null default '',
+  date_range text not null default '',
+  saved_at timestamptz not null default now(),
+  active_variant text not null default 'classic',
+  title text not null default '',
+  day_count integer not null default 0,
+  hotel_name text not null default '',
+  summary jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.travel_plan_details (
+  id text primary key references public.travel_history_index(id) on delete cascade,
+  item jsonb not null default '{}'::jsonb,
+  saved_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists travel_history_index_saved_at_idx
+  on public.travel_history_index (saved_at desc);
+
 alter table public.family_records enable row level security;
+alter table public.travel_history_index enable row level security;
+alter table public.travel_plan_details enable row level security;
 ```
 
-当前服务端使用 service role key 访问，service role 会绕过 RLS。不要把 service role key 写进前端代码。
+本项目所有 Supabase 访问都发生在服务端 API 内，并使用 `service_role` key。service role 会绕过 RLS，因此不要把它放到前端代码或 `VITE_` 环境变量里。
 
-## 数据结构
+## 数据表说明
 
-`main`：
-- 家庭配置
-- 生活模块
-- 理财模块
-- 相册元数据
-- 读书数据
+`family_records`
+- `key = main`
+- 保存家庭主配置：生活、理财、相册元数据、书籍、习惯、待办等。
 
-`travel`：
-- `travelHistoryIndex`：旅行历史摘要列表
-- `travelPlanDetails`：按 id 存储完整旅行计划
-- `travelHistory`：旧结构兼容字段，会在新写入时清空
+`travel_history_index`
+- 旅行历史摘要列表。
+- 页面打开旅行模块时只读取这张表，加载速度更稳定。
+
+`travel_plan_details`
+- 按旅行 id 保存完整行程 JSON。
+- 点击某条历史行程时才读取详情。
+
+## 迁移步骤
+
+1. 在 Supabase 执行建表 SQL。
+2. 在 EdgeOne 配置 `SUPABASE_URL` 和 `SUPABASE_SERVICE_ROLE_KEY`。
+3. 暂时保留 JsonBin 环境变量。
+4. 部署完成后进入网站设置 -> 数据安全。
+5. 先点击「导出完整备份」。
+6. 再点击「从 JsonBin 迁移到 Supabase」。
+7. 刷新后确认数据、旅行历史、照片、理财等都正常。
+8. 确认无误后，可删除 JsonBin 环境变量。
 
 ## 备份恢复
 
-设置面板的「数据安全」页签支持：
-- 导出完整 JSON 备份
-- 从 JSON 备份恢复
+设置面板「数据安全」支持：
+- 导出完整 JSON 备份。
+- 从 JSON 备份恢复到当前数据源。
 
-备份包含：
-- `main`
-- `travel`
-- `storageBackend`
-- `exportedAt`
+当前如果配置了 Supabase，恢复会写入 Supabase。

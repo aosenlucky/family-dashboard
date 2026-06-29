@@ -380,6 +380,11 @@
                                 <i class="ph mr-2" :class="isRestoringBackup ? 'ph-spinner animate-spin' : 'ph-upload-simple'"></i>{{ isRestoringBackup ? '正在恢复...' : '从备份恢复' }}
                             </button>
                         </div>
+                        <div class="mt-3">
+                            <button @click="migrateJsonBinToSupabase" :disabled="isMigratingData" class="w-full bg-blue-50 border border-blue-100 text-apple-blue rounded-2xl px-4 py-3 text-sm font-medium hover:bg-blue-100 disabled:text-gray-400 disabled:bg-gray-50 flex items-center justify-center">
+                                <i class="ph mr-2" :class="isMigratingData ? 'ph-spinner animate-spin' : 'ph-arrows-clockwise'"></i>{{ isMigratingData ? '正在迁移...' : '从 JsonBin 迁移到 Supabase' }}
+                            </button>
+                        </div>
                         <input ref="backupFileInput" type="file" accept="application/json,.json" class="hidden" @change="restoreDataBackup" />
                         <p v-if="backupStatus" class="text-xs mt-3 text-gray-500">{{ backupStatus }}</p>
                     </div>
@@ -411,6 +416,7 @@ const configTab = ref('life')
 const backupFileInput = ref(null)
 const isExportingBackup = ref(false)
 const isRestoringBackup = ref(false)
+const isMigratingData = ref(false)
 const backupStatus = ref('')
 
 const activeSections = ref({
@@ -478,6 +484,27 @@ const restoreDataBackup = async (event) => {
         backupStatus.value = `恢复失败：${error instanceof Error ? error.message : String(error)}`;
     } finally {
         isRestoringBackup.value = false;
+    }
+}
+
+const migrateJsonBinToSupabase = async () => {
+    if (!window.confirm('迁移会把 JsonBin 旧数据写入 Supabase。请确认 Supabase 表和环境变量已配置，是否继续？')) return;
+    isMigratingData.value = true;
+    backupStatus.value = '';
+    try {
+        const res = await fetch('/api/data-migrate', {
+            method: 'POST',
+            headers: { 'Authorization': sessionStorage.getItem('family_auth_token') || '' }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error([data.error, data.detail].filter(Boolean).join(' ') || '迁移失败');
+        backupStatus.value = '迁移完成，页面将刷新读取 Supabase 数据。';
+        showNotification?.('JsonBin 数据已迁移到 Supabase');
+        setTimeout(() => window.location.reload(), 800);
+    } catch (error) {
+        backupStatus.value = `迁移失败：${error instanceof Error ? error.message : String(error)}`;
+    } finally {
+        isMigratingData.value = false;
     }
 }
 
