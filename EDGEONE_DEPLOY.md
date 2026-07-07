@@ -25,8 +25,12 @@ Node Version: 22.11.0
 
 ```text
 SYSTEM_PASSWORD=
+DEMO_PASSWORD=
+DEMO_WEALTH_PASSWORD=
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
+# 或使用 Supabase 新版服务端 Secret key：
+# SUPABASE_SECRET_KEY=
 SUPABASE_MAIN_TABLE=family_records
 SUPABASE_TRAVEL_INDEX_TABLE=travel_history_index
 SUPABASE_TRAVEL_DETAILS_TABLE=travel_plan_details
@@ -40,6 +44,12 @@ TRAVEL_FOUNDATION_MAX_TOKENS=3200
 TRAVEL_SKELETON_MAX_TOKENS=3600
 TRAVEL_DAY_MAX_TOKENS=4200
 ```
+
+密码说明：
+
+- `SYSTEM_PASSWORD`：真实家庭空间密码，读取和保存真实 Supabase 数据。
+- `DEMO_PASSWORD`：演示模式入口密码，服务端只返回 mock 数据，前端不保存、不推送、不打开配置台。
+- `DEMO_WEALTH_PASSWORD`：可选，演示模式下理财二次验证密码；不填时默认使用 `DEMO_PASSWORD`。
 
 如果需要从旧 JsonBin 数据迁移到 Supabase，迁移期间保留：
 

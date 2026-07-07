@@ -722,7 +722,11 @@ const useOriginalPhoto = (event) => {
     img.classList.add('opacity-0')
 }
 
-const logout = () => { sessionStorage.removeItem('family_auth_token'); window.location.reload(); }
+const logout = () => {
+    sessionStorage.removeItem('family_auth_token');
+    sessionStorage.removeItem('family_auth_mode');
+    window.location.reload();
+}
 const saveAndClose = async () => { await saveConfig(); emit('close'); }
 </script>
 ```

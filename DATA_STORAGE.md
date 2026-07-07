@@ -22,6 +22,14 @@ SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 ```
 
+如果你在 Supabase 新版 API Keys 页面使用的是 Secret key，也可以配置：
+
+```text
+SUPABASE_SECRET_KEY=
+```
+
+`SUPABASE_SERVICE_ROLE_KEY` 和 `SUPABASE_SECRET_KEY` 二选一即可。本项目只在服务端 API 内读取该密钥，前端不会接触。
+
 可选，默认如下：
 
 ```text
@@ -79,7 +87,7 @@ alter table public.travel_history_index enable row level security;
 alter table public.travel_plan_details enable row level security;
 ```
 
-本项目所有 Supabase 访问都发生在服务端 API 内，并使用 `service_role` key。service role 会绕过 RLS，因此不要把它放到前端代码或 `VITE_` 环境变量里。
+本项目所有 Supabase 访问都发生在服务端 API 内，并使用 `service_role` / Secret key。该类密钥会绕过 RLS，因此不要把它放到前端代码或 `VITE_` 环境变量里。
 
 ## 数据表说明
 
@@ -97,14 +105,18 @@ alter table public.travel_plan_details enable row level security;
 
 ## 迁移步骤
 
-1. 在 Supabase 执行建表 SQL。
-2. 在 EdgeOne 配置 `SUPABASE_URL` 和 `SUPABASE_SERVICE_ROLE_KEY`。
-3. 暂时保留 JsonBin 环境变量。
-4. 部署完成后进入网站设置 -> 数据安全。
-5. 先点击「导出完整备份」。
-6. 再点击「从 JsonBin 迁移到 Supabase」。
-7. 刷新后确认数据、旅行历史、照片、理财等都正常。
-8. 确认无误后，可删除 JsonBin 环境变量。
+1. 在 Supabase 新建项目，保存好数据库密码。
+2. 在 Supabase SQL Editor 执行本文件中的建表 SQL，确认三张表都创建成功。
+3. 在 Supabase Dashboard 获取 `Project URL`，填入 EdgeOne 的 `SUPABASE_URL`。
+4. 在 Supabase API Keys 页面复制服务端密钥：新版用 Secret key，旧版用 `service_role` key。填入 EdgeOne 的 `SUPABASE_SECRET_KEY` 或 `SUPABASE_SERVICE_ROLE_KEY`。
+5. 在 EdgeOne 配置表名变量：`SUPABASE_MAIN_TABLE`、`SUPABASE_TRAVEL_INDEX_TABLE`、`SUPABASE_TRAVEL_DETAILS_TABLE`。
+6. 迁移期间暂时保留 JsonBin 环境变量：`JSONBIN_API_KEY`、`JSONBIN_BIN_ID`、`JSONBIN_TRAVEL_BIN_ID`。
+7. 重新部署 EdgeOne。
+8. 部署完成后进入网站设置 -> 数据安全。
+9. 先点击「导出完整备份」，下载一份本地兜底。
+10. 再点击「从 JsonBin 迁移到 Supabase」。
+11. 刷新页面，分别检查生活、理财、画廊、旅行历史是否正常。
+12. 确认无误后，可删除 JsonBin 环境变量，避免后续误回退。
 
 ## 备份恢复
 

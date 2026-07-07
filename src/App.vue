@@ -46,6 +46,9 @@
                 </div>
 
                 <div class="flex items-center justify-end space-x-2 sm:space-x-4 text-xs font-medium text-apple-text z-10">
+                    <span v-if="isDemoMode" class="hidden sm:flex items-center text-[10px] text-amber-700 bg-amber-50 px-2 py-1 rounded-full border border-amber-100 transition-all">
+                        <i class="ph ph-monitor-play mr-1"></i> 演示模式
+                    </span>
                     <span v-if="syncStatus" class="hidden lg:flex items-center text-[10px] text-apple-blue bg-blue-50 px-2 py-1 rounded-full border border-blue-100 transition-all">
                         <i class="ph ph-cloud-arrows mr-1" :class="{'animate-pulse': isSyncing}"></i> {{ syncStatus }}
                     </span>
@@ -53,7 +56,7 @@
                         <i class="ph text-lg md:mr-1" :class="isMasked ? 'ph-eye-closed' : 'ph-eye'"></i>
                         <span class="hidden md:inline">{{ isMasked ? '显示金额' : '隐藏金额' }}</span>
                     </button>
-                    <button @click="showConfig = true" class="flex items-center bg-gray-800 text-white hover:bg-gray-700 px-2 sm:px-3 py-1.5 rounded-full shadow-sm transition-colors">
+                    <button v-if="!isDemoMode" @click="showConfig = true" class="flex items-center bg-gray-800 text-white hover:bg-gray-700 px-2 sm:px-3 py-1.5 rounded-full shadow-sm transition-colors">
                         <i class="ph ph-gear md:mr-1"></i> <span class="hidden md:inline">配置</span>
                     </button>
                 </div>
@@ -103,6 +106,7 @@ const defaultData = {
 const auth = ref({ isLoggedIn: false, inputPin: '', errorMsg: '', isAuthenticating: false })
 const familyData = ref(JSON.parse(JSON.stringify(defaultData)))
 const isMasked = ref(true)
+const isDemoMode = ref(false)
 const showConfig = ref(false)
 const isSyncing = ref(false)
 const syncStatus = ref('')
@@ -123,7 +127,7 @@ const showNotification = (msg) => {
 
 const triggerPushNotification = async (title, content) => {
     const token = sessionStorage.getItem('family_auth_token');
-    if (!auth.value.isLoggedIn || token === 'local_dummy_token' || token === '0000') return; 
+    if (!auth.value.isLoggedIn || isDemoMode.value || token === 'local_dummy_token' || token === '0000') return; 
     try {
         const res = await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': token }, body: JSON.stringify({ action: 'notify', title, content }) });
         const data = await res.json().catch(() => ({}));
@@ -135,6 +139,12 @@ const triggerPushNotification = async (title, content) => {
 }
 
 const saveConfig = async () => {
+    if (isDemoMode.value) {
+        syncStatus.value = '演示模式不会保存数据';
+        showNotification('演示模式为只读数据，不会写入云端或本地缓存');
+        setTimeout(() => syncStatus.value = '', 3000);
+        return;
+    }
     localStorage.setItem('cashflow_family_v11', JSON.stringify(familyData.value));
     const token = sessionStorage.getItem('family_auth_token');
     if (token) {
@@ -155,6 +165,7 @@ const getOwnerTagClass = (owner) => owner === 'Aosen' ? 'bg-blue-50 text-blue-60
 
 provide('familyData', familyData)
 provide('isMasked', isMasked)
+provide('isDemoMode', isDemoMode)
 provide('showNotification', showNotification)
 provide('triggerPushNotification', triggerPushNotification)
 provide('saveConfig', saveConfig)
@@ -187,17 +198,34 @@ const applyData = (data) => {
     fd.books = data.books || [];
 }
 
+const readSyncRecord = (payload) => payload && payload.record ? payload.record : payload
+const applySyncMode = (payload) => {
+    const demo = payload?.mode === 'demo'
+    isDemoMode.value = demo
+    sessionStorage.setItem('family_auth_mode', demo ? 'demo' : 'real')
+    if (demo) isMasked.value = false
+}
+
 const loadConfig = async () => {
-    const saved = localStorage.getItem('cashflow_family_v11');
-    applyData(saved ? JSON.parse(saved) : defaultData);
+    isDemoMode.value = sessionStorage.getItem('family_auth_mode') === 'demo';
+    if (!isDemoMode.value) {
+        const saved = localStorage.getItem('cashflow_family_v11');
+        applyData(saved ? JSON.parse(saved) : defaultData);
+    } else {
+        applyData(defaultData);
+        isMasked.value = false;
+    }
     const token = sessionStorage.getItem('family_auth_token');
     if (token) {
         isSyncing.value = true; syncStatus.value = '云端同步中...';
         try {
             const res = await fetch('/api/sync', { headers: { 'Authorization': token } });
             if (res.ok) {
-                const json = await res.json(); const recordData = json.record ? json.record : json;
-                if (recordData && Object.keys(recordData).length > 0) { applyData(recordData); localStorage.setItem('cashflow_family_v11', JSON.stringify(recordData)); syncStatus.value = '已与云端对齐';
+                const json = await res.json(); applySyncMode(json); const recordData = readSyncRecord(json);
+                if (recordData && Object.keys(recordData).length > 0) {
+                    applyData(recordData);
+                    if (!isDemoMode.value) localStorage.setItem('cashflow_family_v11', JSON.stringify(recordData));
+                    syncStatus.value = isDemoMode.value ? '演示数据已加载' : '已与云端对齐';
                 } else { await saveConfig(); }
             } else if (res.status === 401) { auth.value.isLoggedIn = false; sessionStorage.removeItem('family_auth_token'); }
         } catch (err) { syncStatus.value = '离线模式'; } 
@@ -207,6 +235,7 @@ const loadConfig = async () => {
 
 // 腾讯财经 API
 const fetchStocks = async () => {
+    if (isDemoMode.value) return;
     isFetchingStocks.value = true;
     for (let stock of familyData.value.stocks) {
         try {
@@ -252,13 +281,17 @@ const handleLogin = async () => {
         const res = await fetch('/api/sync', { headers: { 'Authorization': auth.value.inputPin } });
         if (res.ok) {
             sessionStorage.setItem('family_auth_token', auth.value.inputPin); auth.value.isLoggedIn = true; 
-            const json = await res.json(); const recordData = json.record ? json.record : json;
-            if(recordData && Object.keys(recordData).length > 0) { applyData(recordData); localStorage.setItem('cashflow_family_v11', JSON.stringify(recordData)); }
-            fetchStocks();
+            const json = await res.json(); applySyncMode(json); const recordData = readSyncRecord(json);
+            if(recordData && Object.keys(recordData).length > 0) {
+                applyData(recordData);
+                if (!isDemoMode.value) localStorage.setItem('cashflow_family_v11', JSON.stringify(recordData));
+            }
+            if (isDemoMode.value) showNotification('已进入演示模式：当前展示的是 mock 数据，不会保存任何修改');
+            else fetchStocks();
         } else { auth.value.errorMsg = '密码错误 🔒'; }
     } catch(e) {
         if (auth.value.inputPin === '0000') {
-            sessionStorage.setItem('family_auth_token', 'local_dummy_token'); auth.value.isLoggedIn = true;
+            sessionStorage.setItem('family_auth_token', 'local_dummy_token'); sessionStorage.setItem('family_auth_mode', 'local'); isDemoMode.value = false; auth.value.isLoggedIn = true;
             loadConfig(); fetchStocks(); showNotification('👋 欢迎来到本地预览模式！');
         } else { auth.value.errorMsg = '网络或密码错误'; }
     } finally { auth.value.isAuthenticating = false; }
@@ -275,6 +308,7 @@ const verifyWealthPassword = () => {
 
 onMounted(() => {
     if (sessionStorage.getItem('family_auth_token')) auth.value.isLoggedIn = true;
-    loadConfig(); if (auth.value.isLoggedIn) fetchStocks();
+    isDemoMode.value = sessionStorage.getItem('family_auth_mode') === 'demo';
+    loadConfig(); if (auth.value.isLoggedIn && !isDemoMode.value) fetchStocks();
 })
 </script>
