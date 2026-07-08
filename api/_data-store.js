@@ -7,6 +7,7 @@ const MAIN_TABLE = process.env.SUPABASE_MAIN_TABLE || process.env.SUPABASE_TABLE
 const TRAVEL_INDEX_TABLE = process.env.SUPABASE_TRAVEL_INDEX_TABLE || 'travel_history_index'
 const TRAVEL_DETAILS_TABLE = process.env.SUPABASE_TRAVEL_DETAILS_TABLE || 'travel_plan_details'
 const SENSITIVE_MAIN_FIELDS = new Set(['wealthPassword'])
+const SUPABASE_WRITE_CHUNK_SIZE = Math.max(1, Math.min(Number(process.env.SUPABASE_WRITE_CHUNK_SIZE || 10), 50))
 
 export function getStorageBackendName() {
   return hasSupabaseConfig() ? 'supabase' : 'jsonbin'
@@ -121,8 +122,20 @@ export async function restoreFullBackup(backup) {
   const main = backup.main && typeof backup.main === 'object' ? backup.main : null
   const travel = backup.travel && typeof backup.travel === 'object' ? backup.travel : null
   if (!main && !travel) throw new Error('备份文件里没有可恢复的数据。')
-  if (main) await writeMainRecord(removeTravelFields(main))
-  if (travel) await writeTravelRecord(travel)
+  if (main) {
+    try {
+      await writeMainRecord(removeTravelFields(main))
+    } catch (error) {
+      throw new Error(`主配置写入失败：${getErrorMessage(error)}`)
+    }
+  }
+  if (travel) {
+    try {
+      await writeTravelRecord(travel)
+    } catch (error) {
+      throw new Error(`旅行历史写入失败：${getErrorMessage(error)}`)
+    }
+  }
   return { mainRestored: Boolean(main), travelRestored: Boolean(travel) }
 }
 
@@ -137,9 +150,7 @@ export function pickTravelFields(record = {}) {
 }
 
 export function normalizeTravelState(record = {}) {
-  const details = record[TRAVEL_DETAILS_FIELD] && typeof record[TRAVEL_DETAILS_FIELD] === 'object'
-    ? { ...record[TRAVEL_DETAILS_FIELD] }
-    : {}
+  const details = {}
   const index = []
 
   for (const item of Array.isArray(record[TRAVEL_INDEX_FIELD]) ? record[TRAVEL_INDEX_FIELD] : []) {
@@ -150,13 +161,19 @@ export function normalizeTravelState(record = {}) {
   for (const item of Array.isArray(record[LEGACY_TRAVEL_FIELD]) ? record[LEGACY_TRAVEL_FIELD] : []) {
     if (!item?.id && !item?.plan) continue
     const detail = normalizeTravelDetail(item)
-    if (!details[detail.id]) details[detail.id] = detail
+    details[detail.id] = detail
     const summary = summarizeTravelItem(detail)
     if (summary) index.push(summary)
   }
 
-  for (const item of Object.values(details)) {
-    const summary = summarizeTravelItem(item)
+  const rawDetails = record[TRAVEL_DETAILS_FIELD] && typeof record[TRAVEL_DETAILS_FIELD] === 'object'
+    ? record[TRAVEL_DETAILS_FIELD]
+    : {}
+  for (const [key, item] of Object.entries(rawDetails)) {
+    if (!item || typeof item !== 'object') continue
+    const detail = normalizeTravelDetail({ ...item, id: item.id || key })
+    details[detail.id] = detail
+    const summary = summarizeTravelItem(detail)
     if (summary) index.push(summary)
   }
 
@@ -169,7 +186,12 @@ export function normalizeTravelState(record = {}) {
     })
     .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
 
-  return { index: normalizedIndex, details }
+  const allowedIds = new Set(normalizedIndex.map((item) => item.id))
+  const normalizedDetails = Object.fromEntries(
+    Object.entries(details).filter(([id, item]) => allowedIds.has(id) && item?.id === id)
+  )
+
+  return { index: normalizedIndex, details: normalizedDetails }
 }
 
 export function normalizeTravelDetail(item = {}) {
@@ -298,17 +320,13 @@ async function saveSupabaseTravelItem(item, maxItems) {
 async function deleteSupabaseTravelItem(id) {
   const config = getSupabaseConfig()
   if (id) {
-    await Promise.all([
-      supabaseJson(config, `${config.travelIndexTable}?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }),
-      supabaseJson(config, `${config.travelDetailsTable}?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' })
-    ])
+    await supabaseJson(config, `${config.travelDetailsTable}?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' })
+    await supabaseJson(config, `${config.travelIndexTable}?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' })
     return listSupabaseTravelSummaries(60)
   }
 
-  await Promise.all([
-    supabaseJson(config, `${config.travelIndexTable}?id=not.is.null`, { method: 'DELETE' }),
-    supabaseJson(config, `${config.travelDetailsTable}?id=not.is.null`, { method: 'DELETE' })
-  ])
+  await supabaseJson(config, `${config.travelDetailsTable}?id=not.is.null`, { method: 'DELETE' })
+  await supabaseJson(config, `${config.travelIndexTable}?id=not.is.null`, { method: 'DELETE' })
   return []
 }
 
@@ -317,10 +335,8 @@ async function pruneSupabaseTravel(config, maxItems) {
   const ids = (rows || []).map((row) => row.id).filter(Boolean)
   if (!ids.length) return
   const filter = `id=in.(${ids.map((id) => `"${String(id).replaceAll('"', '\\"')}"`).join(',')})`
-  await Promise.all([
-    supabaseJson(config, `${config.travelIndexTable}?${filter}`, { method: 'DELETE' }),
-    supabaseJson(config, `${config.travelDetailsTable}?${filter}`, { method: 'DELETE' })
-  ])
+  await supabaseJson(config, `${config.travelDetailsTable}?${filter}`, { method: 'DELETE' })
+  await supabaseJson(config, `${config.travelIndexTable}?${filter}`, { method: 'DELETE' })
 }
 
 async function readSupabaseTravelRecord() {
@@ -344,34 +360,40 @@ async function replaceSupabaseTravelRecord(record) {
   const details = state.details
 
   if (summaries.length) {
-    await supabaseJson(config, `${config.travelIndexTable}?on_conflict=id`, {
-      method: 'POST',
-      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify(summaries.map((summary) => ({
-        id: summary.id,
-        destination: summary.destination,
-        date_range: summary.dateRange,
-        saved_at: safeTimestamp(summary.savedAt),
-        active_variant: summary.activeVariant,
-        title: summary.title,
-        day_count: summary.dayCount,
-        hotel_name: summary.hotelName,
-        summary,
-        updated_at: new Date().toISOString()
-      })))
-    })
+    await upsertSupabaseRows(config, config.travelIndexTable, summaries.map((summary) => ({
+      id: summary.id,
+      destination: summary.destination,
+      date_range: summary.dateRange,
+      saved_at: safeTimestamp(summary.savedAt),
+      active_variant: summary.activeVariant,
+      title: summary.title,
+      day_count: summary.dayCount,
+      hotel_name: summary.hotelName,
+      summary,
+      updated_at: new Date().toISOString()
+    })))
   }
 
-  if (Object.keys(details).length) {
-    await supabaseJson(config, `${config.travelDetailsTable}?on_conflict=id`, {
-      method: 'POST',
-      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify(Object.values(details).map((item) => ({
+  const detailRows = summaries
+    .map((summary) => details[summary.id])
+    .filter((item) => item?.id)
+    .map((item) => ({
         id: item.id,
         item,
         saved_at: safeTimestamp(item.savedAt),
         updated_at: new Date().toISOString()
-      })))
+      }))
+  if (detailRows.length) {
+    await upsertSupabaseRows(config, config.travelDetailsTable, detailRows)
+  }
+}
+
+async function upsertSupabaseRows(config, table, rows) {
+  for (const chunk of chunkArray(rows, SUPABASE_WRITE_CHUNK_SIZE)) {
+    await supabaseJson(config, `${table}?on_conflict=id`, {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(chunk)
     })
   }
 }
@@ -401,10 +423,24 @@ async function supabaseJson(config, path, options = {}) {
     ...(options.headers || {})
   }
   const response = await fetch(`${config.url}/rest/v1/${path}`, { ...options, headers })
-  if (!response.ok) throw new Error(`Supabase 请求失败：${response.status} ${await response.text()}`)
+  if (!response.ok) {
+    const detail = await response.text()
+    const method = options.method || 'GET'
+    throw new Error(`Supabase 请求失败（${method} ${path}）：${response.status} ${detail || response.statusText}`)
+  }
   if (response.status === 204) return null
   const text = await response.text()
   return text ? JSON.parse(text) : null
+}
+
+function chunkArray(items, size) {
+  const chunks = []
+  for (let index = 0; index < items.length; index += size) chunks.push(items.slice(index, index + size))
+  return chunks
+}
+
+function getErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error)
 }
 
 function safeTimestamp(value) {
