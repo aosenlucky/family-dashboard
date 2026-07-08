@@ -25,9 +25,11 @@
             <div class="w-16 h-16 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center mb-4 shadow-sm border border-blue-100"><i class="ph-fill ph-shield-check text-3xl"></i></div>
             <h2 class="text-xl font-semibold text-gray-800 mb-2">私密资产验证</h2>
             <p class="text-xs text-gray-500 mb-6">需二次验证密码以解除金额脱敏</p>
-            <input v-model="wealthInputPin" type="password" placeholder="••••" maxlength="8" class="w-full text-center text-2xl tracking-widest bg-gray-50 border border-gray-200 rounded-xl py-3 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-800" @keyup.enter="verifyWealthPassword">
+            <input v-model="wealthInputPin" type="password" placeholder="••••" maxlength="32" class="w-full text-center text-2xl tracking-widest bg-gray-50 border border-gray-200 rounded-xl py-3 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-800" @keyup.enter="verifyWealthPassword">
             <p v-if="wealthErrorMsg" class="text-rose-500 text-xs mb-4 font-medium">{{ wealthErrorMsg }}</p>
-            <button @click="verifyWealthPassword" class="w-full bg-blue-600 text-white font-medium py-3 rounded-xl hover:bg-blue-700 shadow-md transition-colors">验证解锁</button>
+            <button @click="verifyWealthPassword" :disabled="isVerifyingWealth" class="w-full bg-blue-600 text-white font-medium py-3 rounded-xl hover:bg-blue-700 shadow-md transition-colors disabled:bg-gray-400">
+                {{ isVerifyingWealth ? '验证中...' : '验证解锁' }}
+            </button>
         </div>
     </div>
 
@@ -87,7 +89,6 @@ import ConfigPanel from './components/ConfigPanel.vue'
 const route = useRoute()
 
 const defaultData = {
-    wealthPassword: '1026',
     salaryBank: '工商银行', salaryDay: 15, usdRate: 7.25,
     loans: [ { id: 1, owner: '共同', type: '房贷', bank: '中信银行', isAutoCalc: true, baseLeft: 1786921.68, baseMonthly: 8891, baseDate: '2026-04', rate: 3.2, day: 20, monthly: 0, left: 0 } ],
     transfers: [], assets: [ { id: 1, owner: '共同', type: 'house', name: '房产估值', value: 7000000 } ], stocks: [],
@@ -112,10 +113,10 @@ const isSyncing = ref(false)
 const syncStatus = ref('')
 const isFetchingStocks = ref(false)
 
-const wealthPassword = ref('')
 const showWealthAuth = ref(false)
 const wealthInputPin = ref('')
 const wealthErrorMsg = ref('')
+const isVerifyingWealth = ref(false)
 const toast = ref({ msg: '', show: false, timer: null })
 
 // ==== 全局方法 Provide ====
@@ -178,7 +179,6 @@ provide('isFetchingStocks', isFetchingStocks)
 
 const applyData = (data) => {
     const fd = familyData.value;
-    fd.wealthPassword = data.wealthPassword || defaultData.wealthPassword; wealthPassword.value = fd.wealthPassword;
     fd.salaryBank = data.salaryBank || defaultData.salaryBank; fd.salaryDay = data.salaryDay || defaultData.salaryDay;
     fd.usdRate = data.usdRate || defaultData.usdRate;
     fd.loans = data.loans && data.loans.length > 0 ? data.loans.map(l => ({...l, owner: l.owner || '共同'})) : defaultData.loans; 
@@ -203,7 +203,6 @@ const applySyncMode = (payload) => {
     const demo = payload?.mode === 'demo'
     isDemoMode.value = demo
     sessionStorage.setItem('family_auth_mode', demo ? 'demo' : 'real')
-    if (demo) isMasked.value = false
 }
 
 const loadConfig = async () => {
@@ -213,7 +212,6 @@ const loadConfig = async () => {
         applyData(saved ? JSON.parse(saved) : defaultData);
     } else {
         applyData(defaultData);
-        isMasked.value = false;
     }
     const token = sessionStorage.getItem('family_auth_token');
     if (token) {
@@ -301,9 +299,44 @@ const toggleMask = () => {
     if (isMasked.value) { showWealthAuth.value = true; wealthErrorMsg.value = ''; wealthInputPin.value = ''; } 
     else { isMasked.value = true; }
 }
-const verifyWealthPassword = () => {
-    if (wealthInputPin.value === wealthPassword.value) { isMasked.value = false; showWealthAuth.value = false; showNotification('✅ 隐私财务数据已解密');
-    } else { wealthErrorMsg.value = '密码错误 🔒'; }
+const verifyWealthPassword = async () => {
+    if (!wealthInputPin.value) {
+        wealthErrorMsg.value = '请输入理财密码';
+        return;
+    }
+
+    const token = sessionStorage.getItem('family_auth_token');
+    if (token === 'local_dummy_token') {
+        if (wealthInputPin.value === '1026') {
+            isMasked.value = false; showWealthAuth.value = false; showNotification('✅ 本地预览理财数据已解密');
+        } else {
+            wealthErrorMsg.value = '密码错误 🔒';
+        }
+        return;
+    }
+
+    isVerifyingWealth.value = true;
+    wealthErrorMsg.value = '';
+    try {
+        const res = await fetch('/api/wealth-auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': token || '' },
+            body: JSON.stringify({ password: wealthInputPin.value })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+            wealthErrorMsg.value = data.error || '密码错误 🔒';
+            return;
+        }
+        isMasked.value = false;
+        showWealthAuth.value = false;
+        wealthInputPin.value = '';
+        showNotification(isDemoMode.value ? '✅ 演示理财数据已解锁' : '✅ 隐私财务数据已解密');
+    } catch (error) {
+        wealthErrorMsg.value = '网络异常，请稍后再试';
+    } finally {
+        isVerifyingWealth.value = false;
+    }
 }
 
 onMounted(() => {

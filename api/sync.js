@@ -140,9 +140,7 @@ function getErrorMessage(error) {
 }
 
 function buildDemoRecord() {
-  const demoPassword = process.env.DEMO_WEALTH_PASSWORD || process.env.DEMO_PASSWORD || 'demo'
   return {
-    wealthPassword: demoPassword,
     salaryBank: '招商银行演示户',
     salaryDay: 15,
     usdRate: 7.25,

@@ -6,6 +6,7 @@ const MAIN_KEY = 'main'
 const MAIN_TABLE = process.env.SUPABASE_MAIN_TABLE || process.env.SUPABASE_TABLE || 'family_records'
 const TRAVEL_INDEX_TABLE = process.env.SUPABASE_TRAVEL_INDEX_TABLE || 'travel_history_index'
 const TRAVEL_DETAILS_TABLE = process.env.SUPABASE_TRAVEL_DETAILS_TABLE || 'travel_plan_details'
+const SENSITIVE_MAIN_FIELDS = new Set(['wealthPassword'])
 
 export function getStorageBackendName() {
   return hasSupabaseConfig() ? 'supabase' : 'jsonbin'
@@ -16,19 +17,20 @@ export function hasSupabaseConfig() {
 }
 
 export async function readMainRecord() {
-  if (hasSupabaseConfig()) return readSupabaseMainRecord()
-  return readJsonBinRecord(getJsonBinMainId())
+  const record = hasSupabaseConfig() ? await readSupabaseMainRecord() : await readJsonBinRecord(getJsonBinMainId())
+  return sanitizeMainRecord(record)
 }
 
 export async function writeMainRecord(record) {
-  if (hasSupabaseConfig()) return writeSupabaseMainRecord(record)
+  const safeRecord = sanitizeMainRecord(record)
+  if (hasSupabaseConfig()) return writeSupabaseMainRecord(safeRecord)
 
   const mainBinId = getJsonBinMainId()
-  if (process.env.JSONBIN_TRAVEL_BIN_ID) return writeJsonBinRecord(mainBinId, record)
+  if (process.env.JSONBIN_TRAVEL_BIN_ID) return writeJsonBinRecord(mainBinId, safeRecord)
 
   const current = await readJsonBinRecord(mainBinId).catch(() => ({}))
   return writeJsonBinRecord(mainBinId, {
-    ...record,
+    ...safeRecord,
     ...pickTravelFields(current)
   })
 }
@@ -109,7 +111,7 @@ export async function readJsonBinFullBackup() {
     version: 3,
     exportedAt: new Date().toISOString(),
     storageBackend: 'jsonbin',
-    main: removeTravelFields(main),
+    main: sanitizeMainRecord(removeTravelFields(main)),
     travel
   }
 }
@@ -213,6 +215,11 @@ function normalizeSummary(item) {
 function removeTravelFields(record = {}) {
   const { [LEGACY_TRAVEL_FIELD]: _legacy, [TRAVEL_INDEX_FIELD]: _index, [TRAVEL_DETAILS_FIELD]: _details, ...rest } = record
   return rest
+}
+
+export function sanitizeMainRecord(record = {}) {
+  if (!record || typeof record !== 'object') return {}
+  return Object.fromEntries(Object.entries(record).filter(([key]) => !SENSITIVE_MAIN_FIELDS.has(key)))
 }
 
 async function writeTravelRecordFromState(state) {

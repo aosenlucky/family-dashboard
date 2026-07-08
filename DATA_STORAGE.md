@@ -18,6 +18,8 @@ JsonBin 的定位：
 必填：
 
 ```text
+SYSTEM_PASSWORD=
+WEALTH_PASSWORD=
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 ```
@@ -29,6 +31,12 @@ SUPABASE_SECRET_KEY=
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` 和 `SUPABASE_SECRET_KEY` 二选一即可。本项目只在服务端 API 内读取该密钥，前端不会接触。
+
+密码字段说明：
+- `SYSTEM_PASSWORD` 负责进入家庭网站。
+- `WEALTH_PASSWORD` 负责理财页面二次解锁金额。
+- 旧版 `family_records.value.wealthPassword` 已废弃，数据层会在读取、保存、迁移和备份主配置时自动剥离该字段。
+- 演示模式可配置 `DEMO_PASSWORD` 和 `DEMO_WEALTH_PASSWORD`，分别用于进入 mock 数据和解锁 mock 金额。
 
 可选，默认如下：
 
@@ -94,6 +102,17 @@ alter table public.travel_plan_details enable row level security;
 `family_records`
 - `key = main`
 - 保存家庭主配置：生活、理财、相册元数据、书籍、习惯、待办等。
+- 不保存理财二次密码；理财密码改由 EdgeOne 环境变量 `WEALTH_PASSWORD` 管理。
+
+如旧数据里已经存在 `wealthPassword`，可在 Supabase SQL Editor 执行一次清理：
+
+```sql
+update public.family_records
+set value = value - 'wealthPassword',
+    updated_at = now()
+where key = 'main'
+  and value ? 'wealthPassword';
+```
 
 `travel_history_index`
 - 旅行历史摘要列表。

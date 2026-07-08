@@ -25,6 +25,7 @@ Node Version: 22.11.0
 
 ```text
 SYSTEM_PASSWORD=
+WEALTH_PASSWORD=
 DEMO_PASSWORD=
 DEMO_WEALTH_PASSWORD=
 SUPABASE_URL=
@@ -48,6 +49,7 @@ TRAVEL_DAY_MAX_TOKENS=4200
 密码说明：
 
 - `SYSTEM_PASSWORD`：真实家庭空间密码，读取和保存真实 Supabase 数据。
+- `WEALTH_PASSWORD`：真实理财二次验证密码，只在服务端校验，不写入 Supabase，也不会下发到浏览器。
 - `DEMO_PASSWORD`：演示模式入口密码，服务端只返回 mock 数据，前端不保存、不推送、不打开配置台。
 - `DEMO_WEALTH_PASSWORD`：可选，演示模式下理财二次验证密码；不填时默认使用 `DEMO_PASSWORD`。
 
