@@ -333,9 +333,32 @@
                                     <div><label class="text-[10px] text-blue-500">快照真实本金</label><input v-model.number="loan.baseLeft" type="number" class="w-full border border-blue-200 rounded px-1.5 py-1 text-xs" /></div>
                                     <div><label class="text-[10px] text-blue-600 font-bold">固定总月供</label><input v-model.number="loan.baseMonthly" type="number" class="w-full border border-blue-400 bg-blue-50 rounded px-1.5 py-1 text-xs text-blue-800 font-semibold" /></div>
                                 </div>
-                                <div v-else class="grid grid-cols-2 gap-2 border-t pt-2 mt-2 border-gray-200">
+                                <div v-else class="grid grid-cols-2 md:grid-cols-4 gap-2 border-t pt-2 mt-2 border-gray-200">
                                     <div><label class="text-[10px] text-orange-500">剩余本金</label><input v-model.number="loan.left" type="number" class="w-full border border-orange-200 rounded px-1.5 py-1 text-xs" /></div>
-                                    <div><label class="text-[10px] text-orange-500">每月设定还款</label><input v-model.number="loan.monthly" type="number" class="w-full border border-orange-200 rounded px-1.5 py-1 text-xs" /></div>
+                                    <div><label class="text-[10px] text-orange-500">计划还本金</label><input v-model.number="loan.plannedPrincipal" type="number" class="w-full border border-orange-200 rounded px-1.5 py-1 text-xs" /></div>
+                                    <div><label class="text-[10px] text-orange-500">自动利息</label><div class="w-full border border-orange-100 bg-orange-50/70 rounded px-1.5 py-1 text-xs text-orange-700 font-semibold">{{ formatPlainCurrency(getMonthlyInterest(loan)) }}</div></div>
+                                    <div><label class="text-[10px] text-rose-500">本月需还</label><div class="w-full border border-rose-100 bg-rose-50/80 rounded px-1.5 py-1 text-xs text-rose-600 font-bold">{{ formatPlainCurrency(getConsumerLoanPayment(loan)) }}</div></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="loanTransferAlerts.length" class="bg-amber-50 border border-amber-100 rounded-2xl p-4 shadow-sm">
+                        <div class="flex items-start gap-3">
+                            <div class="w-9 h-9 rounded-full bg-white text-amber-600 flex items-center justify-center shrink-0 border border-amber-100">
+                                <i class="ph ph-warning-circle text-lg"></i>
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <h4 class="text-sm font-semibold text-amber-900">还款转账提醒</h4>
+                                <p class="text-xs text-amber-700 mt-1 leading-relaxed">系统会按本月应还金额检查自动转账链路。保存后，这些提醒会同步写入待办，方便你逐条处理。</p>
+                                <div class="mt-3 space-y-2">
+                                    <div v-for="alert in loanTransferAlerts" :key="alert.todoKey" class="bg-white/80 border border-amber-100 rounded-xl p-3 text-xs text-gray-700">
+                                        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-1">
+                                            <span class="font-semibold text-gray-900">{{ alert.title }}</span>
+                                            <span class="text-amber-700 font-medium">{{ formatPlainCurrency(alert.required) }}</span>
+                                        </div>
+                                        <p class="mt-1 leading-relaxed text-gray-500">{{ alert.detail }}</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -404,8 +427,16 @@
 </template>
 
 <script setup>
-import { ref, inject } from 'vue'
+import { computed, ref, inject } from 'vue'
 import { getBookCoverSrc, searchBookCover, useGeneratedBookCover } from '../utils/bookCovers'
+import {
+    getConsumerLoanPayment,
+    getMonthlyInterest,
+    getPlannedPrincipal,
+    getRequiredLoanPayment,
+    getTransferDelta,
+    toNumber
+} from '../utils/loanTools'
 
 const emit = defineEmits(['close'])
 const familyData = inject('familyData')
@@ -419,6 +450,12 @@ const isRestoringBackup = ref(false)
 const isMigratingData = ref(false)
 const backupStatus = ref('')
 
+const formatPlainCurrency = (value) => new Intl.NumberFormat('zh-CN', {
+    style: 'currency',
+    currency: 'CNY',
+    maximumFractionDigits: 0
+}).format(toNumber(value))
+
 const activeSections = ref({
     photos: true,
     habits: true,
@@ -431,6 +468,126 @@ const activeSections = ref({
     reading: true
 });
 const toggle = (sec) => { activeSections.value[sec] = !activeSections.value[sec]; };
+
+const normalizeName = (value) => String(value || '').trim()
+
+const hydrateLegacyConsumerLoans = () => {
+    for (const loan of familyData.value.loans || []) {
+        if (loan.type !== '消费贷' || loan.plannedPrincipal !== undefined) continue
+        loan.plannedPrincipal = getPlannedPrincipal(loan)
+    }
+}
+
+hydrateLegacyConsumerLoans()
+
+const loanTransferAlerts = computed(() => {
+    const groups = new Map()
+
+    for (const loan of familyData.value.loans || []) {
+        const bank = normalizeName(loan.bank)
+        if (!bank) continue
+
+        const required = getRequiredLoanPayment(loan)
+        if (required <= 0) continue
+
+        if (!groups.has(bank)) {
+            groups.set(bank, { bank, loans: [], required: 0, interest: 0, days: [] })
+        }
+
+        const group = groups.get(bank)
+        group.loans.push(loan)
+        group.required += required
+        if (loan.type === '消费贷') group.interest += getMonthlyInterest(loan)
+        if (loan.day) group.days.push(toNumber(loan.day))
+    }
+
+    const transfers = familyData.value.transfers || []
+    const salaryBank = normalizeName(familyData.value.salaryBank)
+
+    return Array.from(groups.values()).flatMap((group) => {
+        const transfer = transfers.find((item) => normalizeName(item.to) === group.bank)
+        if (!transfer && group.bank === salaryBank) return []
+
+        const required = Math.round(group.required)
+        const current = transfer ? Math.round(toNumber(transfer.amount)) : 0
+        const delta = getTransferDelta(current, required)
+        if (transfer && Math.abs(delta) < 1) return []
+
+        const route = transfer
+            ? `${normalizeName(transfer.from) || '未填写转出账户'} → ${normalizeName(transfer.to) || group.bank}`
+            : `${salaryBank || '主发薪卡'} → ${group.bank}`
+        const dayText = [...new Set(group.days.filter(Boolean))]
+            .sort((a, b) => a - b)
+            .map((day) => `${day}日`)
+            .join('、') || '还款日前'
+        const loanTypes = [...new Set(group.loans.map((loan) => loan.type).filter(Boolean))].join('、') || '贷款'
+        const interestText = group.interest > 0 ? `其中消费贷自动利息约 ${formatPlainCurrency(group.interest)}。` : ''
+
+        if (!transfer) {
+            return [{
+                title: `缺少转账链路：${route}`,
+                detail: `${group.bank} 的 ${loanTypes} 本月预计需要 ${formatPlainCurrency(required)}，建议在 ${dayText} 前建立自动转账。${interestText}`,
+                todoText: `为「${group.bank}」新增自动转账链路，建议每月 ${dayText} 前转入 ${formatPlainCurrency(required)}，匹配${loanTypes}本月应还。${interestText}`,
+                todoKey: `loan-transfer:${group.bank}:missing:0:${required}`,
+                required,
+                current,
+                delta
+            }]
+        }
+
+        const direction = delta > 0 ? '调高' : '调低'
+        const riskText = delta > 0 ? '避免还款不足或逾期' : '避免多转占用现金'
+
+        return [{
+            title: `${route} 需要${direction}`,
+            detail: `当前自动转账 ${formatPlainCurrency(current)}，本月应还约 ${formatPlainCurrency(required)}，建议${direction} ${formatPlainCurrency(Math.abs(delta))}，${riskText}。${interestText}`,
+            todoText: `更新自动转账「${route}」金额：从 ${formatPlainCurrency(current)} ${direction}到 ${formatPlainCurrency(required)}，匹配「${group.bank}」${loanTypes}本月应还，${riskText}。${interestText}`,
+            todoKey: `loan-transfer:${group.bank}:${route}:${current}:${required}`,
+            required,
+            current,
+            delta
+        }]
+    })
+})
+
+const normalizeLoanPaymentsBeforeSave = () => {
+    for (const loan of familyData.value.loans || []) {
+        if (loan.type !== '消费贷') continue
+        loan.nextInterest = getMonthlyInterest(loan)
+        loan.nextPrincipal = getPlannedPrincipal(loan)
+        loan.monthly = getConsumerLoanPayment(loan)
+    }
+}
+
+const syncLoanTransferTodos = () => {
+    const alerts = loanTransferAlerts.value
+    const activeKeys = new Set(alerts.map((alert) => alert.todoKey))
+    const currentTodos = familyData.value.todos || []
+
+    familyData.value.todos = currentTodos.filter((todo) => (
+        todo.completed || todo.sourceType !== 'loan-transfer' || activeKeys.has(todo.sourceKey)
+    ))
+
+    let created = 0
+    for (const alert of alerts) {
+        const exists = familyData.value.todos.some((todo) => (
+            !todo.completed && (todo.sourceKey === alert.todoKey || todo.text === alert.todoText)
+        ))
+        if (exists) continue
+
+        familyData.value.todos.unshift({
+            id: Date.now() + created,
+            text: alert.todoText,
+            completed: false,
+            sourceType: 'loan-transfer',
+            sourceKey: alert.todoKey,
+            createdAt: new Date().toISOString()
+        })
+        created += 1
+    }
+
+    return created
+}
 
 const exportDataBackup = async () => {
     isExportingBackup.value = true;
@@ -701,7 +858,7 @@ const addDate = () => { familyData.value.dates.push({ name: '', date: '2000-01-0
 const addStock = () => { familyData.value.stocks.push({ symbol: '', name: '', market: 'CN', owner: 'Aosen', costPrice: 0, shares: 0, currentPrice: 0 }) }
 const addRegularAsset = () => { familyData.value.assets.push({ id: Date.now(), owner: '共同', type: 'house', name: '', value: 0 }) }
 const addEquityMember = () => { familyData.value.equity.members.push({ name: '', principal: 0 }) }
-const addLoan = () => { familyData.value.loans.push({ id: Date.now(), owner: '共同', type: '消费贷', bank: '', left: 0, monthly: 0, rate: 3.0, isAutoCalc: false }) }
+const addLoan = () => { familyData.value.loans.push({ id: Date.now(), owner: '共同', type: '消费贷', bank: '', left: 0, plannedPrincipal: 0, monthly: 0, rate: 3.0, isAutoCalc: false }) }
 const addTransfer = () => { familyData.value.transfers.push({ from: '', to: '', amount: 0, day: 1, expire: '长期' }) }
 const addPhoto = () => { familyData.value.photos.unshift({ url: '', desc: '', tempCity: '', type: '日常记录' }) }
 
@@ -727,6 +884,12 @@ const logout = () => {
     sessionStorage.removeItem('family_auth_mode');
     window.location.reload();
 }
-const saveAndClose = async () => { await saveConfig(); emit('close'); }
+const saveAndClose = async () => {
+    normalizeLoanPaymentsBeforeSave();
+    const createdTodos = syncLoanTransferTodos();
+    if (createdTodos) showNotification?.(`已生成 ${createdTodos} 条还款转账待办`);
+    await saveConfig();
+    emit('close');
+}
 </script>
 ```

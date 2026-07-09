@@ -11,7 +11,7 @@
             <div class="w-16 h-16 rounded-full bg-rose-500/90 text-white flex items-center justify-center mb-6 shadow-md"><i class="ph-fill ph-lock-key text-3xl"></i></div>
             <h2 class="text-xl font-semibold text-gray-800 mb-2">欢迎回家</h2>
             <p class="text-xs text-gray-500 mb-6">请输入专属密码解锁家庭空间</p>
-            <input v-model="auth.inputPin" type="password" placeholder="••••" maxlength="8" class="w-full text-center text-2xl tracking-widest bg-white/50 border border-white rounded-xl py-3 mb-4 focus:outline-none focus:ring-2 focus:ring-rose-400 text-gray-800" @keyup.enter="handleLogin">
+            <input v-model="auth.inputPin" type="password" placeholder="••••" maxlength="32" class="w-full text-center text-2xl tracking-widest bg-white/50 border border-white rounded-xl py-3 mb-4 focus:outline-none focus:ring-2 focus:ring-rose-400 text-gray-800" @keyup.enter="handleLogin">
             <p v-if="auth.errorMsg" class="text-rose-500 text-xs mb-4 font-medium" v-html="auth.errorMsg"></p>
             <button @click="handleLogin" :disabled="auth.isAuthenticating" class="w-full bg-gray-800 text-white font-medium py-3 rounded-xl hover:bg-gray-700 shadow-md transition-colors disabled:bg-gray-400">
                 {{ auth.isAuthenticating ? '验证中...' : '推开家门' }}

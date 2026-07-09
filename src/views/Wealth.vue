@@ -149,6 +149,7 @@
 <script setup>
 import { inject, computed } from 'vue'
 import FlowNode from '../components/FlowNode.vue'
+import { getConsumerLoanPayment, getMonthlyInterest, getPlannedPrincipal } from '../utils/loanTools'
 
 const familyData = inject('familyData')
 const isMasked = inject('isMasked')
@@ -186,8 +187,9 @@ const processedLoans = computed(() => {
             pLoan.nextInterest = currentLeft * r;
             pLoan.nextPrincipal = fixedMonthly - pLoan.nextInterest;
         } else if (loan.type === '消费贷') {
-            pLoan.nextInterest = pLoan.left * r; 
-            pLoan.nextPrincipal = pLoan.monthly - pLoan.nextInterest;
+            pLoan.nextInterest = getMonthlyInterest(pLoan);
+            pLoan.nextPrincipal = getPlannedPrincipal(pLoan);
+            pLoan.monthly = getConsumerLoanPayment(pLoan);
         }
         return pLoan;
     });

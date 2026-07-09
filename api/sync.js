@@ -166,7 +166,8 @@ function buildDemoRecord() {
         bank: '短期周转演示',
         isAutoCalc: false,
         left: 68000,
-        monthly: 4200,
+        plannedPrincipal: 3900,
+        monthly: 0,
         rate: 3.6,
         day: 10
       }

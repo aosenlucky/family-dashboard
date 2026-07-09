@@ -14,6 +14,7 @@ export default async function handler(req, res) {
   const expectedPassword = isDemoSession
     ? process.env.DEMO_WEALTH_PASSWORD || process.env.DEMO_PASSWORD || ''
     : process.env.WEALTH_PASSWORD || ''
+  const demoWealthPassword = process.env.DEMO_WEALTH_PASSWORD || process.env.DEMO_PASSWORD || ''
 
   if (!expectedPassword) {
     return res.status(500).json({
@@ -24,6 +25,10 @@ export default async function handler(req, res) {
   }
 
   const inputPassword = String(req.body?.password || '')
+  if (isRealSession && demoWealthPassword && inputPassword === demoWealthPassword) {
+    return res.status(403).json({ error: '当前是真实数据会话。要查看 mock 数据，请先锁定家门，再用演示密码从首页登录。' })
+  }
+
   if (!inputPassword || inputPassword !== expectedPassword) {
     return res.status(403).json({ error: '理财密码错误。' })
   }
