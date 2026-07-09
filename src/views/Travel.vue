@@ -99,7 +99,7 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-3 gap-2 mb-4">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
           <div v-for="item in travelerControls" :key="item.key" class="stepper-box">
             <span>{{ item.label }}</span>
             <div>
@@ -156,9 +156,13 @@
           <span>版本：{{ selectedVariantLabel }}</span>
           <span>攻略来源：{{ extractLinksFromText(form.strategyText).length ? '文字 + 链接' : form.strategyText.trim() ? '文字' : '未填写' }}</span>
         </div>
+        <div v-if="formIssues.length" class="form-issues" role="alert">
+          <i class="ph ph-info"></i>
+          <span>{{ formIssues[0] }}</span>
+        </div>
 
         <div class="flex flex-wrap gap-3 mt-5">
-          <button class="primary-btn" :disabled="isLoading || !form.selectedVariants.length" @click="generate(false)">
+          <button class="primary-btn" :disabled="isLoading || !canGenerate" @click="generate(false)">
             <i class="ph ph-sparkle"></i>{{ isLoading ? '生成中...' : form.feedback ? '按想法重新安排' : '帮我安排行程' }}
           </button>
           <button class="secondary-btn" :disabled="isLoading" @click="generate(true)">示例看看</button>
@@ -166,7 +170,10 @@
         <div v-if="isLoading" class="loading-note">
           <i class="ph ph-circle-notch"></i> {{ loadingMessage || '正在认真安排行程，通常需要 20-50 秒。页面可以停在这里等一会儿。' }}
         </div>
-        <p v-if="error" class="text-xs text-rose-500 mt-3">{{ error }}</p>
+        <div v-if="error" class="travel-error" role="alert">
+          <i class="ph ph-warning-circle"></i>
+          <span>{{ error }}</span>
+        </div>
       </section>
 
       <section class="min-w-0 travel-output-panel">
@@ -218,21 +225,28 @@
             </div>
           </div>
 
-          <section v-if="plan.weather" class="weather-card glass-card rounded-3xl p-5">
+          <section v-if="plan.weather" class="weather-card glass-card rounded-3xl p-5" :class="`quality-${plan.weather.quality || 'forecast'}`">
             <div class="weather-card-head">
               <div>
                 <p>天气和出门提醒</p>
                 <h3>{{ plan.weather.summary }}</h3>
               </div>
-              <span>{{ plan.weather.source || 'Open-Meteo' }}</span>
+              <div class="weather-actions">
+                <span>{{ weatherSourceLabel }}</span>
+                <button type="button" :disabled="isRefreshingWeather" @click="refreshWeather">
+                  <i class="ph" :class="isRefreshingWeather ? 'ph-circle-notch' : 'ph-arrows-clockwise'"></i>
+                  {{ isRefreshingWeather ? '刷新中' : '刷新天气' }}
+                </button>
+              </div>
             </div>
             <div v-if="plan.weather.days?.length" class="weather-days">
               <div v-for="day in plan.weather.days" :key="day.date">
                 <strong>{{ formatDisplayDate(day.date) }}</strong>
                 <span>{{ day.condition }}</span>
-                <small>{{ day.temperatureMin }}°C - {{ day.temperatureMax }}°C · {{ day.precipitationLabel || `降雨 ${day.precipitationProbability}%` }}</small>
+                <small>{{ weatherTemperatureText(day) }} · {{ weatherRainText(day) }}</small>
               </div>
             </div>
+            <p v-if="weatherStatus" class="weather-status">{{ weatherStatus }}</p>
             <ul class="weather-advice">
               <li v-for="item in plan.weather.advice" :key="item">{{ item }}</li>
             </ul>
@@ -356,7 +370,7 @@
                     <div v-for="day in (plan.weather.days || []).slice(0, 4)" :key="`download-weather-${day.date}`">
                       <b>{{ formatDisplayDate(day.date) }}</b>
                       <span>{{ day.condition }}</span>
-                      <small>{{ day.temperatureMin }}°C - {{ day.temperatureMax }}°C</small>
+                      <small>{{ weatherTemperatureText(day) }}</small>
                     </div>
                   </div>
                   <em>{{ plan.weather?.summary || activePlan.positioning }}</em>
@@ -448,11 +462,13 @@ const isLoading = ref(false)
 const loadingMessage = ref('')
 const isDownloading = ref(false)
 const isSavingHistory = ref(false)
+const isRefreshingWeather = ref(false)
 const isHistoryLoading = ref(false)
 const deletingHistoryId = ref('')
 const confirmingDeleteId = ref('')
 const error = ref('')
 const saveStatus = ref('')
+const weatherStatus = ref('')
 const plan = ref(null)
 const activeVariant = ref('classic')
 const downloadRef = ref(null)
@@ -487,16 +503,39 @@ const dailyScenery = computed(() => sceneryImages[dailyIndex.value % sceneryImag
 const dailySlogan = computed(() => scenerySlogans[dailyIndex.value % scenerySlogans.length])
 const calendarTitle = computed(() => `${calendarMonth.value.getFullYear()} 年 ${calendarMonth.value.getMonth() + 1} 月`)
 const calendarDays = computed(() => buildCalendarDays(calendarMonth.value, form.value.startDate, form.value.endDate))
+const formIssues = computed(() => {
+  const issues = []
+  if (!form.value.destination.trim()) issues.push('先写一个想去的目的地。')
+  if (!form.value.startDate || !form.value.endDate) issues.push('请选择出发和返回日期。')
+  if (new Date(`${form.value.endDate}T00:00:00`) < new Date(`${form.value.startDate}T00:00:00`)) issues.push('返回日期不能早于出发日期。')
+  if (tripDates.value.length > 14) issues.push('目前建议一次先规划 14 天以内，长线旅行可以分段生成。')
+  const travelerCount = Number(form.value.travelers.adults || 0) + Number(form.value.travelers.children || 0) + Number(form.value.travelers.seniors || 0)
+  if (travelerCount <= 0) issues.push('至少需要一位同行人。')
+  if (!form.value.selectedVariants.length) issues.push('至少选择一种玩法版本。')
+  return issues
+})
+const canGenerate = computed(() => formIssues.value.length === 0)
+const weatherSourceLabel = computed(() => {
+  const quality = plan.value?.weather?.quality
+  if (quality === 'estimate') return '季节参考'
+  if (quality === 'seasonal') return '远期趋势'
+  return plan.value?.weather?.source || 'Open-Meteo'
+})
 
 onMounted(() => {
   loadTravelHistory()
 })
 
 async function generate(useMock = false) {
+  if (!useMock && !canGenerate.value) {
+    error.value = formIssues.value[0] || '请先补充必要信息。'
+    return
+  }
   isLoading.value = true
   loadingMessage.value = useMock ? '正在整理示例行程。' : '行程生成已开始，正在连接服务端。'
   error.value = ''
   saveStatus.value = ''
+  weatherStatus.value = ''
   confirmingDeleteId.value = ''
   isViewingSavedPlan.value = false
   currentHistoryId.value = ''
@@ -771,6 +810,33 @@ async function downloadPlanCard() {
     isDownloading.value = false
   }
 }
+async function refreshWeather() {
+  if (!plan.value) return
+  isRefreshingWeather.value = true
+  weatherStatus.value = ''
+  error.value = ''
+  try {
+    const response = await fetch('/api/travel-weather', {
+      method: 'POST',
+      headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        destination: plan.value.meta?.destination || form.value.destination,
+        startDate: form.value.startDate,
+        endDate: form.value.endDate
+      })
+    })
+    const data = await parseApiResponse(response)
+    if (!response.ok) throw new Error(formatApiError(response, data))
+    plan.value = { ...plan.value, weather: data.weather }
+    weatherStatus.value = data.weather?.quality === 'estimate'
+      ? '已更新为季节准备参考；临近出发再刷新会更准。'
+      : '天气已刷新。'
+  } catch (err) {
+    weatherStatus.value = err instanceof Error ? err.message : '天气刷新失败，请稍后再试。'
+  } finally {
+    isRefreshingWeather.value = false
+  }
+}
 async function saveCurrentPlan() {
   if (!plan.value || !activePlan.value) return
   isSavingHistory.value = true
@@ -1020,6 +1086,19 @@ function formatDisplayDate(value) {
   if (Number.isNaN(date.getTime())) return value
   return `${date.getMonth() + 1}月${date.getDate()}日`
 }
+function weatherTemperatureText(day = {}) {
+  const min = Number(day.temperatureMin)
+  const max = Number(day.temperatureMax)
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return '温度临近确认'
+  if (min === 0 && max === 0 && /待确认|暂未/.test(String(day.condition || ''))) return '温度临近确认'
+  return `${Math.round(min)}°C - ${Math.round(max)}°C`
+}
+function weatherRainText(day = {}) {
+  if (day.precipitationLabel) return day.precipitationLabel
+  const probability = Number(day.precipitationProbability)
+  if (!Number.isFinite(probability)) return '降雨临近确认'
+  return `降雨 ${Math.max(0, Math.min(100, Math.round(probability)))}%`
+}
 function daySeed(value) {
   return value.split('-').reduce((sum, part) => sum + Number(part || 0), 0)
 }
@@ -1095,9 +1174,9 @@ function fatigueLabel(value) {
 .date-grid button.selected { background:#1f2937; color:white; box-shadow:0 8px 18px rgba(31,41,55,.16); }
 .date-grid button.disabled { color:#d1d5db; opacity:.55; cursor:not-allowed; }
 .date-picker-hint { margin:10px 2px 0; color:#6b7280; font-size:12px; font-weight:700; }
-.mini-pill,.chip,.primary-btn,.secondary-btn,.download-btn { display:inline-flex; align-items:center; justify-content:center; gap:7px; border:0; border-radius:999px; font-weight:700; text-decoration:none; transition:.18s ease; }
-.mini-pill { padding:8px 12px; background:rgba(255,255,255,.65); color:#374151; font-size:12px; }
-.chip { padding:8px 12px; background:rgba(255,255,255,.65); color:#6b7280; font-size:12px; }
+.mini-pill,.chip,.primary-btn,.secondary-btn,.download-btn { display:inline-flex; align-items:center; justify-content:center; gap:7px; border:0; border-radius:999px; font-weight:700; text-decoration:none; transition:.18s ease; cursor:pointer; }
+.mini-pill { min-height:36px; padding:8px 12px; background:rgba(255,255,255,.65); color:#374151; font-size:12px; }
+.chip { min-height:36px; padding:8px 12px; background:rgba(255,255,255,.65); color:#6b7280; font-size:12px; }
 .chip.active { background:#fff; color:#0066cc; box-shadow:0 8px 20px rgba(0,102,204,.1); }
 .segmented { display:flex; width:100%; background:rgba(255,255,255,.55); border-radius:18px; padding:4px; }
 .segmented button { flex:1; border:0; border-radius:14px; background:transparent; padding:9px 10px; color:#6b7280; font-size:12px; font-weight:800; }
@@ -1109,15 +1188,19 @@ function fatigueLabel(value) {
 .variant-option span { display:flex; align-items:center; gap:6px; font-weight:800; }
 .variant-option small { color:#6b7280; font-size:12px; }
 .summary-box { display:grid; gap:6px; padding:13px; border-radius:20px; background:rgba(239,246,255,.75); color:#0757a8; font-size:12px; font-weight:800; }
+.form-issues,.travel-error { display:flex; align-items:flex-start; gap:8px; margin-top:10px; border-radius:18px; padding:11px 12px; font-size:12px; font-weight:800; line-height:1.5; }
+.form-issues { background:rgba(255,244,223,.86); color:#8a4b0f; border:1px solid rgba(245,158,11,.16); }
+.travel-error { background:rgba(255,240,238,.88); color:#b42318; border:1px solid rgba(217,45,32,.18); }
+.form-issues i,.travel-error i { flex:none; margin-top:2px; font-size:15px; }
 .loading-note { display:flex; align-items:center; gap:8px; margin-top:12px; border-radius:18px; padding:11px 12px; background:rgba(255,255,255,.72); color:#6b7280; font-size:12px; font-weight:800; line-height:1.5; }
 .loading-note i { color:#0066cc; animation:travel-spin 1s linear infinite; }
-.primary-btn { min-height:42px; padding:0 18px; background:#1f2937; color:white; }
-.secondary-btn { min-height:42px; padding:0 18px; background:rgba(255,255,255,.72); color:#1f2937; }
+.primary-btn { min-height:44px; padding:0 18px; background:#1f2937; color:white; }
+.secondary-btn { min-height:44px; padding:0 18px; background:rgba(255,255,255,.72); color:#1f2937; }
 .primary-btn:disabled,.secondary-btn:disabled,.download-btn:disabled { opacity:.55; cursor:not-allowed; }
 .stepper-box { background:rgba(255,255,255,.58); border-radius:18px; padding:10px; }
 .stepper-box span { color:#6b7280; font-size:12px; font-weight:700; display:block; margin-bottom:8px; }
 .stepper-box div { display:flex; align-items:center; justify-content:space-between; gap:6px; }
-.stepper-box button { width:28px; height:28px; border:0; border-radius:999px; background:#fff; font-weight:900; }
+.stepper-box button { flex:0 0 44px; width:44px; height:44px; border:0; border-radius:999px; background:#fff; font-weight:900; }
 .stepper-box strong { min-width:20px; text-align:center; }
 .hero-mask { mask-image:linear-gradient(to left,#000 58%,transparent); }
 .download-btn { min-height:38px; padding:0 14px; background:#1f2937; color:white; font-size:12px; box-shadow:0 12px 28px rgba(0,0,0,.16); }
@@ -1141,15 +1224,21 @@ function fatigueLabel(value) {
 .hotel-map-list strong { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
 .hotel-map-list i { color:#0066cc; justify-self:end; }
 .weather-card { display:grid; gap:14px; }
+.weather-card.quality-estimate { border:1px solid rgba(217,119,6,.16); background:rgba(255,251,235,.58); }
 .weather-card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
 .weather-card-head p { margin:0 0 4px; color:#0066cc; font-size:11px; font-weight:900; }
 .weather-card-head h3 { margin:0; color:#1f2937; font-size:17px; line-height:1.4; font-weight:900; }
-.weather-card-head > span { flex:none; color:#6b7280; font-size:11px; font-weight:800; }
+.weather-actions { flex:none; display:flex; align-items:center; gap:8px; }
+.weather-actions > span { color:#6b7280; font-size:11px; font-weight:800; }
+.weather-actions button { min-height:36px; display:inline-flex; align-items:center; justify-content:center; gap:6px; border:0; border-radius:999px; background:rgba(255,255,255,.78); color:#1f2937; padding:0 11px; font-size:12px; font-weight:900; box-shadow:0 8px 18px rgba(31,41,55,.08); }
+.weather-actions button:disabled { opacity:.6; cursor:not-allowed; }
+.weather-actions button .ph-circle-notch { animation:travel-spin 1s linear infinite; color:#0066cc; }
 .weather-days { display:grid; grid-template-columns:repeat(auto-fit,minmax(138px,1fr)); gap:8px; }
 .weather-days div { border-radius:18px; background:rgba(255,255,255,.66); padding:11px 12px; display:grid; gap:4px; }
 .weather-days strong { color:#1f2937; font-size:13px; }
 .weather-days span { color:#0066cc; font-size:12px; font-weight:900; }
 .weather-days small { color:#6b7280; font-size:11px; line-height:1.45; }
+.weather-status { margin:0; border-radius:16px; background:rgba(255,255,255,.66); color:#6b7280; padding:9px 11px; font-size:12px; font-weight:800; line-height:1.5; }
 .weather-advice { margin:0; padding-left:18px; color:#4b5563; font-size:13px; line-height:1.7; }
 .pill-blue,.pill-gray { border-radius:999px; padding:7px 10px; font-size:12px; font-weight:800; }
 .pill-blue { background:#eff6ff; color:#0757a8; }
@@ -1236,6 +1325,8 @@ function fatigueLabel(value) {
   .active-plan-heading { flex-direction:column; }
   .active-plan-badges { justify-content:flex-start; }
   .weather-card-head { flex-direction:column; gap:8px; }
+  .weather-actions { width:100%; justify-content:space-between; }
+  .weather-actions button { min-height:44px; }
   .hotel-map-card { grid-template-columns:1fr; }
   .hotel-map-list a { grid-template-columns:1fr 28px; }
   .hotel-map-list span { grid-column:1 / -1; }

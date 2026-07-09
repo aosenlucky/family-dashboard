@@ -6,8 +6,9 @@ const MODEL_NAME = process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro'
 const REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_LINK_TIMEOUT_MS || 3500)
 const DEEPSEEK_TIMEOUT_MS = Math.min(Number(process.env.TRAVEL_DEEPSEEK_TIMEOUT_MS || 85000), 85000)
 const IMAGE_REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_IMAGE_TIMEOUT_MS || 1500)
-const WEATHER_REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_WEATHER_TIMEOUT_MS || 2500)
+const WEATHER_REQUEST_TIMEOUT_MS = Number(process.env.TRAVEL_WEATHER_TIMEOUT_MS || 5000)
 const FORECAST_HORIZON_DAYS = 16
+const SEASONAL_HORIZON_DAYS = 210
 const SHOULD_FETCH_REFERENCE_LINKS = process.env.TRAVEL_FETCH_LINKS !== 'false'
 const MAX_REFERENCE_LINKS = Number(process.env.TRAVEL_MAX_REFERENCE_LINKS || 2)
 
@@ -196,7 +197,7 @@ export async function createTravelPlan(input, options = {}) {
 
   const apiKey = getDeepSeekApiKey()
   if (!apiKey) {
-    throw new Error('没有找到 DEEPSEEK_API_KEY，真实行程无法生成。请在 Vercel 环境变量中配置 DEEPSEEK_API_KEY。')
+    throw new Error('没有找到 DEEPSEEK_API_KEY，真实行程无法生成。请在云端部署平台环境变量中配置 DEEPSEEK_API_KEY。')
   }
 
   options.onProgress?.({ stage: 'references', message: '正在读取攻略材料和参考链接。' })
@@ -915,11 +916,15 @@ async function enrichPlanWeather(plan, input) {
   return { ...plan, weather }
 }
 
-async function fetchTravelWeather(destination, startDate, endDate) {
+export async function fetchTravelWeather(destination, startDate, endDate) {
   try {
     const geo = await geocodeDestination(destination)
-    if (!geo) return buildWeatherFallback(startDate, endDate, '暂时没有定位到目的地，建议出发前再看一次天气。')
-    const useSeasonal = daysFromToday(startDate) > FORECAST_HORIZON_DAYS
+    if (!geo) return buildWeatherFallback(startDate, endDate, destination, null, '暂时没有定位到目的地，先按目的地和季节做出门准备参考。')
+    const leadDays = daysFromToday(startDate)
+    if (leadDays > SEASONAL_HORIZON_DAYS) {
+      return buildWeatherFallback(startDate, endDate, destination, geo, '出行日期离现在较远，暂时没有可靠逐日预报，先按季节准备。')
+    }
+    const useSeasonal = leadDays > FORECAST_HORIZON_DAYS
     const endpoint = useSeasonal ? 'https://seasonal-api.open-meteo.com/v1/seasonal' : 'https://api.open-meteo.com/v1/forecast'
     const dailyParams = useSeasonal
       ? 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum'
@@ -934,13 +939,21 @@ async function fetchTravelWeather(destination, startDate, endDate) {
       '&timezone=auto'
     ].join('')
     const response = await fetchWithTimeout(url, {}, WEATHER_REQUEST_TIMEOUT_MS)
-    if (!response.ok) return buildWeatherFallback(startDate, endDate, useSeasonal ? '远期天气趋势暂时不可用，建议临近出发前再刷新。' : '出行日期可能离现在较远，天气预报暂未开放，建议临近出发前再确认。')
+    if (!response.ok) {
+      return buildWeatherFallback(
+        startDate,
+        endDate,
+        destination,
+        geo,
+        useSeasonal ? '远期天气趋势暂时不可用，先按季节做准备，临近出发再刷新。' : '临近预报暂时没有返回，先按季节做准备。'
+      )
+    }
     const data = await response.json()
     const days = (data.daily?.time || []).map((date, index) => ({
       date,
       condition: weatherCodeLabel(getDailyValue(data.daily?.weather_code, index)),
-      temperatureMin: Math.round(Number(getDailyValue(data.daily?.temperature_2m_min, index) ?? 0)),
-      temperatureMax: Math.round(Number(getDailyValue(data.daily?.temperature_2m_max, index) ?? 0)),
+      temperatureMin: normalizeWeatherNumber(getDailyValue(data.daily?.temperature_2m_min, index)),
+      temperatureMax: normalizeWeatherNumber(getDailyValue(data.daily?.temperature_2m_max, index)),
       precipitationProbability: useSeasonal
         ? precipitationProbabilityFromSum(getDailyValue(data.daily?.precipitation_sum, index))
         : Math.round(Number(getDailyValue(data.daily?.precipitation_probability_max, index) ?? 0)),
@@ -948,24 +961,32 @@ async function fetchTravelWeather(destination, startDate, endDate) {
         ? `降水趋势 ${formatPrecipitationSum(getDailyValue(data.daily?.precipitation_sum, index))}`
         : ''
     }))
-    if (!days.length) return buildWeatherFallback(startDate, endDate, '出行日期可能离现在较远，天气预报暂未开放，建议临近出发前再确认。')
+    if (!days.length) return buildWeatherFallback(startDate, endDate, destination, geo, '天气接口暂时没有返回逐日数据，先按季节做准备。')
     return buildWeatherSummary(days, geo.name || destination, useSeasonal)
   } catch {
-    return buildWeatherFallback(startDate, endDate, '天气服务暂时不可用，建议出发前再刷新一次。')
+    return buildWeatherFallback(startDate, endDate, destination, null, '天气服务暂时不可用，先给你一份季节准备参考。')
   }
 }
 
 async function geocodeDestination(destination) {
   const known = knownDestinationGeo(destination)
   if (known) return known
-  const candidates = uniqueText([destination, translateImageTerm(destination), `${destination} China`]).slice(0, 2)
+  const translated = translateDestinationTerm(destination)
+  const candidates = uniqueText([
+    translated,
+    translateImageTerm(destination),
+    destination,
+    `${translated} China`,
+    `${destination} China`
+  ]).slice(0, 5)
   for (const candidate of candidates) {
     try {
-      const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(candidate)}&count=1&language=zh&format=json`
+      const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(candidate)}&count=5&language=zh&format=json`
       const response = await fetchWithTimeout(url, {}, WEATHER_REQUEST_TIMEOUT_MS)
       if (!response.ok) continue
       const data = await response.json()
-      if (data.results?.[0]) return data.results[0]
+      const result = pickBestGeocodeResult(data.results, destination)
+      if (result) return result
     } catch {}
   }
   return null
@@ -987,9 +1008,90 @@ function knownDestinationGeo(destination) {
     { keys: ['京都', 'Kyoto'], name: '京都', latitude: 35.0116, longitude: 135.7681 },
     { keys: ['东京', 'Tokyo'], name: '东京', latitude: 35.6762, longitude: 139.6503 },
     { keys: ['大阪', 'Osaka'], name: '大阪', latitude: 34.6937, longitude: 135.5023 },
-    { keys: ['奈良', 'Nara'], name: '奈良', latitude: 34.6851, longitude: 135.8048 }
+    { keys: ['奈良', 'Nara'], name: '奈良', latitude: 34.6851, longitude: 135.8048 },
+    { keys: ['青岛', 'Qingdao'], name: '青岛', latitude: 36.0649, longitude: 120.3804 },
+    { keys: ['济南', 'Jinan'], name: '济南', latitude: 36.6683, longitude: 116.9972 },
+    { keys: ['洛阳', 'Luoyang'], name: '洛阳', latitude: 34.6734, longitude: 112.4368 },
+    { keys: ['泉州', 'Quanzhou'], name: '泉州', latitude: 24.9139, longitude: 118.5858 },
+    { keys: ['厦门', 'Xiamen'], name: '厦门', latitude: 24.4798, longitude: 118.0894 },
+    { keys: ['南京', 'Nanjing'], name: '南京', latitude: 32.0603, longitude: 118.7969 },
+    { keys: ['无锡', 'Wuxi'], name: '无锡', latitude: 31.4912, longitude: 120.3119 },
+    { keys: ['扬州', 'Yangzhou'], name: '扬州', latitude: 32.3936, longitude: 119.4127 },
+    { keys: ['宁波', 'Ningbo'], name: '宁波', latitude: 29.8683, longitude: 121.5440 },
+    { keys: ['舟山', 'Zhoushan', '普陀山'], name: '舟山', latitude: 29.9853, longitude: 122.2072 },
+    { keys: ['黄山', 'Huangshan'], name: '黄山', latitude: 29.7147, longitude: 118.3375 },
+    { keys: ['武汉', 'Wuhan'], name: '武汉', latitude: 30.5928, longitude: 114.3055 },
+    { keys: ['长沙', 'Changsha'], name: '长沙', latitude: 28.2282, longitude: 112.9388 },
+    { keys: ['张家界', 'Zhangjiajie'], name: '张家界', latitude: 29.1171, longitude: 110.4792 },
+    { keys: ['重庆', 'Chongqing'], name: '重庆', latitude: 29.5603, longitude: 106.5577 },
+    { keys: ['贵阳', 'Guiyang'], name: '贵阳', latitude: 26.6477, longitude: 106.6302 },
+    { keys: ['桂林', 'Guilin'], name: '桂林', latitude: 25.2736, longitude: 110.2900 },
+    { keys: ['阳朔', 'Yangshuo'], name: '阳朔', latitude: 24.7785, longitude: 110.4966 },
+    { keys: ['昆明', 'Kunming'], name: '昆明', latitude: 25.0389, longitude: 102.7183 },
+    { keys: ['大理', 'Dali'], name: '大理', latitude: 25.5847, longitude: 100.2123 },
+    { keys: ['丽江', 'Lijiang'], name: '丽江', latitude: 26.8565, longitude: 100.2271 },
+    { keys: ['香格里拉', 'Shangri-La'], name: '香格里拉', latitude: 27.8252, longitude: 99.7085 },
+    { keys: ['哈尔滨', 'Harbin'], name: '哈尔滨', latitude: 45.8038, longitude: 126.5349 },
+    { keys: ['长春', 'Changchun'], name: '长春', latitude: 43.8171, longitude: 125.3235 },
+    { keys: ['沈阳', 'Shenyang'], name: '沈阳', latitude: 41.8057, longitude: 123.4315 },
+    { keys: ['大连', 'Dalian'], name: '大连', latitude: 38.9140, longitude: 121.6147 },
+    { keys: ['延吉', 'Yanji'], name: '延吉', latitude: 42.8913, longitude: 129.5089 },
+    { keys: ['长白山', 'Changbai'], name: '长白山', latitude: 42.0061, longitude: 128.0552 },
+    { keys: ['呼和浩特', 'Hohhot'], name: '呼和浩特', latitude: 40.8426, longitude: 111.7492 },
+    { keys: ['乌兰察布', 'Ulanqab'], name: '乌兰察布', latitude: 40.9930, longitude: 113.1330 },
+    { keys: ['呼伦贝尔', 'Hulunbuir', '海拉尔'], name: '呼伦贝尔', latitude: 49.2114, longitude: 119.7558 },
+    { keys: ['阿那亚', 'Aranya', '北戴河', '秦皇岛'], name: '秦皇岛', latitude: 39.9354, longitude: 119.6005 },
+    { keys: ['承德', 'Chengde'], name: '承德', latitude: 40.9540, longitude: 117.9624 },
+    { keys: ['天津', 'Tianjin'], name: '天津', latitude: 39.3434, longitude: 117.3616 },
+    { keys: ['郑州', 'Zhengzhou'], name: '郑州', latitude: 34.7466, longitude: 113.6254 },
+    { keys: ['开封', 'Kaifeng'], name: '开封', latitude: 34.7973, longitude: 114.3076 },
+    { keys: ['兰州', 'Lanzhou'], name: '兰州', latitude: 36.0611, longitude: 103.8343 },
+    { keys: ['西宁', 'Xining'], name: '西宁', latitude: 36.6171, longitude: 101.7782 },
+    { keys: ['敦煌', 'Dunhuang'], name: '敦煌', latitude: 40.1421, longitude: 94.6619 },
+    { keys: ['乌鲁木齐', 'Urumqi'], name: '乌鲁木齐', latitude: 43.8256, longitude: 87.6168 },
+    { keys: ['喀什', 'Kashgar'], name: '喀什', latitude: 39.4704, longitude: 75.9898 },
+    { keys: ['拉萨', 'Lhasa'], name: '拉萨', latitude: 29.6520, longitude: 91.1721 },
+    { keys: ['林芝', 'Nyingchi'], name: '林芝', latitude: 29.6547, longitude: 94.3623 },
+    { keys: ['福州', 'Fuzhou'], name: '福州', latitude: 26.0745, longitude: 119.2965 },
+    { keys: ['珠海', 'Zhuhai'], name: '珠海', latitude: 22.2716, longitude: 113.5767 },
+    { keys: ['香港', 'Hong Kong'], name: '香港', latitude: 22.3193, longitude: 114.1694 },
+    { keys: ['澳门', 'Macau', 'Macao'], name: '澳门', latitude: 22.1987, longitude: 113.5439 },
+    { keys: ['台北', 'Taipei'], name: '台北', latitude: 25.0330, longitude: 121.5654 },
+    { keys: ['高雄', 'Kaohsiung'], name: '高雄', latitude: 22.6273, longitude: 120.3014 },
+    { keys: ['首尔', 'Seoul'], name: '首尔', latitude: 37.5665, longitude: 126.9780 },
+    { keys: ['新加坡', 'Singapore'], name: '新加坡', latitude: 1.3521, longitude: 103.8198 },
+    { keys: ['曼谷', 'Bangkok'], name: '曼谷', latitude: 13.7563, longitude: 100.5018 },
+    { keys: ['清迈', 'Chiang Mai'], name: '清迈', latitude: 18.7883, longitude: 98.9853 },
+    { keys: ['普吉', 'Phuket'], name: '普吉', latitude: 7.8804, longitude: 98.3923 },
+    { keys: ['吉隆坡', 'Kuala Lumpur'], name: '吉隆坡', latitude: 3.1390, longitude: 101.6869 },
+    { keys: ['巴厘岛', 'Bali'], name: '巴厘岛', latitude: -8.3405, longitude: 115.0920 },
+    { keys: ['巴黎', 'Paris'], name: '巴黎', latitude: 48.8566, longitude: 2.3522 },
+    { keys: ['伦敦', 'London'], name: '伦敦', latitude: 51.5072, longitude: -0.1276 },
+    { keys: ['罗马', 'Rome'], name: '罗马', latitude: 41.9028, longitude: 12.4964 },
+    { keys: ['纽约', 'New York'], name: '纽约', latitude: 40.7128, longitude: -74.0060 }
   ]
   return known.find((item) => item.keys.some((key) => text.toLowerCase().includes(key.toLowerCase()))) || null
+}
+
+function translateDestinationTerm(value = '') {
+  const text = String(value).trim()
+  if (!text) return ''
+  const known = knownDestinationGeo(text)
+  if (!known) return translateImageTerm(text)
+  const romanized = known.keys.find((key) => /^[A-Za-z][A-Za-z\s.'-]*$/.test(key))
+  return romanized ? `${romanized} ${known.name}` : translateImageTerm(text)
+}
+
+function pickBestGeocodeResult(results, destination) {
+  const list = Array.isArray(results) ? results.filter(Boolean) : []
+  if (!list.length) return null
+  const wantsChina = /[\u4e00-\u9fa5]/.test(destination || '') && !/(京都|东京|大阪|奈良|首尔|新加坡|曼谷|清迈|普吉|吉隆坡|巴厘|巴黎|伦敦|罗马|纽约)/.test(destination || '')
+  return (wantsChina ? list.find((item) => item.country_code === 'CN') : null) || list[0]
+}
+
+function normalizeWeatherNumber(value) {
+  const number = Number(value)
+  return Number.isFinite(number) ? Math.round(number) : null
 }
 
 function getDailyValue(value, index) {
@@ -1014,38 +1116,92 @@ function formatPrecipitationSum(value) {
   return `${Number.isFinite(amount) ? amount.toFixed(amount >= 10 ? 0 : 1) : '0'}mm`
 }
 
-function buildWeatherSummary(days, destination, isSeasonal = false) {
-  const min = Math.min(...days.map((day) => day.temperatureMin))
-  const max = Math.max(...days.map((day) => day.temperatureMax))
+function buildWeatherSummary(days, destination, isSeasonal = false, isEstimate = false) {
+  const temperatures = days.flatMap((day) => [day.temperatureMin, day.temperatureMax]).filter((value) => Number.isFinite(Number(value)))
+  const min = temperatures.length ? Math.min(...temperatures) : null
+  const max = temperatures.length ? Math.max(...temperatures) : null
   const rainyDays = days.filter((day) => day.precipitationProbability >= 45)
   const hotDays = days.filter((day) => day.temperatureMax >= 30)
   const advice = [
-    isSeasonal ? '这是远期天气趋势预估，适合做衣物和节奏准备，出发前 1-3 天建议再看精确预报。' : '这是临近天气预报，可用于安排室内外顺序。',
+    isEstimate ? '这是按目的地季节和地理位置给出的准备参考，不等同于实时天气。' : isSeasonal ? '这是远期天气趋势预估，适合做衣物和节奏准备，出发前 1-3 天建议再看精确预报。' : '这是临近天气预报，可用于安排室内外顺序。',
     rainyDays.length ? '有较高降雨风险，建议带轻便雨具，鞋子优先选防滑好走的。' : '降雨风险不高，但长时间户外仍建议带一把轻便伞。',
     hotDays.length ? '白天温度偏高，上午优先安排户外，午后多留室内和休息点。' : '温度整体适中，可以按原计划安排步行，但仍要预留补水和休息。',
     '天气会影响排队和拍照体验，出发前一天建议再刷新确认。'
   ]
   return {
-    summary: `${destination}行程期间约 ${min}°C - ${max}°C，${rainyDays.length ? '有降雨风险' : '整体适合出行'}`,
-    source: isSeasonal ? 'Open-Meteo 远期趋势' : 'Open-Meteo',
+    summary: `${destination}行程期间${min === null || max === null ? '天气需要临近确认' : `约 ${min}°C - ${max}°C`}，${rainyDays.length ? '有降雨风险' : '整体适合出行'}`,
+    source: isEstimate ? '季节准备参考' : isSeasonal ? 'Open-Meteo 远期趋势' : 'Open-Meteo',
+    quality: isEstimate ? 'estimate' : isSeasonal ? 'seasonal' : 'forecast',
     days,
     advice
   }
 }
 
-function buildWeatherFallback(startDate, endDate, reason) {
-  return {
-    summary: '天气预报暂时不可用',
-    source: 'Open-Meteo',
-    days: enumerateDateStrings(startDate, endDate).slice(0, 7).map((date) => ({
+function buildWeatherFallback(startDate, endDate, destination, geo, reason) {
+  const dates = enumerateDateStrings(startDate, endDate).slice(0, 10)
+  const days = dates.map((date) => {
+    const profile = estimateClimateProfile(destination, geo, getDateMonth(date))
+    return {
       date,
-      condition: '待确认',
-      temperatureMin: 0,
-      temperatureMax: 0,
-      precipitationProbability: 0
-    })),
-    advice: [reason, '建议把雨具、防晒、舒适鞋作为默认准备项。']
+      condition: profile.condition,
+      temperatureMin: profile.temperatureMin,
+      temperatureMax: profile.temperatureMax,
+      precipitationProbability: profile.precipitationProbability,
+      precipitationLabel: profile.precipitationLabel,
+      isEstimate: true
+    }
+  })
+  const summary = buildWeatherSummary(days, geo?.name || destination || '目的地', false, true)
+  return {
+    ...summary,
+    advice: [
+      reason,
+      ...summary.advice.slice(1, 3),
+      '临近出发时点击刷新天气，系统会优先换成逐日预报。'
+    ]
   }
+}
+
+function getDateMonth(date) {
+  const parsed = new Date(`${date}T00:00:00`)
+  return Number.isNaN(parsed.getTime()) ? new Date().getMonth() + 1 : parsed.getMonth() + 1
+}
+
+function estimateClimateProfile(destination, geo, month) {
+  const text = String(destination || '')
+  const latitude = Number(geo?.latitude)
+  const highland = /拉萨|林芝|香格里拉|西宁|青海|西藏|高原|长白山/i.test(text) || latitude >= 0 && Number(geo?.longitude) < 100 && latitude > 28
+  const northeast = /哈尔滨|长春|沈阳|延吉|呼伦贝尔|海拉尔|长白山|东北/i.test(text) || latitude >= 43
+  const northwest = /乌鲁木齐|喀什|敦煌|兰州|西宁|新疆|甘肃|宁夏/i.test(text)
+  const south = /三亚|海南|广州|深圳|珠海|香港|澳门|厦门|泉州|福州|桂林|阳朔|昆明|大理|丽江|贵阳|台湾|曼谷|清迈|普吉|新加坡|巴厘/i.test(text) || latitude > 0 && latitude < 26
+  const coast = /青岛|大连|秦皇岛|北戴河|阿那亚|舟山|宁波|厦门|泉州|福州|三亚|海|岛/i.test(text)
+
+  if ([12, 1, 2].includes(month)) {
+    if (northeast) return { condition: '寒冷干燥', temperatureMin: -18, temperatureMax: -4, precipitationProbability: 18, precipitationLabel: '低温优先' }
+    if (highland || northwest) return { condition: '昼夜温差大', temperatureMin: -8, temperatureMax: 8, precipitationProbability: 12, precipitationLabel: '干冷少雨' }
+    if (south) return { condition: '温和少雨', temperatureMin: 10, temperatureMax: 22, precipitationProbability: 22, precipitationLabel: '偶有小雨' }
+    return { condition: '偏冷少雨', temperatureMin: 0, temperatureMax: 10, precipitationProbability: 20, precipitationLabel: '注意保暖' }
+  }
+
+  if ([6, 7, 8].includes(month)) {
+    if (highland) return { condition: '凉爽多变', temperatureMin: 10, temperatureMax: 24, precipitationProbability: 42, precipitationLabel: '午后阵雨' }
+    if (northwest) return { condition: '晴热干燥', temperatureMin: 18, temperatureMax: 33, precipitationProbability: 12, precipitationLabel: '防晒补水' }
+    if (northeast || coast) return { condition: '湿润有风', temperatureMin: 20, temperatureMax: 29, precipitationProbability: 38, precipitationLabel: '阵雨概率中等' }
+    if (south) return { condition: '闷热阵雨', temperatureMin: 24, temperatureMax: 33, precipitationProbability: 55, precipitationLabel: '雷阵雨季' }
+    return { condition: '高温阵雨', temperatureMin: 23, temperatureMax: 34, precipitationProbability: 45, precipitationLabel: '防暑防雨' }
+  }
+
+  if ([3, 4, 5].includes(month)) {
+    if (northeast) return { condition: '回暖有风', temperatureMin: 2, temperatureMax: 18, precipitationProbability: 25, precipitationLabel: '早晚偏冷' }
+    if (highland || northwest) return { condition: '干爽温差大', temperatureMin: 4, temperatureMax: 22, precipitationProbability: 18, precipitationLabel: '早晚加衣' }
+    if (south) return { condition: '温暖湿润', temperatureMin: 15, temperatureMax: 27, precipitationProbability: 42, precipitationLabel: '春雨偏多' }
+    return { condition: '舒适有风', temperatureMin: 9, temperatureMax: 24, precipitationProbability: 32, precipitationLabel: '薄外套合适' }
+  }
+
+  if (northeast) return { condition: '清爽干燥', temperatureMin: 5, temperatureMax: 20, precipitationProbability: 20, precipitationLabel: '早晚较冷' }
+  if (highland || northwest) return { condition: '晴朗温差大', temperatureMin: 6, temperatureMax: 24, precipitationProbability: 15, precipitationLabel: '防晒保暖' }
+  if (south) return { condition: '温热偶雨', temperatureMin: 18, temperatureMax: 29, precipitationProbability: 35, precipitationLabel: '带轻便雨具' }
+  return { condition: '秋高气爽', temperatureMin: 12, temperatureMax: 25, precipitationProbability: 24, precipitationLabel: '适合步行' }
 }
 
 function weatherCodeLabel(code) {
