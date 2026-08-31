@@ -11,7 +11,8 @@ export default async function handler(req, res) {
   }
 
   // 💡 修复：同时接收文件名和图片类型(ContentType)
-  const { filename, contentType } = req.query;
+  const { filename, contentType, folder: rawFolder } = req.query;
+  const folder = rawFolder === 'milestones' ? 'milestones' : 'photos';
   if (!filename) {
     return res.status(400).json({ error: 'Filename is required' });
   }
@@ -25,7 +26,7 @@ export default async function handler(req, res) {
 
     const safeFilename = filename.replace(/[^a-zA-Z0-9.\-_]/g, '');
     const uniqueFilename = `${Date.now()}_${safeFilename}`;
-    const objectKey = `photos/${uniqueFilename}`;
+    const objectKey = `${folder}/${uniqueFilename}`;
 
     // 💡 修复：将前端要上传的 Content-Type 加入到华为云的签名计算中！这步不加必报 403 失败
     const signParams = {

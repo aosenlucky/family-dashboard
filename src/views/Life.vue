@@ -139,9 +139,26 @@
                                 <i class="ph-fill text-[10px] text-rose-400 group-hover:text-rose-600" :class="milestone.icon || 'ph-star'"></i>
                             </div>
                             <div class="bg-white/60 p-4 rounded-2xl border border-white shadow-sm hover:shadow-md transition">
-                                <span class="text-[10px] font-semibold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full">{{ milestone.date }}</span>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="text-[10px] font-semibold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full">{{ milestone.date }}</span>
+                                    <span v-if="milestone.type" class="text-[10px] font-medium text-gray-500 bg-white/80 border border-gray-100 px-2 py-0.5 rounded-full">{{ milestone.type }}</span>
+                                </div>
                                 <h4 class="font-medium text-gray-800 mt-2">{{ milestone.title }}</h4>
-                                <p class="text-xs text-gray-500 mt-1 leading-relaxed">{{ milestone.desc }}</p>
+                                <p v-if="milestone.desc" class="text-xs text-gray-500 mt-1 leading-relaxed">{{ milestone.desc }}</p>
+                                <div v-if="getMilestonePhotos(milestone).length" class="grid grid-cols-2 gap-2 mt-3">
+                                    <button
+                                        v-for="(photo, photoIdx) in getMilestonePhotos(milestone).slice(0, 4)"
+                                        :key="photo.url || photoIdx"
+                                        type="button"
+                                        class="relative aspect-[4/3] rounded-xl overflow-hidden bg-gray-100 border border-white shadow-sm focus:outline-none focus:ring-2 focus:ring-rose-300"
+                                        @click="openMilestonePhoto(photo, milestone)"
+                                    >
+                                        <img :src="getThumbUrl(photo.url)" :data-orig="photo.url" class="w-full h-full object-contain" @error="useOriginalPhoto" />
+                                        <span v-if="photoIdx === 3 && getMilestonePhotos(milestone).length > 4" class="absolute inset-0 bg-black/45 text-white text-sm font-semibold flex items-center justify-center">
+                                            +{{ getMilestonePhotos(milestone).length - 4 }}
+                                        </span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -213,6 +230,29 @@
                 </div>
             </div>
         </transition>
+
+        <transition name="fade">
+            <div v-if="activeMilestonePhoto" class="fixed inset-0 z-[420] flex items-center justify-center p-4 sm:p-6">
+                <div class="absolute inset-0 bg-gray-900/45 backdrop-blur-sm" @click="activeMilestonePhoto = null"></div>
+                <div class="relative z-10 w-full max-w-3xl max-h-[90vh] bg-white/95 border border-white/70 rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+                    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-white/70 backdrop-blur-md">
+                        <div class="min-w-0">
+                            <p class="text-xs text-rose-500 font-semibold">{{ activeMilestonePhoto.milestone?.date }}</p>
+                            <h3 class="text-base font-semibold text-gray-900 truncate">{{ activeMilestonePhoto.milestone?.title }}</h3>
+                        </div>
+                        <button @click="activeMilestonePhoto = null" class="w-9 h-9 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition flex items-center justify-center shrink-0">
+                            <i class="ph ph-x"></i>
+                        </button>
+                    </div>
+                    <div class="flex-1 overflow-y-auto modal-scroll bg-gray-50 p-4">
+                        <div class="bg-white rounded-2xl border border-gray-100 p-2 shadow-inner">
+                            <img :src="activeMilestonePhoto.photo?.url" class="w-full max-h-[72vh] object-contain rounded-xl" />
+                        </div>
+                        <p v-if="activeMilestonePhoto.photo?.desc" class="text-sm text-gray-600 leading-relaxed mt-3 px-1">{{ activeMilestonePhoto.photo.desc }}</p>
+                    </div>
+                </div>
+            </div>
+        </transition>
     </div>
 </template>
 
@@ -228,9 +268,10 @@ const formatCurrencyInt = inject('formatCurrencyInt')
 
 const newTodoText = ref('')
 const activeBook = ref(null)
+const activeMilestonePhoto = ref(null)
 
 const sortedTodos = computed(() => [...familyData.value.todos].sort((a, b) => (a.completed === b.completed) ? 0 : a.completed ? 1 : -1))
-const sortedMilestones = computed(() => [...familyData.value.milestones].sort((a, b) => new Date(b.date) - new Date(a.date)))
+const sortedMilestones = computed(() => [...(familyData.value.milestones || [])].sort((a, b) => new Date(b.date) - new Date(a.date)))
 
 const processedDates = computed(() => {
     const today = new Date(); today.setHours(0,0,0,0); const currentYear = today.getFullYear();
@@ -282,6 +323,32 @@ const deleteTodo = (id) => { familyData.value.todos = familyData.value.todos.fil
 
 const openBookNote = (book) => {
     activeBook.value = book;
+}
+
+const getMilestonePhotos = (milestone) => {
+    if (!milestone) return []
+    const photos = Array.isArray(milestone.photos) ? milestone.photos : []
+    return photos
+        .map((photo) => typeof photo === 'string' ? { url: photo, desc: '' } : photo)
+        .filter((photo) => photo && photo.url)
+}
+
+const getThumbUrl = (url) => {
+    if (!url) return ''
+    return url.includes('myhuaweicloud.com') ? `${url}?x-image-process=image/resize,w_360/quality,q_75` : url
+}
+
+const useOriginalPhoto = (event) => {
+    const img = event.currentTarget
+    const originalUrl = img.dataset.orig
+    if (originalUrl && !img.dataset.triedOriginal && img.src !== originalUrl) {
+        img.dataset.triedOriginal = '1'
+        img.src = originalUrl
+    }
+}
+
+const openMilestonePhoto = (photo, milestone) => {
+    activeMilestonePhoto.value = { photo, milestone }
 }
 
 // 💡 强化版 Markdown 解析器：适配八大板块高级 Prompt

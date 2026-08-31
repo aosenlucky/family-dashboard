@@ -98,7 +98,7 @@ const defaultData = {
     goals: [ { name: '欧洲10周年纪念游', target: 100000, current: 0 } ],
     dates: [ { name: '小悦生日', date: '1996-09-01', type: 'birthday' } ],
     todos: [ { id: 1, text: '周末一起去买菜', completed: false } ],
-    milestones: [ { id: 1, date: '2026-06-01', title: '期待新生命的到来', desc: '建立档案的第一天。', icon: 'ph-baby' } ],
+    milestones: [ { id: 1, date: '2026-06-01', title: '期待新生命的到来', desc: '建立档案的第一天。', type: '成长记录', icon: 'ph-baby', photos: [] } ],
     habits: [ { id: 1, name: '每天阅读 30 分钟', growthValue: 5, lastWatered: '', stage1Days: 7, stage1Reward: '电影之夜', stage2Days: 21, stage2Reward: '新玩具', stage3Days: 100, stage3Reward: '迪士尼' } ],
     // 💡 新增：大模型秘钥与书籍数据库
     llmApiKey: '', books: []
@@ -177,6 +177,22 @@ provide('getOwnerTagClass', getOwnerTagClass)
 provide('fetchStocks', () => fetchStocks())
 provide('isFetchingStocks', isFetchingStocks)
 
+const normalizeMilestones = (milestones = []) => milestones.map((milestone, index) => {
+    const photos = Array.isArray(milestone.photos)
+        ? milestone.photos
+        : (milestone.photoUrl ? [{ url: milestone.photoUrl, desc: milestone.photoDesc || milestone.title || '' }] : [])
+
+    return {
+        ...milestone,
+        id: milestone.id || `milestone-${index}-${milestone.date || Date.now()}`,
+        type: milestone.type || '成长记录',
+        icon: milestone.icon || 'ph-baby',
+        photos: photos
+            .map((photo) => typeof photo === 'string' ? { url: photo, desc: '' } : photo)
+            .filter((photo) => photo && photo.url)
+    }
+})
+
 const applyData = (data) => {
     const fd = familyData.value;
     fd.salaryBank = data.salaryBank || defaultData.salaryBank; fd.salaryDay = data.salaryDay || defaultData.salaryDay;
@@ -189,7 +205,7 @@ const applyData = (data) => {
     fd.photos = data.photos && data.photos.length > 0 ? data.photos : defaultData.photos;
     fd.stocks = data.stocks && data.stocks.length > 0 ? data.stocks : defaultData.stocks;
     fd.todos = data.todos && data.todos.length > 0 ? data.todos : defaultData.todos;
-    fd.milestones = data.milestones && data.milestones.length > 0 ? data.milestones : defaultData.milestones;
+    fd.milestones = data.milestones && data.milestones.length > 0 ? normalizeMilestones(data.milestones) : defaultData.milestones;
     fd.habits = data.habits && data.habits.length > 0 ? data.habits : defaultData.habits;
     fd.assets = data.assets && data.assets.length > 0 ? data.assets.map(a => ({...a, owner: a.owner || '共同'})) : defaultData.assets; 
     fd.equity = data.equity && data.equity.members && data.equity.members.length > 0 ? data.equity : defaultData.equity; 

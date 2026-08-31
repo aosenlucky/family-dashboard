@@ -114,6 +114,95 @@
                         </div>
                     </div>
 
+                    <!-- 宝宝成长时光轴 -->
+                    <div class="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 transition-all duration-300">
+                        <div class="flex justify-between items-center gap-3 cursor-pointer select-none" @click="toggle('milestones')">
+                            <h4 class="text-sm font-semibold text-gray-800 flex items-center min-w-0">
+                                <i class="ph-fill ph-baby mr-2 text-rose-500"></i>
+                                <span class="truncate">宝宝成长时光轴</span>
+                                <i class="ph ml-2 text-gray-400 transition-transform" :class="activeSections.milestones ? 'ph-caret-up' : 'ph-caret-down'"></i>
+                            </h4>
+                            <button @click.stop="addMilestone" class="text-[10px] bg-rose-50 text-rose-600 border border-rose-100 px-2.5 py-1.5 rounded-lg hover:bg-rose-100 transition shrink-0">新增时光点</button>
+                        </div>
+
+                        <div v-show="activeSections.milestones" class="mt-4 space-y-4 max-h-[560px] overflow-y-auto modal-scroll pr-1 md:pr-2">
+                            <p class="text-xs text-gray-500 leading-relaxed bg-rose-50/60 border border-rose-100 rounded-xl p-3">
+                                这里维护生活页右侧的宝宝成长时光轴。可以记录产检、B超、胎心、胎动、出生后的第一次等，也支持上传检查照片并随时补充说明。
+                            </p>
+
+                            <div v-for="(milestone, idx) in familyData.milestones" :key="milestone.id || idx" class="bg-gradient-to-br from-rose-50/70 to-white border border-rose-100 rounded-2xl p-3 md:p-4 relative">
+                                <button @click="removeMilestone(idx)" class="absolute right-2 top-2 w-8 h-8 rounded-full text-gray-400 hover:text-red-500 hover:bg-white transition flex items-center justify-center" title="删除这个时光点">
+                                    <i class="ph ph-trash"></i>
+                                </button>
+
+                                <div class="grid grid-cols-1 md:grid-cols-4 gap-3 pr-8">
+                                    <label class="text-[10px] text-gray-500">
+                                        日期
+                                        <input v-model="milestone.date" type="date" class="mt-1 w-full border border-gray-200 rounded-lg px-2 py-2 text-xs bg-white focus:ring-1 focus:ring-rose-300 outline-none" />
+                                    </label>
+                                    <label class="md:col-span-2 text-[10px] text-gray-500">
+                                        标题
+                                        <input v-model="milestone.title" type="text" placeholder="例如：12周 NT 检查" class="mt-1 w-full border border-gray-200 rounded-lg px-2 py-2 text-xs bg-white focus:ring-1 focus:ring-rose-300 outline-none" />
+                                    </label>
+                                    <label class="text-[10px] text-gray-500">
+                                        图标
+                                        <select v-model="milestone.icon" class="mt-1 w-full border border-gray-200 rounded-lg px-2 py-2 text-xs bg-white focus:ring-1 focus:ring-rose-300 outline-none">
+                                            <option v-for="option in milestoneIconOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                                        </select>
+                                    </label>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-3 mt-3">
+                                    <label class="text-[10px] text-gray-500">
+                                        类型
+                                        <input v-model="milestone.type" list="milestone-types" type="text" placeholder="B超 / 产检 / 日常" class="mt-1 w-full border border-gray-200 rounded-lg px-2 py-2 text-xs bg-white focus:ring-1 focus:ring-rose-300 outline-none" />
+                                    </label>
+                                    <label class="text-[10px] text-gray-500">
+                                        记录
+                                        <textarea v-model="milestone.desc" rows="2" placeholder="写下这次检查结果、医生提醒，或当时的心情。" class="mt-1 w-full border border-gray-200 rounded-lg px-2 py-2 text-xs bg-white focus:ring-1 focus:ring-rose-300 outline-none resize-y"></textarea>
+                                    </label>
+                                </div>
+
+                                <div class="mt-4 bg-white/70 border border-white rounded-xl p-3">
+                                    <div class="flex items-center justify-between gap-3">
+                                        <div class="min-w-0">
+                                            <p class="text-xs font-semibold text-gray-700">检查照片</p>
+                                            <p class="text-[10px] text-gray-400 mt-0.5">支持上传 B超、化验单、产检报告等图片。</p>
+                                        </div>
+                                        <button @click="chooseMilestonePhoto(milestone.id || idx)" :disabled="milestoneUploadingId === (milestone.id || idx)" class="h-9 px-3 rounded-full bg-rose-500 text-white text-xs font-medium shadow-sm hover:bg-rose-600 disabled:bg-gray-300 transition flex items-center gap-1.5 shrink-0">
+                                            <i class="ph" :class="milestoneUploadingId === (milestone.id || idx) ? 'ph-spinner animate-spin' : 'ph-upload-simple'"></i>
+                                            {{ milestoneUploadingId === (milestone.id || idx) ? '上传中' : '上传' }}
+                                        </button>
+                                        <input type="file" class="hidden" accept="image/*" :ref="el => setMilestoneFileInput(milestone.id || idx, el)" @change="uploadMilestonePhoto($event, milestone, milestone.id || idx)" />
+                                    </div>
+
+                                    <div v-if="getMilestonePhotos(milestone).length" class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">
+                                        <div v-for="(photo, photoIdx) in getMilestonePhotos(milestone)" :key="photo.url || photoIdx" class="group relative bg-gray-50 rounded-xl border border-gray-100 overflow-hidden">
+                                            <div class="aspect-[4/3] bg-gray-100">
+                                                <img :src="getThumbUrl(photo.url)" :data-orig="photo.url" class="w-full h-full object-contain" @error="useOriginalPhoto" />
+                                            </div>
+                                            <input v-model="photo.desc" type="text" placeholder="照片说明" class="w-full border-t border-gray-100 px-2 py-1.5 text-[10px] text-gray-500 outline-none bg-white" />
+                                            <button @click="removeMilestonePhoto(milestone, photoIdx)" class="absolute right-1.5 top-1.5 w-6 h-6 rounded-full bg-black/45 text-white opacity-100 md:opacity-0 md:group-hover:opacity-100 transition flex items-center justify-center" title="删除照片">
+                                                <i class="ph ph-x text-xs"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div v-else class="mt-3 rounded-xl border border-dashed border-rose-100 bg-rose-50/40 py-5 text-center text-xs text-gray-400">
+                                        还没有照片，可以先上传一张 B超或检查图。
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <datalist id="milestone-types">
+                            <option value="B超检查"></option>
+                            <option value="产检记录"></option>
+                            <option value="胎心胎动"></option>
+                            <option value="出生以后"></option>
+                            <option value="生活瞬间"></option>
+                        </datalist>
+                    </div>
+
                     <!-- 🌟 终极版精神岛屿 (全自动读书笔记) -->
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 transition-all duration-300">
                         <div class="flex justify-between items-center cursor-pointer select-none" @click="toggle('reading')">
@@ -458,6 +547,7 @@ const formatPlainCurrency = (value) => new Intl.NumberFormat('zh-CN', {
 
 const activeSections = ref({
     photos: true,
+    milestones: true,
     habits: true,
     goals: true,
     stocks: true,
@@ -782,6 +872,38 @@ const uploadFile = ref(null)
 const uploadPreview = ref('')
 const isUploading = ref(false)
 const uploadMeta = ref({ desc: '', city: '', type: '日常记录' })
+const milestoneFileInputs = ref({})
+const milestoneUploadingId = ref('')
+
+const milestoneIconOptions = [
+    { label: '宝宝', value: 'ph-baby' },
+    { label: '爱心', value: 'ph-heart' },
+    { label: '星星', value: 'ph-star' },
+    { label: '检查', value: 'ph-stethoscope' },
+    { label: '照片', value: 'ph-image' },
+    { label: '礼物', value: 'ph-gift' }
+]
+
+const ensureMilestones = () => {
+    if (!Array.isArray(familyData.value.milestones)) familyData.value.milestones = []
+    familyData.value.milestones.forEach((milestone) => {
+        if (!milestone.id) milestone.id = Date.now() + Math.floor(Math.random() * 10000)
+        if (!milestone.icon) milestone.icon = 'ph-baby'
+        if (!milestone.type) milestone.type = '成长记录'
+        if (!Array.isArray(milestone.photos)) {
+            if (milestone.photoUrl) {
+                milestone.photos = [{ url: milestone.photoUrl, desc: milestone.photoDesc || milestone.title || '' }]
+            } else {
+                milestone.photos = []
+            }
+        }
+        milestone.photos = milestone.photos
+            .map((photo) => typeof photo === 'string' ? { url: photo, desc: '' } : photo)
+            .filter((photo) => photo && photo.url)
+    })
+}
+
+ensureMilestones()
 
 const newPhotoType = ref('')
 const addPhotoType = () => {
@@ -807,26 +929,37 @@ const cancelUpload = () => {
     uploadMeta.value = { desc: '', city: '', type: '日常记录' };
 }
 
+const uploadImageToObs = async (file, folder = 'photos') => {
+    const token = sessionStorage.getItem('family_auth_token');
+    const query = new URLSearchParams({
+        filename: file.name,
+        contentType: file.type || 'application/octet-stream',
+        folder
+    })
+
+    const authRes = await fetch(`/api/get-upload-url?${query.toString()}`, {
+        headers: { 'Authorization': token }
+    });
+
+    if (!authRes.ok) throw new Error('通行证获取失败，请检查云端 OBS 环境变量');
+    const { uploadUrl, finalUrl } = await authRes.json();
+
+    const uploadRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type || 'application/octet-stream' }
+    });
+
+    if (!uploadRes.ok) throw new Error('上传华为云失败，请检查 OBS CORS 跨域设置');
+
+    return finalUrl;
+}
+
 const submitDirectUpload = async () => {
     if (!uploadFile.value) return;
     isUploading.value = true;
-    const token = sessionStorage.getItem('family_auth_token');
-
     try {
-        const authRes = await fetch(`/api/get-upload-url?filename=${encodeURIComponent(uploadFile.value.name)}&contentType=${encodeURIComponent(uploadFile.value.type)}`, {
-            headers: { 'Authorization': token }
-        });
-        
-        if (!authRes.ok) throw new Error('通行证获取失败，请检查 Vercel 环境变量');
-        const { uploadUrl, finalUrl } = await authRes.json();
-
-        const uploadRes = await fetch(uploadUrl, {
-            method: 'PUT',
-            body: uploadFile.value,
-            headers: { 'Content-Type': uploadFile.value.type }
-        });
-
-        if (!uploadRes.ok) throw new Error('上传华为云失败，请检查 OBS CORS 跨域设置');
+        const finalUrl = await uploadImageToObs(uploadFile.value, 'photos');
 
         const finalType = uploadMeta.value.type || '日常记录';
         if (!familyData.value.photoTypes.includes(finalType)) {
@@ -848,6 +981,80 @@ const submitDirectUpload = async () => {
         alert("上传失败: " + e.message);
     } finally {
         isUploading.value = false;
+    }
+}
+
+const getMilestonePhotos = (milestone) => {
+    if (!milestone) return []
+    const photos = Array.isArray(milestone.photos) ? milestone.photos : []
+    return photos
+        .map((photo) => typeof photo === 'string' ? { url: photo, desc: '' } : photo)
+        .filter((photo) => photo && photo.url)
+}
+
+const ensureMilestonePhotoList = (milestone) => {
+    if (!Array.isArray(milestone.photos)) milestone.photos = []
+    milestone.photos = milestone.photos
+        .map((photo) => typeof photo === 'string' ? { url: photo, desc: '' } : photo)
+        .filter((photo) => photo && photo.url)
+    return milestone.photos
+}
+
+const addMilestone = () => {
+    ensureMilestones()
+    familyData.value.milestones.unshift({
+        id: Date.now(),
+        date: new Date().toISOString().slice(0, 10),
+        title: '新的成长记录',
+        desc: '',
+        type: '产检记录',
+        icon: 'ph-baby',
+        photos: []
+    })
+}
+
+const removeMilestone = (idx) => {
+    if (!window.confirm('确定删除这个宝宝成长记录吗？相关照片记录也会从时间轴中移除。')) return
+    familyData.value.milestones.splice(idx, 1)
+}
+
+const setMilestoneFileInput = (id, el) => {
+    if (el) milestoneFileInputs.value[id] = el
+}
+
+const chooseMilestonePhoto = (id) => {
+    milestoneFileInputs.value[id]?.click()
+}
+
+const uploadMilestonePhoto = async (event, milestone, id) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file || !milestone) return
+
+    milestoneUploadingId.value = id
+    try {
+        const finalUrl = await uploadImageToObs(file, 'milestones')
+        const photos = ensureMilestonePhotoList(milestone)
+        photos.unshift({
+            url: finalUrl,
+            desc: file.name.replace(/\.[^.]+$/, ''),
+            uploadedAt: new Date().toISOString()
+        })
+        milestone.coverUrl = milestone.coverUrl || finalUrl
+        showNotification?.('检查照片已加入宝宝时光轴')
+        await saveConfig()
+    } catch (e) {
+        alert("上传失败: " + e.message);
+    } finally {
+        milestoneUploadingId.value = ''
+    }
+}
+
+const removeMilestonePhoto = (milestone, photoIdx) => {
+    const photos = ensureMilestonePhotoList(milestone)
+    const [removed] = photos.splice(photoIdx, 1)
+    if (removed?.url && milestone.coverUrl === removed.url) {
+        milestone.coverUrl = photos[0]?.url || ''
     }
 }
 
