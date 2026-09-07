@@ -130,10 +130,37 @@
                 
                 <!-- 宝宝时光轴 -->
                 <div class="glass-card rounded-3xl p-6">
-                    <h3 class="text-lg font-semibold mb-6 flex items-center text-gray-800">
-                        <i class="ph-fill ph-baby mr-2 text-rose-400"></i> 宝宝成长时光轴
-                    </h3>
-                    <div class="relative border-l-2 border-rose-100 ml-4 space-y-8 pb-4">
+                    <button
+                        type="button"
+                        class="w-full flex items-center justify-between gap-4 text-left mb-5 group"
+                        :aria-expanded="!isMilestonesCollapsed"
+                        aria-controls="baby-milestones-list"
+                        @click="isMilestonesCollapsed = !isMilestonesCollapsed"
+                    >
+                        <span class="min-w-0">
+                            <span class="text-lg font-semibold flex items-center text-gray-800">
+                                <i class="ph-fill ph-baby mr-2 text-rose-400"></i> 宝宝成长时光轴
+                                <span class="ml-2 text-[10px] bg-rose-50 text-rose-500 border border-rose-100 px-2 py-0.5 rounded-full font-normal">{{ sortedMilestones.length }} 条</span>
+                            </span>
+                            <span class="block text-[11px] text-gray-400 mt-1">记录检查、B超和那些一点点长大的瞬间</span>
+                        </span>
+                        <span class="w-9 h-9 rounded-full bg-white/70 border border-white shadow-sm flex items-center justify-center text-gray-400 group-hover:text-rose-500 transition shrink-0">
+                            <i class="ph transition-transform duration-200" :class="isMilestonesCollapsed ? 'ph-caret-down' : 'ph-caret-up'"></i>
+                        </span>
+                    </button>
+
+                    <div v-if="isMilestonesCollapsed && latestMilestone" class="bg-white/55 border border-white rounded-2xl px-4 py-3 flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-full bg-rose-50 text-rose-400 flex items-center justify-center shrink-0">
+                            <i class="ph-fill" :class="latestMilestone.icon || 'ph-baby'"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <p class="text-[10px] font-semibold text-rose-500">{{ latestMilestone.date }} · {{ latestMilestone.type || '成长记录' }}</p>
+                            <h4 class="text-sm font-medium text-gray-800 truncate mt-0.5">{{ latestMilestone.title }}</h4>
+                            <p v-if="latestMilestone.desc" class="text-xs text-gray-500 line-clamp-2 mt-1 leading-relaxed">{{ latestMilestone.desc }}</p>
+                        </div>
+                    </div>
+
+                    <div id="baby-milestones-list" v-show="!isMilestonesCollapsed" class="relative border-l-2 border-rose-100 ml-4 space-y-8 pb-4">
                         <div v-for="(milestone, idx) in sortedMilestones" :key="milestone.id" class="relative pl-6 group">
                             <div class="absolute -left-[13px] top-0.5 w-6 h-6 bg-white border-[3px] border-rose-300 rounded-full flex justify-center items-center group-hover:border-rose-500 transition-colors shadow-sm">
                                 <i class="ph-fill text-[10px] text-rose-400 group-hover:text-rose-600" :class="milestone.icon || 'ph-star'"></i>
@@ -269,9 +296,11 @@ const formatCurrencyInt = inject('formatCurrencyInt')
 const newTodoText = ref('')
 const activeBook = ref(null)
 const activeMilestonePhoto = ref(null)
+const isMilestonesCollapsed = ref(false)
 
 const sortedTodos = computed(() => [...familyData.value.todos].sort((a, b) => (a.completed === b.completed) ? 0 : a.completed ? 1 : -1))
 const sortedMilestones = computed(() => [...(familyData.value.milestones || [])].sort((a, b) => new Date(b.date) - new Date(a.date)))
+const latestMilestone = computed(() => sortedMilestones.value[0] || null)
 
 const processedDates = computed(() => {
     const today = new Date(); today.setHours(0,0,0,0); const currentYear = today.getFullYear();

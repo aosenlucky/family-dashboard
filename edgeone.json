@@ -8,6 +8,18 @@
       "maxDuration": 120
     }
   },
+  "schedules": [
+    {
+      "name": "supabase-daily-keepalive",
+      "cron": "15 3 * * *",
+      "path": "/api/supabase-keepalive",
+      "method": "POST",
+      "payload": {
+        "source": "edgeone-schedule"
+      },
+      "timezone": "Asia/Shanghai"
+    }
+  ],
   "redirects": [
     { "source": "/life", "destination": "/#/life", "statusCode": 302 },
     { "source": "/travel", "destination": "/#/travel", "statusCode": 302 },

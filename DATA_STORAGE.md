@@ -144,3 +144,23 @@ where key = 'main'
 - 从 JSON 备份恢复到当前数据源。
 
 当前如果配置了 Supabase，恢复会写入 Supabase。
+
+## 免费项目自动保活
+
+项目内置了一个只在服务端运行的 Supabase 保活任务：
+
+- 接口：`/api/supabase-keepalive`
+- 频率：每天北京时间 03:15
+- 行为：分别对三张业务表执行一次 `select ... limit 1`，共 3 次极轻量只读数据库请求
+- 安全性：服务端密钥只从部署环境变量读取；接口不返回任何业务记录，也不会写入或修改数据
+- 可观测性：每次执行会记录成功状态、执行时间和耗时；失败时接口返回非 2xx 状态，便于在平台日志中定位
+
+EdgeOne 的调度写在 `edgeone.json` 的 `schedules` 中；Vercel 的兼容调度写在 `vercel.json` 的 `crons` 中。部署任一平台后，平台会自动注册任务，无需依赖访客打开网页。
+
+部署后可以手动访问一次以下地址验证，成功时会返回 `success: true` 和 `databaseRequests: 3`：
+
+```text
+https://你的域名/api/supabase-keepalive
+```
+
+如果项目已经被 Supabase 暂停，需先在 Supabase Dashboard 中恢复项目，再重新部署或手动验证此接口。保活任务用于持续产生数据库活动，但第三方平台故障、部署被停用、密钥失效或 Supabase 政策变化仍可能导致任务失败，应偶尔检查平台的函数日志。

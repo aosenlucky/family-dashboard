@@ -19,6 +19,8 @@ Node Version: 22.11.0
 
 这些配置也已经写入 `edgeone.json`。EdgeOne 构建时会使用 hash 路由，避免刷新 `/travel`、`/gallery` 等前端路由时 404。
 
+`edgeone.json` 还会注册 `supabase-daily-keepalive` 定时任务。它每天北京时间 03:15 调用 `/api/supabase-keepalive`，完成 3 次轻量只读查询，因此即使长期无人访问网站，也能持续产生 Supabase 数据库活动。
+
 ## 必填环境变量
 
 在 EdgeOne Pages 的环境变量中配置：
@@ -108,3 +110,24 @@ EdgeOne 版本使用 hash 路由：
 ```
 
 `edgeone.json` 里已经配置了 `/travel`、`/gallery` 等旧路径跳转到对应 hash 路径。
+
+## 验证 Supabase 保活
+
+完成生产部署后，访问：
+
+```text
+https://你的域名/api/supabase-keepalive
+```
+
+正常响应示例：
+
+```json
+{
+  "success": true,
+  "checkedAt": "2026-09-07T19:15:00.000Z",
+  "durationMs": 120,
+  "databaseRequests": 3
+}
+```
+
+随后可在 EdgeOne Makers 控制台的函数日志中搜索 `[supabase-keepalive]`。定时调用失败会返回 HTTP 500，并在日志中写入 Supabase 的错误详情。

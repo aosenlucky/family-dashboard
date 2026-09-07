@@ -8,6 +8,12 @@
       "maxDuration": 300
     }
   },
+  "crons": [
+    {
+      "path": "/api/supabase-keepalive",
+      "schedule": "15 19 * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/(.*)",

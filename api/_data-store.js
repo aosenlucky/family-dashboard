@@ -17,6 +17,21 @@ export function hasSupabaseConfig() {
   return Boolean(process.env.SUPABASE_URL && getSupabaseKey())
 }
 
+export async function pingSupabase() {
+  const config = getSupabaseConfig()
+  const checks = [
+    [config.mainTable, 'key'],
+    [config.travelIndexTable, 'id'],
+    [config.travelDetailsTable, 'id']
+  ]
+
+  await Promise.all(
+    checks.map(([table, column]) => supabaseJson(config, `${table}?select=${column}&limit=1`))
+  )
+
+  return { databaseRequests: checks.length }
+}
+
 export async function readMainRecord() {
   const record = hasSupabaseConfig() ? await readSupabaseMainRecord() : await readJsonBinRecord(getJsonBinMainId())
   return sanitizeMainRecord(record)
