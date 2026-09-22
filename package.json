@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/supabase-build-keepalive.js",
     "build:edgeone": "vite build --mode edgeone",
     "preview": "vite preview",
     "test": "node --test"
