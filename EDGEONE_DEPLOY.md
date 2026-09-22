@@ -133,4 +133,4 @@ https://你的域名/api/supabase-keepalive
 
 随后可在 EdgeOne Makers 控制台的函数日志中搜索 `[supabase-keepalive]`。定时调用失败会返回 HTTP 500，并在日志中写入 Supabase 的错误详情。
 
-仓库中的 GitHub Actions 工作流还会每 3 天调用一次 Vercel 生产接口作为冗余，并在失败时保留可见的失败记录。工作流会自动读取最新的生产部署地址，不依赖固定的 `vercel.app` 域名。Supabase 项目恢复后，可先在 Actions 页面手动运行一次 `Supabase keepalive fallback` 验证整条链路。
+仓库中的 GitHub Actions 工作流还会每 3 天调用一次 Vercel 生产接口作为冗余，并在失败时保留可见的失败记录。工作流会根据最新部署自动解析生产域名，并严格校验心跳接口返回的写入成功字段，不会把 404 或跳转页误判为成功。Supabase 项目恢复后，可先在 Actions 页面手动运行一次 `Supabase keepalive fallback` 验证整条链路。

@@ -157,7 +157,7 @@ where key = 'main'
 
 EdgeOne 的调度写在 `edgeone.json` 的 `schedules` 中；Vercel 的兼容调度写在 `vercel.json` 的 `crons` 中。部署任一平台后，平台会自动注册任务，无需依赖访客打开网页。
 
-仓库还包含 `.github/workflows/supabase-keepalive.yml`，每 3 天从 GitHub Actions 独立调用一次生产接口，作为 Vercel/EdgeOne 调度失败时的冗余。工作流会从 GitHub Deployments API 自动读取当前生产部署地址，不依赖可能失效的硬编码 Vercel 域名。该工作流也支持在 GitHub Actions 页面手动运行，失败会显示为红色运行记录，便于及时发现环境变量失效、函数异常或 Supabase 被暂停。
+仓库还包含 `.github/workflows/supabase-keepalive.yml`，每 3 天从 GitHub Actions 独立调用一次生产接口，作为 Vercel/EdgeOne 调度失败时的冗余。工作流会从 GitHub Deployments API 自动解析当前 Vercel 团队生产域名，不依赖可能失效的硬编码域名；并且只有接口 JSON 明确返回 `success: true` 和 `databaseWrites: 1` 才算成功，404、重定向页和登录页都不会被误判。该工作流也支持在 GitHub Actions 页面手动运行，失败会显示为红色运行记录，便于及时发现环境变量失效、函数异常或 Supabase 被暂停。
 
 部署后可以手动访问一次以下地址验证，成功时会返回 `success: true`、`databaseRequests: 4` 和 `databaseWrites: 1`：
 

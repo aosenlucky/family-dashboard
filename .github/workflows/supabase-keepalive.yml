@@ -48,21 +48,36 @@ jobs:
               --header "X-GitHub-Api-Version: 2022-11-28" \
               "$status_url"
           )"
-          production_url="$(jq -r 'map(select(.state == "success"))[0].environment_url // empty' <<< "$statuses")"
-          test -n "$production_url"
-          echo "keepalive_url=${production_url%/}/api/supabase-keepalive" >> "$GITHUB_OUTPUT"
+          deployment_url="$(jq -r 'map(select(.state == "success"))[0].environment_url // empty' <<< "$statuses")"
+          test -n "$deployment_url"
+
+          # Vercel's immutable deployment URL can be protected by a login redirect.
+          # Derive the stable team production alias from its documented URL shape:
+          # <project>-<deployment-id>-<team>.vercel.app.
+          deployment_host="${deployment_url#*://}"
+          repository_name="${GITHUB_REPOSITORY#*/}"
+          deployment_suffix="${deployment_host#"$repository_name"-}"
+          team_domain="${deployment_suffix#*-}"
+          test "$team_domain" != "$deployment_suffix"
+          echo "keepalive_url=https://${repository_name}-${team_domain}/api/supabase-keepalive" >> "$GITHUB_OUTPUT"
 
       - name: Trigger production keepalive endpoint
         env:
           KEEPALIVE_URL: ${{ steps.production.outputs.keepalive_url }}
         run: |
-          curl \
-            --fail-with-body \
-            --show-error \
-            --silent \
-            --retry 4 \
-            --retry-delay 10 \
-            --retry-all-errors \
-            --connect-timeout 20 \
-            --max-time 90 \
-            "$KEEPALIVE_URL"
+          response="$(
+            curl \
+              --fail-with-body \
+              --show-error \
+              --silent \
+              --location \
+              --retry 4 \
+              --retry-delay 10 \
+              --retry-all-errors \
+              --connect-timeout 20 \
+              --max-time 90 \
+              --header "Accept: application/json" \
+              "$KEEPALIVE_URL"
+          )"
+          jq . <<< "$response"
+          jq -e '.success == true and .databaseRequests == 4 and .databaseWrites == 1' <<< "$response" > /dev/null
