@@ -3,6 +3,7 @@ export const TRAVEL_DETAILS_FIELD = 'travelPlanDetails'
 export const LEGACY_TRAVEL_FIELD = 'travelHistory'
 
 const MAIN_KEY = 'main'
+const KEEPALIVE_KEY = '__system_keepalive__'
 const MAIN_TABLE = process.env.SUPABASE_MAIN_TABLE || process.env.SUPABASE_TABLE || 'family_records'
 const TRAVEL_INDEX_TABLE = process.env.SUPABASE_TRAVEL_INDEX_TABLE || 'travel_history_index'
 const TRAVEL_DETAILS_TABLE = process.env.SUPABASE_TRAVEL_DETAILS_TABLE || 'travel_plan_details'
@@ -19,17 +20,27 @@ export function hasSupabaseConfig() {
 
 export async function pingSupabase() {
   const config = getSupabaseConfig()
+  const checkedAt = new Date().toISOString()
   const checks = [
     [config.mainTable, 'key'],
     [config.travelIndexTable, 'id'],
     [config.travelDetailsTable, 'id']
   ]
 
-  await Promise.all(
-    checks.map(([table, column]) => supabaseJson(config, `${table}?select=${column}&limit=1`))
-  )
+  await Promise.all([
+    ...checks.map(([table, column]) => supabaseJson(config, `${table}?select=${column}&limit=1`)),
+    supabaseJson(config, `${config.mainTable}?on_conflict=key`, {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        key: KEEPALIVE_KEY,
+        value: { lastSeenAt: checkedAt },
+        updated_at: checkedAt
+      })
+    })
+  ])
 
-  return { databaseRequests: checks.length }
+  return { databaseRequests: checks.length + 1, databaseWrites: 1 }
 }
 
 export async function readMainRecord() {

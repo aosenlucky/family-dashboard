@@ -15,10 +15,11 @@ delete process.env.SUPABASE_SERVICE_ROLE_KEY
 const { default: handler } = await import('./supabase-keepalive.js')
 
 test('Supabase keepalive endpoint', async (t) => {
-  await t.test('runs three minimal read-only queries without exposing row data', async () => {
+  await t.test('runs three reads and an isolated heartbeat write without exposing row data', async () => {
     const requests = []
     globalThis.fetch = async (url, options) => {
       requests.push({ url: String(url), options })
+      if (options.method === 'POST') return new Response(null, { status: 204 })
       return new Response('[{"id":"must-not-be-returned"}]', {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
@@ -30,11 +31,12 @@ test('Supabase keepalive endpoint', async (t) => {
     assert.equal(response.statusCode, 200)
     assert.equal(response.headers['cache-control'], 'no-store, max-age=0')
     assert.equal(response.payload.success, true)
-    assert.equal(response.payload.databaseRequests, 3)
+    assert.equal(response.payload.databaseRequests, 4)
+    assert.equal(response.payload.databaseWrites, 1)
     assert.equal(JSON.stringify(response.payload).includes('must-not-be-returned'), false)
-    assert.equal(requests.length, 3)
+    assert.equal(requests.length, 4)
     assert.deepEqual(
-      requests.map(({ url }) => new URL(url).pathname + new URL(url).search).sort(),
+      requests.filter(({ options }) => options.method !== 'POST').map(({ url }) => new URL(url).pathname + new URL(url).search).sort(),
       [
         '/rest/v1/family_records?select=key&limit=1',
         '/rest/v1/travel_history_index?select=id&limit=1',
@@ -42,10 +44,16 @@ test('Supabase keepalive endpoint', async (t) => {
       ].sort()
     )
     for (const request of requests) {
-      assert.equal(request.options.method, undefined)
       assert.equal(request.options.headers.apikey, 'test-secret-key')
       assert.equal(request.options.headers.Authorization, 'Bearer test-secret-key')
     }
+
+    const writeRequest = requests.find(({ options }) => options.method === 'POST')
+    assert.equal(new URL(writeRequest.url).pathname + new URL(writeRequest.url).search, '/rest/v1/family_records?on_conflict=key')
+    assert.equal(writeRequest.options.headers.Prefer, 'resolution=merge-duplicates,return=minimal')
+    const body = JSON.parse(writeRequest.options.body)
+    assert.equal(body.key, '__system_keepalive__')
+    assert.deepEqual(body.value, { lastSeenAt: body.updated_at })
   })
 
   await t.test('rejects unsupported methods before accessing Supabase', async () => {

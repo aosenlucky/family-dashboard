@@ -1,0 +1,35 @@
+name: Supabase keepalive fallback
+
+on:
+  schedule:
+    # 03:37 Asia/Shanghai every three days. The non-round minute reduces
+    # GitHub Actions schedule congestion.
+    - cron: '37 19 */3 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-keepalive
+  cancel-in-progress: false
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger production keepalive endpoint
+        env:
+          KEEPALIVE_URL: https://family-dashboard-nine-nu.vercel.app/api/supabase-keepalive
+        run: |
+          curl \
+            --fail-with-body \
+            --show-error \
+            --silent \
+            --retry 4 \
+            --retry-delay 10 \
+            --retry-all-errors \
+            --connect-timeout 20 \
+            --max-time 90 \
+            "$KEEPALIVE_URL"

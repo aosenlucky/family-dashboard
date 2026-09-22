@@ -151,13 +151,15 @@ where key = 'main'
 
 - 接口：`/api/supabase-keepalive`
 - 频率：每天北京时间 03:15
-- 行为：分别对三张业务表执行一次 `select ... limit 1`，共 3 次极轻量只读数据库请求
-- 安全性：服务端密钥只从部署环境变量读取；接口不返回任何业务记录，也不会写入或修改数据
+- 行为：分别对三张业务表执行一次 `select ... limit 1`，并在 `family_records` 中更新一条键为 `__system_keepalive__` 的隔离心跳记录；不会修改 `main` 业务记录
+- 安全性：服务端密钥只从部署环境变量读取；接口不返回任何业务记录，只会覆写专用的 `__system_keepalive__` 心跳行
 - 可观测性：每次执行会记录成功状态、执行时间和耗时；失败时接口返回非 2xx 状态，便于在平台日志中定位
 
 EdgeOne 的调度写在 `edgeone.json` 的 `schedules` 中；Vercel 的兼容调度写在 `vercel.json` 的 `crons` 中。部署任一平台后，平台会自动注册任务，无需依赖访客打开网页。
 
-部署后可以手动访问一次以下地址验证，成功时会返回 `success: true` 和 `databaseRequests: 3`：
+仓库还包含 `.github/workflows/supabase-keepalive.yml`，每 3 天从 GitHub Actions 独立调用一次生产接口，作为 Vercel/EdgeOne 调度失败时的冗余。该工作流也支持在 GitHub Actions 页面手动运行，失败会显示为红色运行记录，便于及时发现环境变量失效、函数异常或 Supabase 被暂停。
+
+部署后可以手动访问一次以下地址验证，成功时会返回 `success: true`、`databaseRequests: 4` 和 `databaseWrites: 1`：
 
 ```text
 https://你的域名/api/supabase-keepalive

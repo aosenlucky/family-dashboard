@@ -19,7 +19,7 @@ Node Version: 22.11.0
 
 这些配置也已经写入 `edgeone.json`。EdgeOne 构建时会使用 hash 路由，避免刷新 `/travel`、`/gallery` 等前端路由时 404。
 
-`edgeone.json` 还会注册 `supabase-daily-keepalive` 定时任务。它每天北京时间 03:15 调用 `/api/supabase-keepalive`，完成 3 次轻量只读查询，因此即使长期无人访问网站，也能持续产生 Supabase 数据库活动。
+`edgeone.json` 还会注册 `supabase-daily-keepalive` 定时任务。它每天北京时间 03:15 调用 `/api/supabase-keepalive`，完成 3 次轻量只读查询并更新一条隔离的系统心跳记录，因此即使长期无人访问网站，也能持续产生 Supabase 数据库活动。
 
 ## 必填环境变量
 
@@ -126,8 +126,11 @@ https://你的域名/api/supabase-keepalive
   "success": true,
   "checkedAt": "2026-09-07T19:15:00.000Z",
   "durationMs": 120,
-  "databaseRequests": 3
+  "databaseRequests": 4,
+  "databaseWrites": 1
 }
 ```
 
 随后可在 EdgeOne Makers 控制台的函数日志中搜索 `[supabase-keepalive]`。定时调用失败会返回 HTTP 500，并在日志中写入 Supabase 的错误详情。
+
+仓库中的 GitHub Actions 工作流还会每 3 天调用一次 Vercel 生产接口作为冗余，并在失败时保留可见的失败记录。Supabase 项目恢复后，可先在 Actions 页面手动运行一次 `Supabase keepalive fallback` 验证整条链路。
