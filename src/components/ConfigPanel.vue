@@ -937,18 +937,32 @@ const uploadImageToObs = async (file, folder = 'photos') => {
         folder
     })
 
-    const authRes = await fetch(`/api/get-upload-url?${query.toString()}`, {
-        headers: { 'Authorization': token }
-    });
+    let authRes
+    try {
+        authRes = await fetch(`/api/get-upload-url?${query.toString()}`, {
+            headers: { 'Authorization': token }
+        });
+    } catch {
+        throw new Error('无法获取上传凭证，请检查网络后重试')
+    }
 
-    if (!authRes.ok) throw new Error('通行证获取失败，请检查云端 OBS 环境变量');
-    const { uploadUrl, finalUrl } = await authRes.json();
+    const authPayload = await authRes.json().catch(() => ({}))
+    if (!authRes.ok) {
+        throw new Error(authPayload.error || '通行证获取失败，请检查云端 OBS 环境变量')
+    }
+    const { uploadUrl, finalUrl } = authPayload
+    if (!uploadUrl || !finalUrl) throw new Error('上传凭证格式无效，请稍后重试')
 
-    const uploadRes = await fetch(uploadUrl, {
-        method: 'PUT',
-        body: file,
-        headers: { 'Content-Type': file.type || 'application/octet-stream' }
-    });
+    let uploadRes
+    try {
+        uploadRes = await fetch(uploadUrl, {
+            method: 'PUT',
+            body: file,
+            headers: { 'Content-Type': file.type || 'application/octet-stream' }
+        });
+    } catch {
+        throw new Error('照片传输被浏览器或 OBS 拒绝，请重试')
+    }
 
     if (!uploadRes.ok) throw new Error('上传华为云失败，请检查 OBS CORS 跨域设置');
 
@@ -1027,8 +1041,8 @@ const chooseMilestonePhoto = (id) => {
 }
 
 const uploadMilestonePhoto = async (event, milestone, id) => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
+    const input = event.target
+    const file = input.files?.[0]
     if (!file || !milestone) return
 
     milestoneUploadingId.value = id
@@ -1046,6 +1060,8 @@ const uploadMilestonePhoto = async (event, milestone, id) => {
     } catch (e) {
         alert("上传失败: " + e.message);
     } finally {
+        // 等上传读取完 File 后再清空；Safari 可能在提前清空时中断文件读取。
+        input.value = ''
         milestoneUploadingId.value = ''
     }
 }
