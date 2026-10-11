@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import handler, { buildObjectKey, resolveUploadFolder } from './get-upload-url.js'
+import handler, { buildObjectKey, resolveUploadFolder } from '../api/get-upload-url.js'
 
 test('宝宝时光照片沿用现有 photos 前缀', () => {
   assert.equal(resolveUploadFolder('milestones'), 'photos/milestones')

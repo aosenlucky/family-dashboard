@@ -12,7 +12,7 @@ process.env.SUPABASE_URL = 'https://example.supabase.co'
 process.env.SUPABASE_SECRET_KEY = 'test-secret-key'
 delete process.env.SUPABASE_SERVICE_ROLE_KEY
 
-const { default: handler } = await import('./supabase-keepalive.js')
+const { default: handler } = await import('../api/supabase-keepalive.js')
 
 test('Supabase keepalive endpoint', async (t) => {
   await t.test('runs three reads and an isolated heartbeat write without exposing row data', async () => {
