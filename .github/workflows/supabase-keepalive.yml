@@ -8,8 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  statuses: read
+  contents: read
 
 concurrency:
   group: supabase-keepalive
@@ -18,54 +17,17 @@ concurrency:
 jobs:
   keepalive:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
-      - name: Check out the production branch
+      - name: Check out keepalive code
         uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
 
-      - name: Trigger a production build heartbeat
-        id: trigger
-        run: |
-          git pull --rebase origin main
-          date --utc --iso-8601=seconds > .supabase-keepalive-trigger
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .supabase-keepalive-trigger
-          git commit -m "chore: trigger scheduled Supabase keepalive"
-          git push origin HEAD:main
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Verify the Vercel deployment
+      - name: Write the Supabase heartbeat
         env:
-          COMMIT_SHA: ${{ steps.trigger.outputs.sha }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          for attempt in {1..48}; do
-            commit_status="$(
-              curl \
-                --fail-with-body \
-                --show-error \
-                --silent \
-                --header "Accept: application/vnd.github+json" \
-                --header "Authorization: Bearer $GH_TOKEN" \
-                --header "X-GitHub-Api-Version: 2022-11-28" \
-                "https://api.github.com/repos/$GITHUB_REPOSITORY/commits/$COMMIT_SHA/status"
-            )"
-            vercel_state="$(jq -r '[.statuses[] | select(.context == "Vercel")][0].state // "pending"' <<< "$commit_status")"
-            case "$vercel_state" in
-              success)
-                jq -r '[.statuses[] | select(.context == "Vercel")][0] | "Vercel deployment succeeded: \(.target_url)"' <<< "$commit_status"
-                exit 0
-                ;;
-              failure|error)
-                jq -r '[.statuses[] | select(.context == "Vercel")][0] | "Vercel deployment failed: \(.description) \(.target_url)"' <<< "$commit_status"
-                exit 1
-                ;;
-            esac
-            sleep 10
-          done
-          echo "Timed out waiting for Vercel deployment status."
-          exit 1
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_MAIN_TABLE: ${{ vars.SUPABASE_MAIN_TABLE }}
+          SUPABASE_TRAVEL_INDEX_TABLE: ${{ vars.SUPABASE_TRAVEL_INDEX_TABLE }}
+          SUPABASE_TRAVEL_DETAILS_TABLE: ${{ vars.SUPABASE_TRAVEL_DETAILS_TABLE }}
+        run: node scripts/supabase-scheduled-keepalive.js

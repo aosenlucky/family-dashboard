@@ -157,9 +157,16 @@ where key = 'main'
 
 EdgeOne 的调度写在 `edgeone.json` 的 `schedules` 中；Vercel 的兼容调度写在 `vercel.json` 的 `crons` 中。部署任一平台后，平台会自动注册任务，无需依赖访客打开网页。
 
-仓库还包含 `.github/workflows/supabase-keepalive.yml`，每 3 天更新时间戳文件 `.supabase-keepalive-trigger` 并触发一次 Vercel 生产构建，作为 Vercel Cron 失败时的冗余。生产构建会运行 `scripts/supabase-build-keepalive.js`，使用 Vercel 中已有的 Supabase 服务端环境变量更新隔离心跳行，因此不需要关闭 Vercel 部署保护，也不需要把数据库密钥复制到 GitHub。写入失败会让部署和 Actions 运行明确失败，不再出现跳转页或 401 被误判为成功的情况。
+仓库还包含 `.github/workflows/supabase-keepalive.yml`，每 3 天由 GitHub Actions 直接写入一次 Supabase 心跳，作为 Vercel Cron 失败时的独立冗余。它不经过受部署保护限制的 Vercel 域名，也不会触发额外网站部署。
 
-备用任务会每 3 天在 `main` 分支产生一条仅更新时间戳文件的自动提交，以确保 Vercel 必定执行构建而不是复用旧部署。该工作流也支持在 GitHub Actions 页面手动运行。
+在 GitHub 仓库的 `Settings → Secrets and variables → Actions` 中配置以下 Repository secrets：
+
+```text
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+```
+
+如果使用 Supabase 新版 Secret key，则将第二项改为 `SUPABASE_SECRET_KEY`。三个自定义表名可以作为 Repository variables 配置；不配置时使用项目默认表名。该工作流也支持在 GitHub Actions 页面手动运行，并且只有 3 次读取和 1 次隔离心跳写入全部成功才会显示绿色。
 
 部署后可以手动访问一次以下地址验证，成功时会返回 `success: true`、`databaseRequests: 4` 和 `databaseWrites: 1`：
 

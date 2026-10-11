@@ -133,4 +133,4 @@ https://你的域名/api/supabase-keepalive
 
 随后可在 EdgeOne Makers 控制台的函数日志中搜索 `[supabase-keepalive]`。定时调用失败会返回 HTTP 500，并在日志中写入 Supabase 的错误详情。
 
-仓库中的 GitHub Actions 工作流还会每 3 天更新时间戳文件并触发一次 Vercel 生产构建作为冗余。构建阶段会使用 Vercel 已有的 Supabase 服务端环境变量写入隔离心跳行，因此兼容 Vercel 部署保护，也无需在 GitHub 重复保存数据库密钥。写入失败会同时显示为部署和 Actions 失败。Supabase 项目恢复后，可在 Actions 页面手动运行一次 `Supabase keepalive fallback` 验证整条链路。
+仓库中的 GitHub Actions 工作流还会每 3 天直接写入一次 Supabase 心跳作为冗余。它不经过 Vercel 域名，因此不会受到部署保护影响；需要在 GitHub Actions Repository secrets 中配置 `SUPABASE_URL`，以及 `SUPABASE_SERVICE_ROLE_KEY` 或 `SUPABASE_SECRET_KEY`。Supabase 项目恢复后，可在 Actions 页面手动运行一次 `Supabase keepalive fallback` 验证整条链路。
