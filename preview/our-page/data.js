@@ -3,7 +3,6 @@ import lake from "./assets/lake.jpg";
 
 export const PEOPLE = { aosen: "Aosen", xiaoyue: "小悦" };
 export const STORAGE_KEY = "family-our-page-preview-v1";
-export const images = { tea, lake };
 export const makeId = () => globalThis.crypto.randomUUID();
 export function today() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -36,7 +35,6 @@ export function createSeed() {
       {
         id: "tea",
         author: "aosen",
-        participant: "together",
         date: "2026-10-25",
         title: "把周末，过得慢一点",
         text: "把手机放远一点，泡了两杯热茶。听你讲这周的小事，太阳刚好落在桌边。其实哪里也不去，也很好。",
@@ -56,7 +54,6 @@ export function createSeed() {
       {
         id: "note",
         author: "xiaoyue",
-        participant: "aosen",
         date: "2026-10-23",
         title: "被好好惦记的感觉",
         text: "只是随口说了一句想吃橘子，晚上就看到洗好的橘子放在桌上。你说「顺路买的」，可我知道并不顺路。\n\n这些小事，我都有放在心上。",
@@ -69,7 +66,6 @@ export function createSeed() {
       {
         id: "walk",
         author: "aosen",
-        participant: "together",
         date: "2026-10-21",
         title: "一起等了一场日落",
         text: "今天没赶路。沿着湖边慢慢走，停下来等天色变成橘子色。想把这样的傍晚多留一些给我们。",

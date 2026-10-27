@@ -24,10 +24,9 @@ defineEmits(["open", "remember", "favorite"]);
           ><span class="avatar-dot" :class="moment.author">{{
             moment.author === "aosen" ? "A" : "悦"
           }}</span
-          >{{ PEOPLE[moment.author] }} 写下</span
+          >{{ PEOPLE[moment.author] }} 记录</span
         ><time :datetime="moment.date">{{ dateLabel(moment.date) }}</time>
       </div>
-      <span v-if="!moment.photo" class="quote-mark" aria-hidden="true">“</span>
       <h3>
         <button class="title-button" @click="$emit('open', moment)">
           {{ moment.title }}
@@ -41,7 +40,6 @@ defineEmits(["open", "remember", "favorite"]);
           }}</span
         >
       </div>
-      <div v-else class="reply-invitation">这里也留着另一半的视角。</div>
       <div class="moment-actions">
         <button
           class="remember-button"

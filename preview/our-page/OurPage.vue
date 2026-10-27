@@ -10,10 +10,11 @@ import {
 import Icon from "./components/Icon.vue";
 import DialogShell from "./components/DialogShell.vue";
 import MomentCard from "./components/MomentCard.vue";
+import AuthorPicker from "./components/AuthorPicker.vue";
+import LifePlacement from "./components/LifePlacement.vue";
 import {
   PEOPLE,
   STORAGE_KEY,
-  images,
   makeId,
   today,
   dateLabel,
@@ -35,9 +36,11 @@ try {
 const state = ref(initial);
 const viewer = computed(() => state.value.viewer);
 const viewerName = computed(() => PEOPLE[viewer.value]);
-const page = ref("journal");
-const filter = ref("all");
-const favoriteFilter = ref("mine");
+const page = ref(
+  new URLSearchParams(location.search).get("entry") === "life"
+    ? "life"
+    : "journal",
+);
 const toast = ref("");
 let toastTimer;
 function notify(message) {
@@ -54,7 +57,7 @@ function commit(change, message = "") {
     // Read the latest snapshot so the desktop and phone preview do not overwrite each other.
     const next = readPreview(localStorage);
     next.viewer = viewer.value;
-    change(next);
+    if (change(next) === false) return false;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     state.value = next;
     if (message) notify(message);
@@ -82,45 +85,28 @@ onBeforeUnmount(() => {
   window.removeEventListener("storage", syncPreview);
   clearTimeout(toastTimer);
 });
-function switchViewer(event) {
-  const value = event.target.value;
-  if (
-    !commit((s) => {
-      s.viewer = value;
-    }, `正在以 ${PEOPLE[value]} 的视角体验`)
-  )
-    event.target.value = viewer.value;
+function setViewer(value) {
+  if (!PEOPLE[value]) return false;
+  if (value === viewer.value) return true;
+  return commit((s) => {
+    s.viewer = value;
+  }, `当前使用者：${PEOPLE[value]}`);
 }
-const tabs = [
-  { id: "journal", label: "日常手账", icon: "book" },
-  { id: "weekly", label: "这一周", icon: "calendar" },
-  { id: "favorites", label: "最想珍藏", icon: "bookmark" },
-  { id: "heart", label: "心里话", icon: "mail" },
-];
+function switchViewer(event) {
+  if (!setViewer(event.target.value)) event.target.value = viewer.value;
+}
 function go(value) {
   page.value = value;
-  nextTick(() =>
-    document.getElementById("page-content")?.focus({ preventScroll: true }),
-  );
+  nextTick(() => {
+    document.getElementById("page-content")?.focus({ preventScroll: true });
+    window.scrollTo({ top: 0, behavior: "instant" });
+  });
 }
 const sortedMoments = computed(() =>
   [...state.value.moments].sort((a, b) => b.date.localeCompare(a.date)),
 );
-const visibleMoments = computed(() =>
-  sortedMoments.value.filter(
-    (m) =>
-      filter.value === "all" ||
-      (filter.value === "together"
-        ? m.participant === "together"
-        : m.author === viewer.value),
-  ),
-);
 const favoriteMoments = computed(() =>
-  sortedMoments.value.filter((m) =>
-    favoriteFilter.value === "mine"
-      ? m.favorites.includes(viewer.value)
-      : m.favorites.length > 0,
-  ),
+  sortedMoments.value.filter((m) => m.favorites.length > 0),
 );
 function remember(moment) {
   commit((s) => {
@@ -152,6 +138,7 @@ const selectedHeart = computed(() =>
   state.value.hearts.find((h) => h.id === selectedId.value),
 );
 const form = ref({});
+const draftOwner = ref("");
 const baseline = ref("");
 const replyText = ref("");
 const agreementText = ref("");
@@ -165,9 +152,14 @@ const emptyMoment = () => ({
   text: "",
   photo: "",
   date: today(),
-  participant: "together",
+  author: viewer.value,
 });
-const emptyHeart = () => ({ event: "", feeling: "", wish: "" });
+const emptyHeart = () => ({
+  author: viewer.value,
+  event: "",
+  feeling: "",
+  wish: "",
+});
 const dirty = computed(
   () =>
     (["moment", "heart-compose"].includes(modal.value) &&
@@ -190,12 +182,14 @@ function requestClose() {
   else closeNow();
 }
 function composeMoment() {
+  draftOwner.value = state.value.momentDrafts[viewer.value] ? viewer.value : "";
   form.value = { ...emptyMoment(), ...state.value.momentDrafts[viewer.value] };
   baseline.value = JSON.stringify(form.value);
   selectedId.value = "";
   modal.value = "moment";
 }
 function composeHeart() {
+  draftOwner.value = state.value.heartDrafts[viewer.value] ? viewer.value : "";
   form.value = { ...emptyHeart(), ...state.value.heartDrafts[viewer.value] };
   baseline.value = JSON.stringify(form.value);
   selectedId.value = "";
@@ -220,7 +214,7 @@ function editMoment() {
     text: m.text,
     photo: m.photo,
     date: m.date,
-    participant: m.participant,
+    author: m.author,
   };
   baseline.value = JSON.stringify(form.value);
   modal.value = "moment";
@@ -228,16 +222,32 @@ function editMoment() {
 function saveMomentDraft() {
   if (selectedId.value) return;
   if (
-    commit((s) => {
-      s.momentDrafts[viewer.value] = { ...form.value };
-    }, "草稿已留在这个浏览器里，下次继续写")
+    storeDraft(
+      "momentDrafts",
+      { ...form.value },
+      "草稿已留在这个浏览器里，下次继续写",
+    )
   )
     closeNow();
 }
+function storeDraft(collection, content, message) {
+  formError.value = "";
+  return commit((s) => {
+    const author = content.author;
+    if (draftOwner.value !== author && s[collection][author]) {
+      formError.value = `${PEOPLE[author]} 已有一段草稿。可以直接保存当前内容，或先处理那段草稿。`;
+      return false;
+    }
+    s[collection][author] = content;
+    if (draftOwner.value && draftOwner.value !== author)
+      delete s[collection][draftOwner.value];
+    s.viewer = author;
+  }, message);
+}
 function saveMoment() {
   formError.value = "";
-  if (!form.value.title.trim() || !form.value.text.trim()) {
-    formError.value = "给这段回忆起个名字，再留下一句话吧。";
+  if (!form.value.text.trim() || !PEOPLE[form.value.author]) {
+    formError.value = "选好记录人，再留下一句话吧。";
     return;
   }
   if (!form.value.date || form.value.date > today()) {
@@ -246,7 +256,8 @@ function saveMoment() {
   }
   const content = {
     ...form.value,
-    title: form.value.title.trim(),
+    author: selectedId.value ? selectedMoment.value.author : form.value.author,
+    title: form.value.title.trim() || form.value.text.trim().slice(0, 24),
     text: form.value.text.trim(),
   };
   const ok = commit(
@@ -261,20 +272,21 @@ function saveMoment() {
         s.moments.unshift({
           ...content,
           id: makeId(),
-          author: viewer.value,
+          author: form.value.author,
           sample: false,
           reactions: [],
           favorites: [],
           replies: [],
         });
-      delete s.momentDrafts[viewer.value];
+      if (!selectedId.value && draftOwner.value)
+        delete s.momentDrafts[draftOwner.value];
+      s.viewer = content.author;
     },
     selectedId.value ? "这段回忆已更新" : "这一刻，好好留下了",
   );
   if (ok) {
     closeNow();
     page.value = "journal";
-    filter.value = "all";
   }
 }
 async function uploadPhoto(event) {
@@ -331,6 +343,10 @@ function deleteMoment() {
 }
 function saveHeart(draft) {
   formError.value = "";
+  if (!PEOPLE[form.value.author]) {
+    formError.value = "请选择写下这段话的人。";
+    return;
+  }
   const content = Object.fromEntries(
     Object.entries(form.value).map(([k, v]) => [k, v.trim()]),
   );
@@ -338,24 +354,28 @@ function saveHeart(draft) {
     formError.value = "请补充发生的事、你的感受和希望，方便对方理解。";
     return;
   }
-  const ok = commit(
-    (s) => {
-      if (draft) s.heartDrafts[viewer.value] = content;
-      else {
-        s.hearts.unshift({
-          id: makeId(),
-          author: viewer.value,
-          date: today(),
-          ...content,
-          replies: [],
-          agreement: null,
-          sample: false,
-        });
-        delete s.heartDrafts[viewer.value];
-      }
-    },
-    draft ? "草稿已保存，你可以准备好后再共享" : "心里话已放到两个人的页面里",
-  );
+  if (draft) {
+    if (
+      storeDraft("heartDrafts", content, "草稿已保存，你可以准备好后再共享")
+    ) {
+      closeNow();
+      page.value = "heart";
+    }
+    return;
+  }
+  const ok = commit((s) => {
+    s.hearts.unshift({
+      id: makeId(),
+      author: viewer.value,
+      date: today(),
+      ...content,
+      replies: [],
+      agreement: null,
+      sample: false,
+    });
+    if (draftOwner.value) delete s.heartDrafts[draftOwner.value];
+    s.viewer = form.value.author;
+  }, "心里话已放到两个人的页面里");
   if (ok) {
     closeNow();
     page.value = "heart";
@@ -423,7 +443,7 @@ function removeHeartDraft() {
     closeNow();
 }
 
-const selectedWeek = ref("2026-10-19");
+const selectedWeek = ref(weekStart(sortedMoments.value[0]?.date || today()));
 const weeks = computed(() =>
   [
     ...new Set([
@@ -438,14 +458,7 @@ const weeks = computed(() =>
 const weekMoments = computed(() =>
   sortedMoments.value.filter((m) => weekStart(m.date) === selectedWeek.value),
 );
-const weekSelection = computed(() => {
-  const chosen = state.value.letters[selectedWeek.value]?.selectedIds;
-  if (chosen)
-    return weekMoments.value
-      .filter((m) => chosen.includes(m.id))
-      .sort((a, b) => chosen.indexOf(a.id) - chosen.indexOf(b.id));
-  return weekMoments.value.slice(0, 3);
-});
+const weekSelection = computed(() => weekMoments.value.slice(0, 3));
 const weeklyWords = ref("");
 watch(
   [viewer, selectedWeek, () => state.value.letters],
@@ -478,26 +491,6 @@ function saveLetter() {
       delete s.weekDrafts[selectedWeek.value][viewer.value];
   }, "给这一周的话，已好好留下");
 }
-const selectedForWeek = ref([]);
-function openWeekPicker() {
-  selectedForWeek.value = weekSelection.value.map((m) => m.id);
-  modal.value = "week-picker";
-}
-function toggleWeekMoment(id) {
-  if (selectedForWeek.value.includes(id))
-    selectedForWeek.value = selectedForWeek.value.filter((v) => v !== id);
-  else if (selectedForWeek.value.length < 3) selectedForWeek.value.push(id);
-  else notify("一页最多留三件小事，先移出一件再选择吧。");
-}
-function saveWeekSelection() {
-  if (
-    commit((s) => {
-      const l = (s.letters[selectedWeek.value] ||= {});
-      l.selectedIds = [...selectedForWeek.value];
-    }, "这一页已重新排好")
-  )
-    closeNow();
-}
 function printLetter() {
   window.print();
 }
@@ -522,8 +515,6 @@ function resetPreview() {
     storageError.value = "";
     closeNow();
     page.value = "journal";
-    filter.value = "all";
-    favoriteFilter.value = "mine";
     selectedWeek.value = "2026-10-19";
     notify("已恢复示例内容");
   } catch {
@@ -537,7 +528,6 @@ const modalTitle = computed(
       "moment-detail": selectedMoment.value?.title,
       "heart-compose": "我有一句心里话",
       "heart-detail": "慢慢说，我们都在听",
-      "week-picker": "选几件想留下的小事",
       info: "关于这次预览",
       "draft-delete": "放下这段草稿？",
     })[modal.value],
@@ -557,110 +547,93 @@ const modalTitle = computed(
     {{ storageError }} <button @click="modal = 'info'">处理保存问题</button>
   </div>
   <header class="site-header">
-    <button class="brand" aria-label="回到日常手账" @click="go('journal')">
-      <span class="brand-mark"><Icon name="leaf" :size="25" /></span
-      ><span
-        ><strong>Aosen <em>&</em> 小悦</strong
-        ><small>OUR LITTLE CORNER</small></span
-      >
-    </button>
-    <nav class="desktop-nav" aria-label="我们这一页">
-      <button
-        v-for="tab in tabs"
-        :key="tab.id"
-        :aria-current="page === tab.id ? 'page' : undefined"
-        :class="{ active: page === tab.id }"
-        @click="go(tab.id)"
-      >
-        {{ tab.label }}
+    <div class="site-header-inner">
+      <button class="brand" aria-label="返回生活首页" @click="go('life')">
+        <Icon name="heart" :size="23" /><span>Aosen & 小悦</span>
       </button>
-    </nav>
-    <label class="viewer-switch"
-      ><span class="avatar-dot" :class="viewer">{{
-        viewer === "aosen" ? "A" : "悦"
-      }}</span
-      ><span class="sr-only">切换预览身份</span
-      ><select :value="viewer" @change="switchViewer">
-        <option value="aosen">Aosen</option>
-        <option value="xiaoyue">小悦</option>
-      </select></label
-    >
+      <nav class="family-nav" aria-label="家庭网站导航">
+        <button class="active" aria-current="page" @click="go('life')">
+          生活</button
+        ><span title="本次预览仅展示生活模块">理财</span
+        ><span title="本次预览仅展示生活模块">画廊</span
+        ><span title="本次预览仅展示生活模块">旅行</span>
+      </nav>
+      <span class="preview-tag">功能预览</span>
+    </div>
   </header>
   <main id="page-content" class="main-shell" tabindex="-1">
-    <template v-if="page === 'journal'">
-      <section class="hero">
-        <div class="hero-copy">
-          <span class="eyebrow"
-            ><span class="tiny-line"></span>我们这一页 · OUR STORY</span
-          >
-          <h1>把平凡的日子，<br />写成<span>我们的故事。</span></h1>
-          <p>
-            那些被照顾的瞬间，和来不及说的谢谢，<br
-              class="desktop-break"
-            />都好好留在这里。
-          </p>
-          <div class="hero-action">
-            <button class="primary-button" @click="composeMoment">
-              <Icon name="pen" :size="18" />留住这一刻</button
-            ><span>一句话，也值得被记住</span>
-          </div>
-          <button
-            v-if="state.momentDrafts[viewer]"
-            class="text-button draft-link"
-            @click="composeMoment"
-          >
-            <Icon name="pen" :size="15" />还有一段没写完的回忆，继续写
-            <Icon name="arrow" :size="15" />
-          </button>
+    <LifePlacement
+      v-if="page === 'life'"
+      :latest="sortedMoments[0]"
+      @open="go('journal')"
+      @compose="composeMoment"
+    />
+    <template v-else>
+      <nav class="breadcrumb" aria-label="当前位置">
+        <button @click="go('life')">生活</button
+        ><Icon name="chevron" :size="14" /><button
+          v-if="page !== 'journal'"
+          @click="go('journal')"
+        >
+          我们这一页</button
+        ><span v-else>我们这一页</span
+        ><template v-if="page !== 'journal'"
+          ><Icon name="chevron" :size="14" /><span>{{
+            { weekly: "每周回顾", favorites: "珍藏", heart: "心里话" }[page]
+          }}</span></template
+        >
+      </nav>
+      <header class="module-header">
+        <div>
+          <h1>我们这一页</h1>
+          <p>记住小事，也听见彼此。</p>
         </div>
-        <div class="hero-collage" aria-label="日常照片手账示意">
-          <div class="collage-orbit" aria-hidden="true"></div>
-          <div class="polaroid polaroid-main">
-            <span class="tape" aria-hidden="true"></span
-            ><img :src="images.tea" alt="木桌上的两杯热茶，示例照片" />
-            <div class="photo-caption">一杯热茶，和慢下来的我们。</div>
-          </div>
-          <div class="polaroid polaroid-small">
-            <img :src="images.lake" alt="湖边落日，示例照片" />
-            <div class="photo-caption">一起等日落</div>
-          </div>
-          <span class="collage-note">把小事，放在心上。</span
-          ><svg class="drawn-heart" viewBox="0 0 70 64" aria-hidden="true">
-            <path
-              d="M33 52C20 41 3 30 10 17c6-10 21-5 24 5 2-12 18-18 24-7 8 15-14 30-25 37Z"
-            />
-          </svg>
-        </div>
-      </section>
-      <div class="gentle-note">
-        <Icon name="sun" :size="20" /><span
-          >好的时刻值得留下，心里的话也值得被听见。</span
-        ><button class="text-button" @click="go('heart')">
-          我有一句心里话 <Icon name="arrow" :size="16" />
+        <button class="primary-button" @click="composeMoment">
+          <Icon name="plus" :size="18" />留住这一刻
         </button>
+      </header>
+      <div class="module-toolbar">
+        <nav class="module-tabs" aria-label="我们的日常">
+          <button :class="{ active: page !== 'heart' }" @click="go('journal')">
+            日常</button
+          ><button :class="{ active: page === 'heart' }" @click="go('heart')">
+            心里话
+          </button>
+        </nav>
+        <label class="viewer-switch"
+          ><span>当前使用者</span
+          ><select :value="viewer" @change="switchViewer">
+            <option value="aosen">Aosen</option>
+            <option value="xiaoyue">小悦</option>
+          </select></label
+        >
       </div>
+    </template>
+    <template v-if="page === 'journal'">
+      <button
+        v-if="state.momentDrafts[viewer]"
+        class="draft-banner"
+        @click="composeMoment"
+      >
+        <Icon name="pen" :size="17" />有一段没写完的回忆，继续写
+        <Icon name="arrow" :size="16" />
+      </button>
       <section class="journal-section" aria-labelledby="journal-heading">
         <div class="section-heading">
           <div>
-            <span class="eyebrow">LITTLE MOMENTS</span>
             <h2 id="journal-heading">那天的小事</h2>
           </div>
-          <div class="filter-group" aria-label="筛选回忆">
-            <button :aria-pressed="filter === 'all'" @click="filter = 'all'">
-              全部日常</button
-            ><button
-              :aria-pressed="filter === 'together'"
-              @click="filter = 'together'"
-            >
-              我们一起</button
-            ><button :aria-pressed="filter === 'mine'" @click="filter = 'mine'">
-              我写下的
+          <div class="section-links">
+            <button class="text-button" @click="go('weekly')">
+              <Icon name="calendar" :size="17" />每周回顾</button
+            ><button class="text-button" @click="go('favorites')">
+              <Icon name="bookmark" :size="17" />珍藏
             </button>
           </div>
         </div>
-        <div v-if="visibleMoments.length" class="moments-grid">
+        <div v-if="sortedMoments.length" class="moments-grid">
           <MomentCard
-            v-for="moment in visibleMoments"
+            v-for="moment in sortedMoments"
             :key="moment.id"
             :moment="moment"
             :viewer="viewer"
@@ -678,21 +651,12 @@ const modalTitle = computed(
           </button>
         </div>
       </section>
-      <button class="weekly-teaser" @click="go('weekly')">
-        <span class="envelope-icon"><Icon name="mail" :size="31" /></span
-        ><span
-          ><span class="eyebrow">A LETTER TO US</span
-          ><strong>这一周，想留给你</strong
-          ><small>把零散的小事，收成一页温柔的回忆。</small></span
-        ><Icon name="arrow" :size="23" />
-      </button>
     </template>
 
     <template v-else-if="page === 'weekly'">
       <div class="page-heading">
-        <span class="eyebrow">A LETTER TO US</span>
-        <h1>这一周，想留给你</h1>
-        <p>从真实的日常里，挑几件舍不得忘的小事。</p>
+        <h2>这一周，想留给你</h2>
+        <p>每周自动留下最近三件小事，随时回来看看。</p>
       </div>
       <div class="weekly-toolbar">
         <label
@@ -702,13 +666,7 @@ const modalTitle = computed(
               {{ dateLabel(week, true) }} 起
             </option>
           </select></label
-        ><button
-          class="secondary-button"
-          :disabled="!weekMoments.length"
-          @click="openWeekPicker"
         >
-          <Icon name="image" :size="17" />挑选回忆
-        </button>
       </div>
       <article class="weekly-letter" id="weekly-letter">
         <div class="letter-topline">
@@ -734,7 +692,7 @@ const modalTitle = computed(
               ></span
             ><span class="letter-date">{{ dateLabel(m.date) }}</span
             ><strong>{{ m.title }}</strong
-            ><span>{{ PEOPLE[m.author] }} 写下</span>
+            ><span>{{ PEOPLE[m.author] }} 记录</span>
           </button>
         </div>
         <div v-else class="letter-empty">
@@ -761,7 +719,11 @@ const modalTitle = computed(
         </div>
       </article>
       <section class="weekly-compose">
-        <label for="week-words">{{ viewerName }}，留一句亲手写的话</label
+        <AuthorPicker
+          :model-value="viewer"
+          label="写下这句话的人"
+          @update:model-value="setViewer"
+        /><label for="week-words">{{ viewerName }}，留一句亲手写的话</label
         ><textarea
           id="week-words"
           :value="weeklyWords"
@@ -786,29 +748,8 @@ const modalTitle = computed(
 
     <template v-else-if="page === 'favorites'">
       <div class="page-heading">
-        <span class="eyebrow">CLOSE TO HEART</span>
-        <h1>最想珍藏</h1>
+        <h2>最想珍藏</h2>
         <p>有些很小的瞬间，在心里占了很大的位置。</p>
-      </div>
-      <div class="favorites-toolbar">
-        <div class="filter-group">
-          <button
-            :aria-pressed="favoriteFilter === 'mine'"
-            @click="favoriteFilter = 'mine'"
-          >
-            我的珍藏</button
-          ><button
-            :aria-pressed="favoriteFilter === 'ours'"
-            @click="favoriteFilter = 'ours'"
-          >
-            彼此的珍藏
-          </button>
-        </div>
-        <span>{{
-          favoriteFilter === "mine"
-            ? viewerName + " 亲手选出的记忆"
-            : "被我们其中一人放在心上的日常"
-        }}</span>
       </div>
       <div v-if="favoriteMoments.length" class="moments-grid">
         <MomentCard
@@ -832,21 +773,15 @@ const modalTitle = computed(
     </template>
 
     <template v-else-if="page === 'heart'">
-      <div class="page-heading">
-        <span class="eyebrow">A LITTLE SPACE TO TALK</span>
-        <h1>心里的话，慢慢说。</h1>
-        <p>这次的感受值得被理解，过去的心意也好好留着。</p>
-      </div>
-      <section class="heart-intro">
-        <div class="heart-intro-icon"><Icon name="mail" :size="35" /></div>
+      <div class="heart-intro glass-card">
         <div>
-          <h2>不必立刻说得完美。</h2>
-          <p>先写发生的事，再说自己的感受。<br />准备好以后，再让对方看见。</p>
+          <h2>有句话，想让你听见</h2>
+          <p>可以先存草稿，准备好以后再共享。</p>
         </div>
         <button class="primary-button" @click="composeHeart">
           <Icon name="pen" :size="17" />写一句心里话
         </button>
-      </section>
+      </div>
       <div v-if="state.heartDrafts[viewer]" class="draft-banner">
         <span><Icon name="pen" :size="17" />你有一段还没共享的草稿。</span>
         <div>
@@ -862,10 +797,8 @@ const modalTitle = computed(
       </div>
       <div class="section-heading">
         <div>
-          <span class="eyebrow">ONE THING AT A TIME</span>
           <h2>我们正在聊的事</h2>
         </div>
-        <span class="quiet-text">没有催促，也没有倒计时</span>
       </div>
       <div v-if="state.hearts.length" class="heart-list">
         <button
@@ -895,26 +828,9 @@ const modalTitle = computed(
         <Icon name="leaf" :size="32" />
         <p>想说的时候，这里一直在。</p>
       </div>
-      <p class="heart-footnote">
-        一个行动做到了，不代表感受必须立刻变好。我们可以再商量。
-      </p>
     </template>
   </main>
-  <footer class="site-footer">
-    <Icon name="leaf" :size="18" /><span>Aosen & 小悦 · 我们这一页</span
-    ><span>慢慢生活，好好相爱。</span>
-  </footer>
-  <nav class="mobile-nav" aria-label="移动导航">
-    <button
-      v-for="tab in tabs"
-      :key="tab.id"
-      :class="{ active: page === tab.id }"
-      :aria-current="page === tab.id ? 'page' : undefined"
-      @click="go(tab.id)"
-    >
-      <Icon :name="tab.icon" :size="21" /><span>{{ tab.label }}</span>
-    </button>
-  </nav>
+  <footer class="site-footer">Aosen & 小悦的家庭空间</footer>
   <Transition name="toast"
     ><div v-if="toast" class="toast-message" role="status">
       <Icon name="check" :size="18" />{{ toast }}
@@ -924,7 +840,7 @@ const modalTitle = computed(
   <DialogShell
     v-if="modal"
     :title="modalTitle"
-    :eyebrow="modal === 'info' ? 'PREVIEW NOTES' : 'OUR LITTLE CORNER'"
+    :eyebrow="undefined"
     :wide="modal === 'moment-detail' || modal === 'heart-detail'"
     @close="requestClose"
   >
@@ -933,18 +849,27 @@ const modalTitle = computed(
       class="entry-form"
       @submit.prevent="saveMoment"
     >
-      <p class="dialog-intro">可以记下你做的小事，也可以写下你收到的心意。</p>
-      <label for="moment-title">给这一刻起个名字</label
-      ><input
-        id="moment-title"
-        v-model="form.title"
-        required
-        maxlength="50"
-        placeholder="比如：那晚回家，有一碗热汤"
-      />
+      <AuthorPicker v-model="form.author" :locked="Boolean(selectedId)" />
+      <p class="identity-hint">
+        {{
+          selectedId
+            ? "编辑内容时，原记录人保持不变。"
+            : `保存后会显示「${PEOPLE[form.author]} 记录」，下次自动沿用。`
+        }}
+      </p>
       <div class="form-row">
         <div>
-          <label for="moment-date">发生在</label
+          <label for="moment-title"
+            >标题 <span class="quiet-text">可选</span></label
+          ><input
+            id="moment-title"
+            v-model="form.title"
+            maxlength="50"
+            placeholder="比如：回家有一碗热汤"
+          />
+        </div>
+        <div>
+          <label for="moment-date">日期</label
           ><input
             id="moment-date"
             v-model="form.date"
@@ -953,22 +878,14 @@ const modalTitle = computed(
             :max="today()"
           />
         </div>
-        <div>
-          <label for="moment-people">这段小事里有</label
-          ><select id="moment-people" v-model="form.participant">
-            <option value="together">我们一起</option>
-            <option value="aosen">Aosen</option>
-            <option value="xiaoyue">小悦</option>
-          </select>
-        </div>
       </div>
-      <label for="moment-text">想记住的细节</label
+      <label for="moment-text">记下一件小事</label
       ><textarea
         id="moment-text"
         v-model="form.text"
         required
         maxlength="1500"
-        rows="5"
+        rows="4"
         placeholder="发生了什么？当时哪一个细节，让你想留住它？"
       ></textarea>
       <div class="photo-label">一张照片 <span>可选，没有也很好</span></div>
@@ -994,12 +911,6 @@ const modalTitle = computed(
           @change="uploadPhoto"
       /></label>
       <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
-      <div class="author-note">
-        <span class="avatar-dot" :class="viewer">{{
-          viewer === "aosen" ? "A" : "悦"
-        }}</span
-        >这段回忆将由 {{ viewerName }} 写下，共享后双方都能看见。
-      </div>
       <div class="dialog-actions">
         <button
           v-if="!selectedId"
@@ -1011,7 +922,7 @@ const modalTitle = computed(
           先存草稿</button
         ><button class="primary-button" type="submit" :disabled="photoBusy">
           <Icon name="check" :size="17" />{{
-            selectedId ? "保存修改" : "留在我们的日常里"
+            selectedId ? "保存修改" : "保存这段回忆"
           }}
         </button>
       </div>
@@ -1020,7 +931,7 @@ const modalTitle = computed(
     <template v-else-if="modal === 'moment-detail' && selectedMoment">
       <div class="detail-meta">
         <span
-          >{{ PEOPLE[selectedMoment.author] }} 写下 ·
+          >{{ PEOPLE[selectedMoment.author] }} 记录 ·
           {{ dateLabel(selectedMoment.date, true) }}</span
         ><span v-if="selectedMoment.sample" class="sample-tag">示例回忆</span>
       </div>
@@ -1059,13 +970,11 @@ const modalTitle = computed(
         v-if="selectedMoment.reactions.length"
         class="quiet-text remembered-names"
       >
-        {{
-          selectedMoment.reactions.map((p) => PEOPLE[p]).join("、")
-        }}
+        {{ selectedMoment.reactions.map((p) => PEOPLE[p]).join("、") }}
         留下了「我记得」。
       </p>
       <section class="conversation">
-        <h3>同一件小事，另一个视角</h3>
+        <h3>留一句回应</h3>
         <p v-if="!selectedMoment.replies.length" class="quiet-text">
           想说的时候，留下一句就好。
         </p>
@@ -1083,7 +992,11 @@ const modalTitle = computed(
           </div>
         </div>
         <form @submit.prevent="addReply('moment')">
-          <label for="memory-reply"
+          <AuthorPicker
+            :model-value="viewer"
+            label="回应人"
+            @update:model-value="setViewer"
+          /><label for="memory-reply"
             >{{ viewerName }}，你记得的那一刻是什么样？</label
           ><textarea
             id="memory-reply"
@@ -1123,6 +1036,7 @@ const modalTitle = computed(
       class="entry-form"
       @submit.prevent="saveHeart(false)"
     >
+      <AuthorPicker v-model="form.author" label="写下这段话的人" />
       <p class="dialog-intro">
         把具体的事和感受说清楚，给彼此留一点理解的空间。
       </p>
@@ -1131,6 +1045,7 @@ const modalTitle = computed(
         class="writing-prompt"
         @click="
           form = {
+            author: form.author,
             event: '刚才听到「你从来不关心我」。',
             feeling: '我有点委屈，也担心最近的努力没有被看见。',
             wish: '我想听听这次具体哪里让你不舒服，也希望之前的心意没有因此被抹掉。',
@@ -1218,7 +1133,11 @@ const modalTitle = computed(
           </div>
         </div>
         <form @submit.prevent="addReply('heart')">
-          <label for="heart-reply">{{ viewerName }}，你想说的话</label
+          <AuthorPicker
+            :model-value="viewer"
+            label="回应人"
+            @update:model-value="setViewer"
+          /><label for="heart-reply">{{ viewerName }}，你想说的话</label
           ><textarea
             id="heart-reply"
             v-model="replyText"
@@ -1233,7 +1152,11 @@ const modalTitle = computed(
           </div>
         </form>
       </section>
-      <section class="agreement-section">
+      <details class="agreement-section">
+        <summary>
+          <Icon name="leaf" :size="18" />小约定
+          <span class="quiet-text">可选，展开查看</span>
+        </summary>
         <h3><Icon name="leaf" :size="20" />留下一条小约定</h3>
         <template v-if="selectedHeart.agreement"
           ><p class="agreement-text">{{ selectedHeart.agreement.text }}</p>
@@ -1348,43 +1271,8 @@ const modalTitle = computed(
             {{ a.text }}
           </p>
         </details>
-      </section>
+      </details>
     </template>
-
-    <template v-else-if="modal === 'week-picker'"
-      ><p class="dialog-intro">
-        最多三件，也可以留白。{{ selectedForWeek.length }} / 3 已选择
-      </p>
-      <div class="week-picker-list">
-        <button
-          v-for="m in weekMoments"
-          :key="m.id"
-          :aria-pressed="selectedForWeek.includes(m.id)"
-          @click="toggleWeekMoment(m.id)"
-        >
-          <img v-if="m.photo" :src="m.photo" :alt="m.title" /><span
-            v-else
-            class="picker-placeholder"
-            ><Icon name="book" /></span
-          ><span
-            ><strong>{{ m.title }}</strong
-            ><small
-              >{{ dateLabel(m.date) }} · {{ PEOPLE[m.author] }}</small
-            ></span
-          ><span class="pick-check"
-            ><Icon
-              v-if="selectedForWeek.includes(m.id)"
-              name="check"
-              :size="16"
-          /></span>
-        </button>
-      </div>
-      <div class="dialog-actions">
-        <button class="primary-button" @click="saveWeekSelection">
-          排好这一页
-        </button>
-      </div></template
-    >
 
     <template v-else-if="modal === 'draft-delete'"
       ><p class="dialog-intro">
@@ -1400,10 +1288,14 @@ const modalTitle = computed(
     <template v-else-if="modal === 'info'"
       ><div class="preview-info">
         <p>
-          这是一个独立的交互预览，初始回忆、回应、约定与照片都是示例，不代表真实发生过的事情。
+          本功能放在家庭网站的「生活 →
+          我们这一页」。点击顶部「生活」可查看入口位置。当前仍是独立预览，回忆、回应与约定的初始内容均为示例。
         </p>
         <ul>
-          <li>可以切换 Aosen / 小悦，体验双方的记录、回应和珍藏。</li>
+          <li>
+            记录时在表单顶部选择 Aosen /
+            小悦，保存后记住最近使用的身份；回应和心里话也会明确标注作者。
+          </li>
           <li>
             你写下的内容和选择的照片仅保存在当前浏览器，不连接正式家庭数据，也不发送提醒。
           </li>
