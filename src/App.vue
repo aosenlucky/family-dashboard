@@ -45,13 +45,14 @@
                     <router-link to="/wealth" active-class="bg-white shadow-sm text-gray-800" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium text-gray-500 hover:text-gray-800 transition-all">理财</router-link>
                     <router-link to="/gallery" active-class="bg-white shadow-sm text-gray-800" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium text-gray-500 hover:text-gray-800 transition-all">画廊</router-link>
                     <router-link to="/travel" active-class="bg-white shadow-sm text-gray-800" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium text-gray-500 hover:text-gray-800 transition-all">旅行</router-link>
+                    <router-link to="/diary" active-class="bg-white shadow-sm text-gray-800" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium text-gray-500 hover:text-gray-800 transition-all">日记</router-link>
                 </div>
 
                 <div class="flex items-center justify-end space-x-2 sm:space-x-4 text-xs font-medium text-apple-text z-10">
                     <span v-if="isDemoMode" class="hidden sm:flex items-center text-[10px] text-amber-700 bg-amber-50 px-2 py-1 rounded-full border border-amber-100 transition-all">
                         <i class="ph ph-monitor-play mr-1"></i> 演示模式
                     </span>
-                    <span v-if="syncStatus" class="hidden lg:flex items-center text-[10px] text-apple-blue bg-blue-50 px-2 py-1 rounded-full border border-blue-100 transition-all">
+                    <span v-if="syncStatus && route.path !== '/diary'" class="hidden lg:flex items-center text-[10px] text-apple-blue bg-blue-50 px-2 py-1 rounded-full border border-blue-100 transition-all">
                         <i class="ph ph-cloud-arrows mr-1" :class="{'animate-pulse': isSyncing}"></i> {{ syncStatus }}
                     </span>
                     <button v-if="route.path === '/wealth'" @click="toggleMask" class="flex items-center text-gray-600 hover:text-apple-blue bg-white/50 px-2 py-1.5 rounded-full border border-white shadow-sm transition-colors">

@@ -1,6 +1,6 @@
 # 独立日记预览
 
-本目录在 `codex/our-page-preview` 分支，尚未合入正式网站。不修改正式路由、账户系统、API 或数据库。页面沿用家庭网站的导航、照片背景、蓝色按钮和圆角卡片，作为独立「日记」入口预览。
+本目录保留独立预览入口，复用 `src/features/diary/` 的日记功能。正式网站通过 `/diary` 路由进入，并沿用家庭网站导航与登录门禁。预览和正式日记使用不同的 IndexedDB 名称，不会自动迁移或混用。
 
 ## 打开与运行
 
@@ -38,7 +38,7 @@ node node_modules/vite/bin/vite.js --config preview/our-page/vite.config.js
 
 保存使用 IndexedDB 事务与版本检查，阻止旧窗口覆盖新内容。冲突时先导出当前加密副本，再明确确认是否放弃本页修改并读取最新日记。
 
-当前每个浏览器存储空间只有一本日记，未接入家庭成员账户、云端同步和服务端权限。不同浏览器、端口或设备不会自动共享内容。正式接入前需补充个人身份隔离和密文同步设计。
+当前每个浏览器存储空间只有一本日记，正式入口位于家庭网站登录之后；日记仍需独立口令，未接入家庭成员账户、云端同步和日记服务端存储。不同浏览器、端口或设备不会自动共享内容。多人、跨设备版本还需补充个人身份隔离和密文同步设计。
 
 请下载加密备份，并单独保管恢复码。口令与恢复码都丢失时无法找回内容；清理浏览器数据会移除本机副本。加密无法保护已解锁页面、同源恶意脚本或被入侵的设备。此预览未经过独立安全审计。
 
@@ -56,10 +56,14 @@ node --test preview/diary/tests/crypto-model.test.js
 
 ```powershell
 npm install --prefix "$env:TEMP/family-diary-qa-deps" --no-save --package-lock=false --no-audit --no-fund fake-indexeddb@6.2.4 jsdom@26.1.0
-node --test preview/diary/tests/crypto-model.test.js preview/diary/tests/integration.check.js
+node --test preview/diary/tests/crypto-model.test.js preview/diary/tests/integration.check.js preview/diary/tests/production.check.js
 node node_modules/vite/bin/vite.js build --config preview/diary/vite.config.js
 ```
 
 也可通过 `DIARY_QA_MODULES` 指向包含测试依赖 `node_modules` 的目录。
 
 已验证错误口令拒绝、密文篡改拒绝、恢复码、修改口令、新 IV、照片及草稿加密、周月边界、指定素材导出、真实组件草稿自动保存、锁定、并发冲突、导入恢复和重新打开。浏览器视觉与真机上传检查未完成：Windows Computer Use 因无法可靠确认浏览器当前网址而中止；未尝试绕过该限制。
+
+## 正式入口
+
+导航「日记」打开 `/diary`（EdgeOne 为 `/#/diary`）。示例模式不会读写正式日记。离开日记路由前保存草稿并锁定；保存失败时保留本页供重试或备份。样式限定在 `.diary-surface` 内，不影响其他家庭模块。正式存储使用 `family-private-diary-v1`；从本机预览迁移到线上需要下载加密备份，再在同一线上域名导入。不同线上域名也分别存储。
