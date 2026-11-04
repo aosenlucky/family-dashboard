@@ -6,6 +6,7 @@ import {
   useRoute,
   useRouter,
 } from "vue-router";
+import DiaryAccount from "../features/diary/DiaryAccount.vue";
 import PrivateDiary from "../features/diary/Diary.vue";
 
 const route = useRoute();
@@ -31,7 +32,9 @@ function showPrivate() {
 </script>
 
 <template>
+  <DiaryAccount v-if="!demo" ref="diary" @show-demo="showDemo" />
   <PrivateDiary
+    v-else
     :key="demo ? 'demo' : 'private'"
     ref="diary"
     :demo-mode="demo"

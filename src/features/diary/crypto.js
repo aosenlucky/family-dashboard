@@ -201,6 +201,11 @@ export async function createVault(password, data) {
     recovery,
   };
 }
+export async function decryptData(key, envelope) {
+  validateEnvelope(envelope);
+  const bytes = await open(key, envelope.payload, aad(envelope.id, "data"));
+  return validateData(JSON.parse(decoder.decode(bytes)));
+}
 export async function unlockVault(envelope, secret, recovery = false) {
   validateEnvelope(envelope);
   let raw;
@@ -216,13 +221,7 @@ export async function unlockVault(envelope, secret, recovery = false) {
       ),
     );
     const key = await rawKey(raw, true);
-    const data = validateData(
-      JSON.parse(
-        decoder.decode(
-          await open(key, envelope.payload, aad(envelope.id, "data")),
-        ),
-      ),
-    );
+    const data = await decryptData(key, envelope);
     return { key, data };
   } catch {
     throw new Error(

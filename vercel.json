@@ -15,6 +15,7 @@
     }
   ],
   "rewrites": [
+    { "source": "/api/diary-sync", "destination": "/api/sync?feature=private-diary" },
     {
       "source": "/api/(.*)",
       "destination": "/api/$1"

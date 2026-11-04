@@ -107,6 +107,11 @@ async function waitFor(check) {
   }
   throw new Error("Expected diary state was not reached");
 }
+async function openLegacy() {
+  await waitFor(() => [...document.querySelectorAll('button')].find(b=>b.textContent.includes('打开旧版或导出')));
+  [...document.querySelectorAll('button')].find(b=>b.textContent.includes('打开旧版或导出')).click();
+  await waitFor(()=>document.querySelector('#unlock-secret'));
+}
 async function mount(demo = false, path = "/diary") {
   app?.unmount();
   router = createRouter({
@@ -122,6 +127,7 @@ async function mount(demo = false, path = "/diary") {
   app.use(router);
   app.mount("#app");
   await router.isReady();
+  if (!demo) await openLegacy();
   await waitFor(
     () =>
       document.querySelector("#unlock-secret") ||
@@ -185,6 +191,7 @@ test("production diary navigation and storage isolation", async (t) => {
       const saved = await unlockVault(await store.readVault(), password);
       assert.equal(saved.data.draft.text, "离开页面之前没有等自动保存的文字");
       await router.push("/diary");
+      await openLegacy();
       await waitFor(() => document.querySelector("#unlock-secret"));
       assert.ok(
         !document.body.textContent.includes("离开页面之前没有等自动保存的文字"),

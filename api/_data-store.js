@@ -424,7 +424,7 @@ async function upsertSupabaseRows(config, table, rows) {
   }
 }
 
-function getSupabaseConfig() {
+export function getSupabaseConfig() {
   const url = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '')
   const key = getSupabaseKey()
   if (!url || !key) throw new Error('缺少 SUPABASE_URL 或 SUPABASE_SERVICE_ROLE_KEY。')

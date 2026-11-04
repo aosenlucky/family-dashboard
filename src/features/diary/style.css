@@ -2161,3 +2161,5 @@
 .diary-surface.diary-integrated main {
   padding-bottom: 20px;
 }
+
+.diary-surface .account-recovery input[type="checkbox"] { width: 18px; min-height: 18px; height:18px; padding:0; }

@@ -19,6 +19,7 @@ import {
   encryptData,
   changePassword,
   validateEnvelope,
+  decryptData,
 } from "./crypto.js";
 import { createVaultStorage } from "./storage.js";
 import {
@@ -39,19 +40,26 @@ import {
 } from "./model.js";
 
 const props = defineProps({
+  cloudSession: Object,
   preview: Boolean,
   demoMode: Boolean,
   allowPrivate: { type: Boolean, default: true },
 });
-const emit = defineEmits(["show-demo", "show-private"]);
+const emit = defineEmits(["show-demo", "show-private", "locked"]);
 const demo = ref(
   props.preview
     ? new URLSearchParams(location.search).get("demo") === "1"
     : props.demoMode,
 );
-const { readVault, writeVault } = createVaultStorage(
-  props.preview ? "family-private-diary-preview-v1" : "family-private-diary-v1",
-);
+const cloud = props.cloudSession?.store;
+const savedLabel = cloud ? "已加密同步到个人账号" : "已加密保存到本机";
+const { readVault, writeVault } =
+  cloud ||
+  createVaultStorage(
+    props.preview
+      ? "family-private-diary-preview-v1"
+      : "family-private-diary-v1",
+  );
 const data = ref(null),
   envelope = shallowRef(null),
   loading = ref(true),
@@ -253,7 +261,7 @@ function activate(payload, sessionKey, stored) {
     payload.draft.date = today();
   dirty.value = false;
   storageError.value = "";
-  saveStatus.value = demo.value ? "示例仅保留在当前页面" : "已加密保存到本机";
+  saveStatus.value = demo.value ? "示例仅保留在当前页面" : savedLabel;
   generation = 0;
   hydrating = false;
   covered.value = false;
@@ -326,11 +334,13 @@ async function flush() {
       envelope.value = await writeVault(encrypted, current.revision);
       if (generation === ticket) dirty.value = false;
       storageError.value = "";
-      saveStatus.value = dirty.value ? "正在加密保存…" : "已加密保存到本机";
+      saveStatus.value = dirty.value ? "正在加密保存…" : savedLabel;
       return true;
     } catch (e) {
       storageError.value = e.message;
-      saveStatus.value = "尚未保存，请保留此页面";
+      saveStatus.value = cloud
+        ? "尚未同步，请保留此页面"
+        : "尚未保存，请保留此页面";
       return false;
     }
   })();
@@ -415,6 +425,7 @@ async function lock() {
     data.value = null;
     key = null;
     hydrating = false;
+    emit("locked");
     selectedId.value = "";
     search.value = "";
     chosenIds.value = [];
@@ -437,6 +448,11 @@ async function discardAndReload() {
   clearTimeout(saveTimer);
   try {
     if (savePromise) await savePromise;
+    if (cloud) {
+      dirty.value = false;
+      emit("locked");
+      return;
+    }
     const latest = await readVault();
     hydrating = true;
     data.value = null;
@@ -459,6 +475,7 @@ function keepWriting() {
   clearTimeout(coverTimer);
   covered.value = false;
   lastActive = Date.now();
+  refreshCloud();
 }
 async function publish() {
   if (photoBusy.value || busy.value) return;
@@ -600,7 +617,9 @@ async function chooseBackup(event) {
     if (data.value && !(await flush()))
       throw new Error("当前内容还未保存，请先导出加密备份。");
     const candidate = validateEnvelope(JSON.parse(await file.text()));
-    importRevision = (await readVault())?.revision ?? null;
+    importRevision = cloud
+      ? envelope.value.revision
+      : ((await readVault())?.revision ?? null);
     importCandidate.value = candidate;
     importReady.value = null;
     recoveryMode.value = false;
@@ -632,12 +651,21 @@ async function confirmImport() {
   busy.value = true;
   error.value = "";
   try {
-    const stored = await writeVault(importCandidate.value, importRevision);
-    activate(importReady.value.data, importReady.value.key, stored);
+    const imported = cloud
+      ? await encryptData(key, envelope.value, importReady.value.data)
+      : importCandidate.value;
+    const stored = await writeVault(imported, importRevision);
+    activate(
+      importReady.value.data,
+      cloud ? key : importReady.value.key,
+      stored,
+    );
     importReady.value = null;
     importCandidate.value = null;
     modal.value = "";
-    notice("加密备份已恢复到这个浏览器。");
+    notice(
+      cloud ? "备份已同步到当前个人账号。" : "加密备份已恢复到这个浏览器。",
+    );
   } catch (e) {
     error.value = e.message;
   } finally {
@@ -654,7 +682,9 @@ async function updatePassword() {
   try {
     if (!(await flush())) return;
     const next = await changePassword(key, envelope.value, newPassword.value);
-    envelope.value = await writeVault(next, envelope.value.revision);
+    envelope.value = await writeVault(next, envelope.value.revision, {
+      password: newPassword.value,
+    });
     modal.value = "";
     newPassword.value = "";
     repeatPassword.value = "";
@@ -713,6 +743,65 @@ function exportAi() {
   );
   notice("已下载所选记录的明文素材，未发送给任何 AI 服务。");
 }
+let checking = false,
+  disposed = false,
+  lastChecked = 0;
+async function refreshCloud() {
+  if (
+    !cloud ||
+    disposed ||
+    checking ||
+    !key ||
+    dirty.value ||
+    busy.value ||
+    photoBusy.value ||
+    covered.value ||
+    document.hidden ||
+    modal.value ||
+    savePromise
+  )
+    return;
+  checking = true;
+  lastChecked = Date.now();
+  const previous = envelope.value,
+    ticket = generation,
+    sessionKey = key;
+  try {
+    if ((await cloud.readRevision()) === previous.revision) {
+      if (!disposed && !dirty.value && key === sessionKey)
+        saveStatus.value = savedLabel;
+      return;
+    }
+    const latest = await readVault();
+    const updated = await decryptData(sessionKey, latest);
+    if (
+      disposed ||
+      !key ||
+      sessionKey !== key ||
+      envelope.value !== previous ||
+      generation !== ticket ||
+      busy.value ||
+      dirty.value ||
+      photoBusy.value ||
+      modal.value
+    )
+      return;
+    hydrating = true;
+    try {
+      data.value = updated;
+      envelope.value = latest;
+    } finally {
+      hydrating = false;
+    }
+    saveStatus.value = savedLabel;
+  } catch (e) {
+    if (!disposed && key === sessionKey && !dirty.value)
+      saveStatus.value =
+        e.status === 403 ? "口令已变更，请锁定后重新登录" : "暂未取得云端更新";
+  } finally {
+    checking = false;
+  }
+}
 function onActivity() {
   lastActive = Date.now();
 }
@@ -733,7 +822,10 @@ function onBeforeLeave(event) {
 }
 onMounted(async () => {
   try {
-    if (demo.value) activate(createDemo(), null, null);
+    if (props.cloudSession) {
+      const { opened, stored } = props.cloudSession;
+      activate(opened.data, opened.key, stored);
+    } else if (demo.value) activate(createDemo(), null, null);
     else {
       envelope.value = await readVault();
       if (!crypto.subtle)
@@ -751,9 +843,11 @@ onMounted(async () => {
   idleTimer = setInterval(() => {
     if (active.value && !demo.value && Date.now() - lastActive > IDLE_MS)
       lock();
+    else if (cloud && Date.now() - lastChecked > 30000) refreshCloud();
   }, 10000);
 });
 onBeforeUnmount(() => {
+  disposed = true;
   clearTimeout(saveTimer);
   clearTimeout(toastTimer);
   clearTimeout(coverTimer);
@@ -931,7 +1025,9 @@ onBeforeUnmount(() => {
           <div>
             <span class="eyebrow">MY JOURNAL</span>
             <h1>
-              日记<span class="name-caption">{{ data.name }} 的私人空间</span>
+              日记<span class="name-caption"
+                >{{ cloud ? cloudSession.account : data.name }} 的私人空间</span
+              >
             </h1>
           </div>
           <div class="top-actions">
@@ -1571,7 +1667,9 @@ onBeforeUnmount(() => {
               {{
                 demo
                   ? "所有操作仅保留在本次页面中。"
-                  : "保存在此浏览器，未同步到云端。"
+                  : cloud
+                    ? "仅同步本账号的密文，同一账号可在手机和电脑上解锁。"
+                    : "保存在此浏览器，未同步到云端。"
               }}
             </p>
           </div>
@@ -1670,7 +1768,7 @@ onBeforeUnmount(() => {
       </form>
       <template v-else-if="modal === 'import'"
         ><form v-if="!importReady" @submit.prevent="verifyImport">
-          <p class="muted">先解锁并验证文件，确认后才会写入本机。</p>
+          <p class="muted">先解锁并验证文件，确认后才会恢复。</p>
           <label for="import-secret">{{
             recoveryMode ? "这份备份的恢复码" : "这份备份的日记口令"
           }}</label
@@ -1710,7 +1808,11 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <p v-if="importRevision !== null" class="error">
-            导入将替换此浏览器现有日记，不会合并。请先下载现有日记的加密备份。
+            {{
+              cloud
+                ? "导入将替换当前个人账号的日记，其他设备也会同步。"
+                : "导入将替换此浏览器现有日记。"
+            }}请先下载现有日记的加密备份。
           </p>
           <button
             v-if="importRevision !== null"
@@ -1824,17 +1926,19 @@ onBeforeUnmount(() => {
             「写下」直接输入，没有引导问题。支持文字、照片、草稿自动保存、搜索、月历、收藏和本地周月回顾。
           </p>
           <p>
-            建立个人日记后，正文、照片、草稿、历史版本和回顾会在设备上加密，存入本机浏览器。使用
+            正文、照片、草稿、历史版本和回顾都在设备上加密。使用
             AES-256-GCM，日记口令经 PBKDF2-SHA256
             派生保护密钥。口令与恢复码不会上传。
           </p>
           <p>
-            日记使用独立口令解锁，未接入云同步或外部
-            AI；示例体验只在内存中运行，不能当作私人存储。加密不能保护已经解锁的页面或被入侵的设备。
+            {{
+              preview
+                ? "独立预览保存在本机浏览器。"
+                : "正式网站使用个人日记账号同步密文，同一账号可以在手机和电脑上解锁。"
+            }}
+            示例内容仅在当前页面保留。AI 素材需自己选择并导出。
           </p>
-          <p>
-            请通过加密备份迁移设备，勿将唯一副本长期只留在浏览器。当前每个浏览器只有一本日记；家庭空间的密码不能代替日记口令。
-          </p>
+          <p>请单独保管恢复码，并定期下载加密备份。</p>
           <p v-if="preview">
             <a href="./mobile.html" target="_blank" rel="noopener noreferrer"
               >打开手机尺寸示例预览</a

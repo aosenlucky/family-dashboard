@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import diarySync from './server/diary-sync.js'
 import travelPlanHandler from './api/travel-plan.js'
 import travelPlanStreamHandler from './api/travel-plan-stream.js'
 import travelHistoryHandler from './api/travel-history.js'
@@ -60,6 +61,7 @@ function localApiPlugin() {
         })
       }
 
+      mountApi('/api/diary-sync', diarySync)
       mountApi('/api/travel-history', travelHistoryHandler)
       mountApi('/api/travel-plan-stream', travelPlanStreamHandler)
       mountApi('/api/travel-plan', travelPlanHandler)

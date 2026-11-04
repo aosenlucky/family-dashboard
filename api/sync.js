@@ -1,7 +1,11 @@
 import { readMainRecord, writeMainRecord } from './_data-store.js'
+import diarySync from '../server/diary-sync.js'
 
 export default async function handler(req, res) {
   const { method, headers, body } = req
+  if (req.query?.feature === 'private-diary' || headers['x-diary-access'] || body?.action === 'private-diary') {
+    return diarySync(req, res)
+  }
 
   const pin = process.env.SYSTEM_PASSWORD
   const demoPin = process.env.DEMO_PASSWORD
