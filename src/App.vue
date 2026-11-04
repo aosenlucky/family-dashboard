@@ -34,18 +34,18 @@
     </div>
 
     <div v-if="auth.isLoggedIn">
-        <nav class="fixed top-0 w-full z-50 glass-nav border-b border-white/50 shadow-sm">
-            <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative flex items-center justify-between h-14">
+        <nav aria-label="家庭网站主导航" class="fixed top-0 w-full z-50 glass-nav border-b border-white/50 shadow-sm">
+            <div class="max-w-6xl mx-auto px-2 sm:px-6 lg:px-8 grid grid-cols-[auto_minmax(0,1fr)_auto] lg:grid-cols-[minmax(max-content,1fr)_19rem_minmax(max-content,1fr)] items-center gap-1 sm:gap-3 h-14">
                 <div class="flex items-center space-x-2 text-apple-text font-medium text-sm z-10">
                     <i class="ph-fill ph-heart text-xl text-rose-500"></i><span class="hidden sm:inline">Aosen & 小悦</span>
                 </div>
                 
-                <div class="absolute left-1/2 transform -translate-x-1/2 flex items-center bg-white/40 p-1 rounded-full border border-white/60 shadow-sm z-10">
-                    <router-link to="/life" active-class="bg-white shadow-sm text-gray-800" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium text-gray-500 hover:text-gray-800 transition-all">生活</router-link>
-                    <router-link to="/wealth" active-class="bg-white shadow-sm text-gray-800" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium text-gray-500 hover:text-gray-800 transition-all">理财</router-link>
-                    <router-link to="/gallery" active-class="bg-white shadow-sm text-gray-800" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium text-gray-500 hover:text-gray-800 transition-all">画廊</router-link>
-                    <router-link to="/travel" active-class="bg-white shadow-sm text-gray-800" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium text-gray-500 hover:text-gray-800 transition-all">旅行</router-link>
-                    <router-link to="/diary" active-class="bg-white shadow-sm text-gray-800" class="px-3 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-medium text-gray-500 hover:text-gray-800 transition-all">日记</router-link>
+                <div class="grid grid-cols-5 w-full max-w-[19rem] justify-self-center bg-white/40 p-1 rounded-full border border-white/60 shadow-sm">
+                    <router-link v-for="section in sections" :key="section.path" :to="section.path"
+                        active-class="bg-white shadow-sm text-gray-800"
+                        class="grid min-h-9 place-items-center whitespace-nowrap rounded-full text-xs sm:text-sm font-medium text-gray-500 hover:text-gray-800 transition-colors">
+                        {{ section.label }}
+                    </router-link>
                 </div>
 
                 <div class="flex items-center justify-end space-x-2 sm:space-x-4 text-xs font-medium text-apple-text z-10">
@@ -55,11 +55,11 @@
                     <span v-if="syncStatus && route.path !== '/diary'" class="hidden lg:flex items-center text-[10px] text-apple-blue bg-blue-50 px-2 py-1 rounded-full border border-blue-100 transition-all">
                         <i class="ph ph-cloud-arrows mr-1" :class="{'animate-pulse': isSyncing}"></i> {{ syncStatus }}
                     </span>
-                    <button v-if="route.path === '/wealth'" @click="toggleMask" class="flex items-center text-gray-600 hover:text-apple-blue bg-white/50 px-2 py-1.5 rounded-full border border-white shadow-sm transition-colors">
+                    <button v-if="route.path === '/wealth'" @click="toggleMask" :aria-label="isMasked ? '显示金额' : '隐藏金额'" class="flex items-center text-gray-600 hover:text-apple-blue bg-white/50 px-2 py-1.5 rounded-full border border-white shadow-sm transition-colors">
                         <i class="ph text-lg md:mr-1" :class="isMasked ? 'ph-eye-closed' : 'ph-eye'"></i>
                         <span class="hidden md:inline">{{ isMasked ? '显示金额' : '隐藏金额' }}</span>
                     </button>
-                    <button v-if="!isDemoMode" @click="showConfig = true" class="flex items-center bg-gray-800 text-white hover:bg-gray-700 px-2 sm:px-3 py-1.5 rounded-full shadow-sm transition-colors">
+                    <button v-if="!isDemoMode" @click="showConfig = true" aria-label="配置" class="flex items-center bg-gray-800 text-white hover:bg-gray-700 px-2 sm:px-3 py-1.5 rounded-full shadow-sm transition-colors">
                         <i class="ph ph-gear md:mr-1"></i> <span class="hidden md:inline">配置</span>
                     </button>
                 </div>
@@ -88,6 +88,13 @@ import { useRoute } from 'vue-router'
 import ConfigPanel from './components/ConfigPanel.vue'
 
 const route = useRoute()
+const sections = [
+    { path: '/life', label: '生活' },
+    { path: '/wealth', label: '理财' },
+    { path: '/gallery', label: '画廊' },
+    { path: '/travel', label: '旅行' },
+    { path: '/diary', label: '日记' }
+]
 
 const defaultData = {
     salaryBank: '工商银行', salaryDay: 15, usdRate: 7.25,
