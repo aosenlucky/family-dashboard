@@ -14,7 +14,7 @@ export function buildObjectKey(rawFolder, filename, now = Date.now()) {
 
 export default async function handler(req, res) {
   const PIN = process.env.SYSTEM_PASSWORD;
-  if (req.headers.authorization !== PIN) {
+  if (!PIN || req.headers.authorization !== PIN) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 

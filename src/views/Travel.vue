@@ -1,5 +1,5 @@
 <template>
-  <div class="pt-28 pb-20 min-h-screen">
+  <div class="pt-6 pb-20 min-h-screen">
     <header class="px-4 text-center mb-10">
       <p class="text-[11px] text-apple-blue font-semibold mb-2">Family Trip</p>
       <h1 class="text-3xl md:text-5xl font-semibold tracking-tight text-gray-900 mb-3">一起把假期安排舒服</h1>
@@ -407,8 +407,10 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, inject } from 'vue'
 import { toPng } from 'html-to-image'
+const reloadFamily=inject('reloadFamily'),notifyFamily=inject('showNotification',()=>{});
+async function alignSharedVersion(){try{await reloadFamily?.();}catch{notifyFamily('旅行修改已完成；家庭版本暂未刷新，下次保存前请重试同步。');}}
 
 const variantOptions = [
   { id: 'classic', label: '经典版', detail: '代表性景点和城市初印象' },
@@ -865,6 +867,7 @@ async function saveCurrentPlan() {
     saveStatus.value = '已保存到云端历史，电脑和手机都能看到。'
     isViewingSavedPlan.value = true
     currentHistoryId.value = data.item?.id || item.id
+    await alignSharedVersion()
   } catch (err) {
     saveStatus.value = err instanceof Error ? err.message : '保存失败，请稍后再试。'
   } finally {
@@ -938,6 +941,7 @@ async function deleteHistoryItem(item) {
       isViewingSavedPlan.value = false
     }
     saveStatus.value = '这条历史行程已删除。'
+    await alignSharedVersion()
   } catch (err) {
     saveStatus.value = err instanceof Error ? err.message : '删除失败，请稍后再试。'
   } finally {
@@ -959,6 +963,7 @@ async function clearHistory() {
     currentHistoryId.value = ''
     isViewingSavedPlan.value = false
     saveStatus.value = '云端历史记录已清空。'
+    await alignSharedVersion()
   } catch (err) {
     saveStatus.value = err instanceof Error ? err.message : '清空失败，请稍后再试。'
   } finally {

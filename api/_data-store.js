@@ -1,3 +1,7 @@
+import { randomUUID } from 'node:crypto'
+import { hasPreviewStore, previewTransaction } from '../server/preview-store.js'
+import { REVISION_FIELD, mergeMain, visibleMain, redactSecrets, requireRevision, fail } from './_family-security.js'
+
 export const TRAVEL_INDEX_FIELD = 'travelHistoryIndex'
 export const TRAVEL_DETAILS_FIELD = 'travelPlanDetails'
 export const LEGACY_TRAVEL_FIELD = 'travelHistory'
@@ -8,13 +12,14 @@ const MAIN_TABLE = process.env.SUPABASE_MAIN_TABLE || process.env.SUPABASE_TABLE
 const TRAVEL_INDEX_TABLE = process.env.SUPABASE_TRAVEL_INDEX_TABLE || 'travel_history_index'
 const TRAVEL_DETAILS_TABLE = process.env.SUPABASE_TRAVEL_DETAILS_TABLE || 'travel_plan_details'
 const SENSITIVE_MAIN_FIELDS = new Set(['wealthPassword'])
-const SUPABASE_WRITE_CHUNK_SIZE = Math.max(1, Math.min(Number(process.env.SUPABASE_WRITE_CHUNK_SIZE || 10), 50))
 
 export function getStorageBackendName() {
+  if (hasPreviewStore()) return 'local-preview'
   return hasSupabaseConfig() ? 'supabase' : 'jsonbin'
 }
 
 export function hasSupabaseConfig() {
+  if (hasPreviewStore()) return false
   return Boolean(process.env.SUPABASE_URL && getSupabaseKey())
 }
 
@@ -44,23 +49,52 @@ export async function pingSupabase() {
 }
 
 export async function readMainRecord() {
+  if (hasPreviewStore()) return previewTransaction((state) => sanitizeMainRecord(state.records.main?.value || {}), { write: false })
   const record = hasSupabaseConfig() ? await readSupabaseMainRecord() : await readJsonBinRecord(getJsonBinMainId())
   return sanitizeMainRecord(record)
 }
 
-export async function writeMainRecord(record) {
-  const safeRecord = sanitizeMainRecord(record)
-  if (hasSupabaseConfig()) return writeSupabaseMainRecord(safeRecord)
-
-  const mainBinId = getJsonBinMainId()
-  if (process.env.JSONBIN_TRAVEL_BIN_ID) return writeJsonBinRecord(mainBinId, safeRecord)
-
-  const current = await readJsonBinRecord(mainBinId).catch(() => ({}))
-  return writeJsonBinRecord(mainBinId, {
-    ...safeRecord,
-    ...pickTravelFields(current)
+export async function writeMainRecord(record, revision, { wealthUnlocked = false } = {}) {
+  requireRevision(revision)
+  if (hasPreviewStore()) return previewTransaction((state) => {
+    const current = state.records.main?.value || {}
+    checkRevision(current, revision)
+    const value = { ...mergeMain(record, current, wealthUnlocked), [REVISION_FIELD]: revision + 1 }
+    state.records.main = { key: MAIN_KEY, value, updated_at: new Date().toISOString() }
+    return snapshot(value)
   })
+  if (!hasSupabaseConfig()) fail(503, '当前存储不支持并发版本校验，暂不可保存。请使用 Supabase。')
+  const config = getSupabaseConfig()
+  const rows = await supabaseJson(config, `${config.mainTable}?key=eq.main&select=value&limit=1`)
+  const current = rows?.[0]?.value || {}
+  checkRevision(current, revision)
+  const value = { ...mergeMain(record, current, wealthUnlocked), [REVISION_FIELD]: revision + 1 }
+  const row = { key: MAIN_KEY, value, updated_at: new Date().toISOString() }
+  if (!rows?.length) {
+    try {
+      await supabaseJson(config, config.mainTable, { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(row) })
+    } catch (error) { if (error.status === 409) throw conflict(await readMainRecord()); throw error }
+  } else {
+    const filter = revision === 0
+      ? `or=(value->>${REVISION_FIELD}.is.null,value->>${REVISION_FIELD}.eq.0)`
+      : `value->>${REVISION_FIELD}=eq.${revision}`
+    const updated = await supabaseJson(config, `${config.mainTable}?key=eq.main&${filter}`, {
+      method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ value, updated_at: row.updated_at })
+    })
+    if (!updated?.length) throw conflict(await readMainRecord())
+  }
+  return snapshot(value)
 }
+
+export function snapshot(record = {}) {
+  const revision = record[REVISION_FIELD] ?? 0
+  if (!Number.isSafeInteger(revision) || revision < 0) fail(503, '服务器数据版本无效，请先检查存储。')
+  const { [REVISION_FIELD]: _revision, ...value } = record
+  return { record: value, revision }
+}
+export async function readMainSnapshot() { return snapshot(await readMainRecord()) }
+function conflict(record) { return Object.assign(new Error('其他设备已保存新内容，请检查最新版本后重试。'), { status: 409, ...snapshot(record) }) }
+function checkRevision(record, revision) { if (snapshot(record).revision !== revision) throw conflict(record) }
 
 export async function listTravelSummaries(limit = 60) {
   if (hasSupabaseConfig()) return listSupabaseTravelSummaries(limit)
@@ -74,59 +108,98 @@ export async function getTravelDetail(id) {
 }
 
 export async function saveTravelItem(item, maxItems = 60) {
-  if (hasSupabaseConfig()) return saveSupabaseTravelItem(item, maxItems)
-  const state = normalizeTravelState(await readTravelRecord())
   const nextItem = normalizeTravelDetail(item)
   const summary = summarizeTravelItem(nextItem)
-  const index = [
-    summary,
-    ...state.index.filter((saved) => saved.id !== summary.id && (saved.destination !== summary.destination || saved.dateRange !== summary.dateRange))
-  ].slice(0, maxItems)
-  const allowedIds = new Set(index.map((saved) => saved.id))
-  const details = {
-    ...Object.fromEntries(Object.entries(state.details).filter(([id]) => allowedIds.has(id))),
-    [nextItem.id]: nextItem
+  const limit = Math.max(1, Math.min(Number.isSafeInteger(maxItems) ? maxItems : 60, 500))
+  if (hasPreviewStore()) return previewTransaction((store) => {
+    const state = normalizeTravelState(store.travel || {})
+    const index = [summary, ...state.index.filter((saved) => saved.id !== summary.id)]
+      .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || ''))).slice(0, limit)
+    const allowed = new Set(index.map((saved) => saved.id))
+    const details = Object.fromEntries(Object.entries({ ...state.details, [nextItem.id]: nextItem }).filter(([id]) => allowed.has(id)))
+    store.travel = { [TRAVEL_INDEX_FIELD]: index, [TRAVEL_DETAILS_FIELD]: details, [LEGACY_TRAVEL_FIELD]: [] }
+    return { summary, index, detail: nextItem, revision: advancePreviewRevision(store) }
+  })
+  if (!hasSupabaseConfig()) fail(503, '当前存储不支持原子旅行保存，请使用 Supabase。')
+  return familyRpc('family_travel_mutate', { p_action: 'save', p_detail: nextItem, p_summary: summary, p_id: nextItem.id, p_limit: limit })
+}
+
+function advancePreviewRevision(store) {
+  const current = store.records.main?.value || {}
+  const revision = snapshot(current).revision + 1
+  store.records.main = { key: MAIN_KEY, value: { ...current, [REVISION_FIELD]: revision }, updated_at: new Date().toISOString() }
+  return revision
+}
+
+async function familyRpc(name, args = {}) {
+  const config = getSupabaseConfig()
+  try {
+    return await supabaseJson(config, `rpc/${name}`, { method: 'POST', body: JSON.stringify({
+      p_main_table: config.mainTable, p_index_table: config.travelIndexTable, p_detail_table: config.travelDetailsTable, ...args
+    }) })
+  } catch (error) {
+    if (error.status === 404) fail(503, '尚未安装完整的数据安全事务，请先执行 supabase/personal-restore.sql。未更改任何数据。')
+    throw error
   }
-  await writeTravelRecordFromState({ index, details })
-  return { summary, index, detail: nextItem }
 }
 
 export async function deleteTravelItem(id) {
-  if (hasSupabaseConfig()) return deleteSupabaseTravelItem(id)
-  const state = normalizeTravelState(await readTravelRecord())
-  const index = id ? state.index.filter((item) => item.id !== id) : []
-  const details = id ? Object.fromEntries(Object.entries(state.details).filter(([itemId]) => itemId !== id)) : {}
-  await writeTravelRecordFromState({ index, details })
-  return index
+  if (hasPreviewStore()) return previewTransaction((store) => {
+    const state = normalizeTravelState(store.travel || {})
+    const index = id ? state.index.filter((item) => item.id !== id) : []
+    const details = id ? Object.fromEntries(Object.entries(state.details).filter(([itemId]) => itemId !== id)) : {}
+    store.travel = { [TRAVEL_INDEX_FIELD]: index, [TRAVEL_DETAILS_FIELD]: details, [LEGACY_TRAVEL_FIELD]: [] }
+    return { index, revision: advancePreviewRevision(store) }
+  })
+  if (!hasSupabaseConfig()) fail(503, '当前存储不支持原子旅行删除，请使用 Supabase。')
+  return familyRpc('family_travel_mutate', { p_action: 'delete', p_detail: null, p_summary: null, p_id: id || '', p_limit: 60 })
 }
 
 export async function readTravelRecord() {
+  if (hasPreviewStore()) return previewTransaction((state) => state.travel || {}, { write: false })
   if (hasSupabaseConfig()) return readSupabaseTravelRecord()
   if (process.env.JSONBIN_TRAVEL_BIN_ID) return readJsonBinRecord(process.env.JSONBIN_TRAVEL_BIN_ID)
   return pickTravelFields(await readJsonBinRecord(getJsonBinMainId()))
 }
 
 export async function writeTravelRecord(record) {
-  if (hasSupabaseConfig()) return replaceSupabaseTravelRecord(record)
-  if (process.env.JSONBIN_TRAVEL_BIN_ID) return writeJsonBinRecord(process.env.JSONBIN_TRAVEL_BIN_ID, record)
-
-  const mainBinId = getJsonBinMainId()
-  const current = await readJsonBinRecord(mainBinId).catch(() => ({}))
-  return writeJsonBinRecord(mainBinId, {
-    ...current,
-    ...record
-  })
+  fail(428, '整库写入需要使用带版本校验的完整恢复。')
 }
 
 export async function readFullBackup() {
-  const [main, travel] = await Promise.all([readMainRecord(), readTravelRecord()])
+  let consistent
+  if (hasPreviewStore()) consistent = await previewTransaction((state) => ({ record: state.records.main?.value || {}, travel: state.travel || {} }), { write: false })
+  else {
+    if (!hasSupabaseConfig()) fail(503, '当前存储不支持一致性完整备份，请使用 Supabase。')
+    consistent = await familyRpc('family_read_snapshot')
+  }
+  const { record, revision } = snapshot(consistent.record)
+  const travel = consistent.travel
   return {
-    version: 3,
+    version: 4,
     exportedAt: new Date().toISOString(),
     storageBackend: getStorageBackendName(),
-    main,
-    travel
+    revision,
+    main: visibleMain(record, true),
+    travel: redactSecrets(travel),
+    mediaOrigins: getMediaOrigins()
   }
+}
+
+export function getMediaOrigins() {
+  if (hasPreviewStore()) return []
+  const origins = new Set()
+  const candidates = [process.env.OBS_PUBLIC_URL, process.env.OBS_CDN_URL]
+  if (process.env.OBS_BUCKET_NAME && process.env.OBS_ENDPOINT) {
+    try {
+      const endpoint = new URL(process.env.OBS_ENDPOINT.includes('://') ? process.env.OBS_ENDPOINT : `https://${process.env.OBS_ENDPOINT}`)
+      candidates.push(`https://${process.env.OBS_BUCKET_NAME}.${endpoint.hostname}`)
+    } catch { /* Invalid storage configuration is not a trusted media source. */ }
+  }
+  for (const candidate of candidates.filter(Boolean)) {
+    try { const url = new URL(candidate); if (url.protocol === 'https:' && !url.username && !url.password) origins.add(url.origin) } catch { /* ignore */ }
+  }
+  return [...origins]
 }
 
 export async function readJsonBinFullBackup() {
@@ -143,26 +216,49 @@ export async function readJsonBinFullBackup() {
   }
 }
 
-export async function restoreFullBackup(backup) {
-  if (!backup || typeof backup !== 'object') throw new Error('备份文件格式不正确。')
-  const main = backup.main && typeof backup.main === 'object' ? backup.main : null
-  const travel = backup.travel && typeof backup.travel === 'object' ? backup.travel : null
-  if (!main && !travel) throw new Error('备份文件里没有可恢复的数据。')
-  if (main) {
-    try {
-      await writeMainRecord(removeTravelFields(main))
-    } catch (error) {
-      throw new Error(`主配置写入失败：${getErrorMessage(error)}`)
-    }
+export async function restoreFullBackup(backup, revision, { restorePointId } = {}) {
+  requireRevision(revision)
+  if (!restorePointId) validateBackup(backup)
+  if (restorePointId && !/^restore-[a-f0-9-]{36}$/.test(restorePointId)) fail(400, '恢复点无效。')
+  const pointId = `restore-${randomUUID()}`
+  if (hasPreviewStore()) return previewTransaction((state) => {
+    const current = state.records.main?.value || {}
+    checkRevision(current, revision)
+    const target = restorePointId ? state.records[restorePointId]?.value : backup
+    validateBackup(target)
+    state.records[pointId] = { key: pointId, value: { version: 4, main: visibleMain(current, true), travel: state.travel || {}, exportedAt: new Date().toISOString() } }
+    const value = { ...mergeMain(removeTravelFields(target.main), current, true), [REVISION_FIELD]: revision + 1 }
+    state.records.main = { key: MAIN_KEY, value, updated_at: new Date().toISOString() }
+    state.travel = target.travel || {}
+    return { revision: revision + 1, restorePointId: pointId, mainRestored: true, travelRestored: true }
+  })
+  if (!hasSupabaseConfig()) fail(503, '当前存储不支持原子恢复，请使用 Supabase。')
+  const config = getSupabaseConfig()
+  try {
+    const result = await supabaseJson(config, 'rpc/family_restore_snapshot', { method: 'POST', body: JSON.stringify({
+      p_main_table: config.mainTable, p_index_table: config.travelIndexTable, p_detail_table: config.travelDetailsTable,
+      p_backup: restorePointId ? null : { ...backup, main: visibleMain(removeTravelFields(backup.main), true), travel: travelForRestore(backup.travel) },
+      p_revision: revision, p_point_id: pointId, p_rollback_id: restorePointId || null
+    }) })
+    if (result?.conflict) throw conflict(result.current || {})
+    return result
+  } catch (error) {
+    if (error.status === 404) fail(503, '尚未安装安全恢复事务，请先执行 supabase/personal-restore.sql。未更改任何数据。')
+    throw error
   }
-  if (travel) {
-    try {
-      await writeTravelRecord(travel)
-    } catch (error) {
-      throw new Error(`旅行历史写入失败：${getErrorMessage(error)}`)
-    }
-  }
-  return { mainRestored: Boolean(main), travelRestored: Boolean(travel) }
+}
+
+export function validateBackup(backup) {
+  if (!backup || typeof backup !== 'object' || Array.isArray(backup) || !backup.main || typeof backup.main !== 'object' || Array.isArray(backup.main) || !backup.travel || typeof backup.travel !== 'object' || Array.isArray(backup.travel)) fail(400, '备份必须包含完整 main 和 travel 对象。')
+  if (![3, 4].includes(backup.version)) fail(400, '备份版本不受支持。')
+  if (Buffer.byteLength(JSON.stringify(backup)) > 32 * 1024 * 1024) fail(413, '备份数据超过 32 MB。')
+  const main = backup.main
+  const photos = Array.isArray(main.photos) ? main.photos.length : Array.isArray(main.gallery) ? main.gallery.length : 0
+  return { photos, moments: (main.moments || main.ourMoments || []).length || 0, todos: (main.todos || []).length || 0, travel: normalizeTravelState(backup.travel).index.length }
+}
+function travelForRestore(travel) {
+  const state = normalizeTravelState(travel)
+  return { travelHistory: [], travelHistoryIndex: state.index, travelPlanDetails: state.details }
 }
 
 export function pickTravelFields(record = {}) {
@@ -270,27 +366,10 @@ export function sanitizeMainRecord(record = {}) {
   return Object.fromEntries(Object.entries(record).filter(([key]) => !SENSITIVE_MAIN_FIELDS.has(key)))
 }
 
-async function writeTravelRecordFromState(state) {
-  return writeTravelRecord({
-    [TRAVEL_INDEX_FIELD]: state.index,
-    [TRAVEL_DETAILS_FIELD]: state.details,
-    [LEGACY_TRAVEL_FIELD]: []
-  })
-}
-
 async function readSupabaseMainRecord() {
   const config = getSupabaseConfig()
   const rows = await supabaseJson(config, `${config.mainTable}?key=eq.${encodeURIComponent(MAIN_KEY)}&select=value&limit=1`)
   return rows?.[0]?.value && typeof rows[0].value === 'object' ? rows[0].value : {}
-}
-
-async function writeSupabaseMainRecord(value) {
-  const config = getSupabaseConfig()
-  await supabaseJson(config, `${config.mainTable}?on_conflict=key`, {
-    method: 'POST',
-    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-    body: JSON.stringify({ key: MAIN_KEY, value, updated_at: new Date().toISOString() })
-  })
 }
 
 async function listSupabaseTravelSummaries(limit) {
@@ -305,126 +384,12 @@ async function getSupabaseTravelDetail(id) {
   return rows?.[0]?.item || null
 }
 
-async function saveSupabaseTravelItem(item, maxItems) {
-  const config = getSupabaseConfig()
-  const detail = normalizeTravelDetail(item)
-  const summary = summarizeTravelItem(detail)
-  const savedAt = safeTimestamp(summary.savedAt)
-
-  await supabaseJson(config, `${config.travelIndexTable}?on_conflict=id`, {
-    method: 'POST',
-    headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
-    body: JSON.stringify({
-      id: summary.id,
-      destination: summary.destination,
-      date_range: summary.dateRange,
-      saved_at: savedAt,
-      active_variant: summary.activeVariant,
-      title: summary.title,
-      day_count: summary.dayCount,
-      hotel_name: summary.hotelName,
-      summary,
-      updated_at: new Date().toISOString()
-    })
-  })
-
-  await supabaseJson(config, `${config.travelDetailsTable}?on_conflict=id`, {
-    method: 'POST',
-    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-    body: JSON.stringify({
-      id: detail.id,
-      item: detail,
-      saved_at: savedAt,
-      updated_at: new Date().toISOString()
-    })
-  })
-
-  await pruneSupabaseTravel(config, maxItems)
-  return { summary, index: await listSupabaseTravelSummaries(maxItems), detail }
-}
-
-async function deleteSupabaseTravelItem(id) {
-  const config = getSupabaseConfig()
-  if (id) {
-    await supabaseJson(config, `${config.travelDetailsTable}?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' })
-    await supabaseJson(config, `${config.travelIndexTable}?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' })
-    return listSupabaseTravelSummaries(60)
-  }
-
-  await supabaseJson(config, `${config.travelDetailsTable}?id=not.is.null`, { method: 'DELETE' })
-  await supabaseJson(config, `${config.travelIndexTable}?id=not.is.null`, { method: 'DELETE' })
-  return []
-}
-
-async function pruneSupabaseTravel(config, maxItems) {
-  const rows = await supabaseJson(config, `${config.travelIndexTable}?select=id&order=saved_at.desc&offset=${encodeURIComponent(maxItems)}`)
-  const ids = (rows || []).map((row) => row.id).filter(Boolean)
-  if (!ids.length) return
-  const filter = `id=in.(${ids.map((id) => `"${String(id).replaceAll('"', '\\"')}"`).join(',')})`
-  await supabaseJson(config, `${config.travelDetailsTable}?${filter}`, { method: 'DELETE' })
-  await supabaseJson(config, `${config.travelIndexTable}?${filter}`, { method: 'DELETE' })
-}
-
 async function readSupabaseTravelRecord() {
-  const config = getSupabaseConfig()
-  const [indexRows, detailRows] = await Promise.all([
-    supabaseJson(config, `${config.travelIndexTable}?select=summary&order=saved_at.desc&limit=500`),
-    supabaseJson(config, `${config.travelDetailsTable}?select=id,item&order=saved_at.desc&limit=500`)
-  ])
-  return {
-    [TRAVEL_INDEX_FIELD]: (indexRows || []).map((row) => normalizeSummary(row.summary)).filter(Boolean),
-    [TRAVEL_DETAILS_FIELD]: Object.fromEntries((detailRows || []).filter((row) => row.id && row.item).map((row) => [row.id, row.item])),
-    [LEGACY_TRAVEL_FIELD]: []
-  }
-}
-
-async function replaceSupabaseTravelRecord(record) {
-  const config = getSupabaseConfig()
-  const state = normalizeTravelState(record)
-  await deleteSupabaseTravelItem('')
-  const summaries = state.index
-  const details = state.details
-
-  if (summaries.length) {
-    await upsertSupabaseRows(config, config.travelIndexTable, summaries.map((summary) => ({
-      id: summary.id,
-      destination: summary.destination,
-      date_range: summary.dateRange,
-      saved_at: safeTimestamp(summary.savedAt),
-      active_variant: summary.activeVariant,
-      title: summary.title,
-      day_count: summary.dayCount,
-      hotel_name: summary.hotelName,
-      summary,
-      updated_at: new Date().toISOString()
-    })))
-  }
-
-  const detailRows = summaries
-    .map((summary) => details[summary.id])
-    .filter((item) => item?.id)
-    .map((item) => ({
-        id: item.id,
-        item,
-        saved_at: safeTimestamp(item.savedAt),
-        updated_at: new Date().toISOString()
-      }))
-  if (detailRows.length) {
-    await upsertSupabaseRows(config, config.travelDetailsTable, detailRows)
-  }
-}
-
-async function upsertSupabaseRows(config, table, rows) {
-  for (const chunk of chunkArray(rows, SUPABASE_WRITE_CHUNK_SIZE)) {
-    await supabaseJson(config, `${table}?on_conflict=id`, {
-      method: 'POST',
-      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify(chunk)
-    })
-  }
+  return (await familyRpc('family_read_snapshot')).travel
 }
 
 export function getSupabaseConfig() {
+  if (hasPreviewStore()) fail(503, '隔离预览不能访问真实云数据库。')
   const url = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '')
   const key = getSupabaseKey()
   if (!url || !key) throw new Error('缺少 SUPABASE_URL 或 SUPABASE_SERVICE_ROLE_KEY。')
@@ -452,26 +417,11 @@ async function supabaseJson(config, path, options = {}) {
   if (!response.ok) {
     const detail = await response.text()
     const method = options.method || 'GET'
-    throw new Error(`Supabase 请求失败（${method} ${path}）：${response.status} ${detail || response.statusText}`)
+    throw Object.assign(new Error(`Supabase 请求失败（${method} ${path}）：${response.status} ${detail || response.statusText}`), { status: response.status })
   }
   if (response.status === 204) return null
   const text = await response.text()
   return text ? JSON.parse(text) : null
-}
-
-function chunkArray(items, size) {
-  const chunks = []
-  for (let index = 0; index < items.length; index += size) chunks.push(items.slice(index, index + size))
-  return chunks
-}
-
-function getErrorMessage(error) {
-  return error instanceof Error ? error.message : String(error)
-}
-
-function safeTimestamp(value) {
-  const date = value ? new Date(value) : new Date()
-  return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString()
 }
 
 function getJsonBinMainId() {
@@ -487,13 +437,4 @@ async function readJsonBinRecord(binId) {
   if (!response.ok) throw new Error(`读取 JsonBin 失败：${response.status} ${await response.text()}`)
   const data = await response.json()
   return data.record && typeof data.record === 'object' ? data.record : {}
-}
-
-async function writeJsonBinRecord(binId, record) {
-  const response = await fetch(`https://api.jsonbin.io/v3/b/${binId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', 'X-Master-Key': process.env.JSONBIN_API_KEY },
-    body: JSON.stringify(record)
-  })
-  if (!response.ok) throw new Error(`写入 JsonBin 失败：${response.status} ${await response.text()}`)
 }

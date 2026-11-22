@@ -1,40 +1,15 @@
+import { timingSafeEqual } from 'node:crypto'
+import { requireFamily, createWealthToken, fail } from './_family-security.js'
+
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' })
-
-  const sitePin = process.env.SYSTEM_PASSWORD || ''
-  const demoPin = process.env.DEMO_PASSWORD || ''
-  const authHeader = req.headers.authorization || ''
-  const isRealSession = Boolean(sitePin && authHeader === sitePin)
-  const isDemoSession = Boolean(demoPin && authHeader === demoPin && authHeader !== sitePin)
-
-  if (!isRealSession && !isDemoSession) {
-    return res.status(401).json({ error: 'Unauthorized' })
-  }
-
-  const expectedPassword = isDemoSession
-    ? process.env.DEMO_WEALTH_PASSWORD || process.env.DEMO_PASSWORD || ''
-    : process.env.WEALTH_PASSWORD || ''
-  const demoWealthPassword = process.env.DEMO_WEALTH_PASSWORD || process.env.DEMO_PASSWORD || ''
-
-  if (!expectedPassword) {
-    return res.status(500).json({
-      error: isDemoSession
-        ? '缺少 DEMO_WEALTH_PASSWORD 或 DEMO_PASSWORD 环境变量。'
-        : '缺少 WEALTH_PASSWORD 环境变量。'
-    })
-  }
-
-  const inputPassword = String(req.body?.password || '')
-  if (isRealSession && demoWealthPassword && inputPassword === demoWealthPassword) {
-    return res.status(403).json({ error: '当前是真实数据会话。要查看 mock 数据，请先锁定家门，再用演示密码从首页登录。' })
-  }
-
-  if (!inputPassword || inputPassword !== expectedPassword) {
-    return res.status(403).json({ error: '理财密码错误。' })
-  }
-
-  return res.status(200).json({
-    success: true,
-    mode: isDemoSession ? 'demo' : 'real'
-  })
+  res.setHeader('Cache-Control', 'private, no-store')
+  try {
+    if (req.method !== 'POST') fail(405, 'Method Not Allowed')
+    const mode = requireFamily(req, { allowDemo: true })
+    const password = mode === 'demo' ? process.env.DEMO_WEALTH_PASSWORD || process.env.DEMO_PASSWORD : process.env.WEALTH_PASSWORD
+    if (!password) fail(503, '尚未配置理财密码。')
+    const input = typeof req.body?.password === 'string' ? req.body.password : ''
+    if (!input || Buffer.byteLength(input) !== Buffer.byteLength(password) || !timingSafeEqual(Buffer.from(input), Buffer.from(password))) fail(403, '理财密码错误。')
+    return res.status(200).json({ success: true, mode, ...createWealthToken(mode) })
+  } catch (error) { return res.status(error.status || 500).json({ error: error.message }) }
 }

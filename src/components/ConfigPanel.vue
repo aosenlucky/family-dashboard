@@ -1,12 +1,12 @@
 <template>
     <div class="fixed inset-0 z-[300] flex items-center justify-center p-4">
-        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="$emit('close')"></div>
-        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col relative z-10 overflow-hidden">
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="closePanel"></div>
+        <div v-modal-focus @keydown.esc.stop.prevent="closePanel" role="dialog" aria-modal="true" aria-label="高级编辑" class="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col relative z-10 overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 shrink-0">
-                <h3 class="text-lg font-semibold flex items-center"><i class="ph ph-gear-six mr-2"></i> 家庭空间配置台</h3>
-                <button @click="$emit('close')" class="text-gray-400 hover:text-gray-800"><i class="ph ph-x text-xl"></i></button>
+                <h3 class="text-lg font-semibold flex items-center"><i class="ph ph-gear-six mr-2"></i> 高级编辑</h3>
+                <button @click="closePanel" class="text-gray-400 hover:text-gray-800"><i class="ph ph-x text-xl"></i></button>
             </div>
-            
+
             <div class="flex overflow-x-auto no-scrollbar border-b border-gray-200 px-6 bg-gray-50/50 shrink-0">
                 <button @click="configTab = 'life'" :class="configTab === 'life' ? 'border-apple-blue text-apple-blue' : 'border-transparent text-gray-500'" class="px-4 py-3 border-b-2 text-sm font-medium whitespace-nowrap shrink-0">日常与相册</button>
                 <button @click="configTab = 'assets'" :class="configTab === 'assets' ? 'border-apple-blue text-apple-blue' : 'border-transparent text-gray-500'" class="px-4 py-3 border-b-2 text-sm font-medium whitespace-nowrap shrink-0">资产与股市</button>
@@ -15,10 +15,10 @@
             </div>
 
             <div class="flex-1 overflow-y-auto modal-scroll p-4 md:p-6 bg-gray-50 relative">
-                
+
                 <!-- ================= TAB 1: 日常记录与相册 ================= -->
                 <div v-if="configTab === 'life'" class="space-y-6">
-                    
+
                     <!-- 光影相册管理 -->
                     <div class="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 transition-all duration-300">
                         <div class="flex justify-between items-center cursor-pointer select-none" @click="toggle('photos')">
@@ -28,12 +28,12 @@
                             </h4>
                             <button @click.stop="addPhoto" class="text-[10px] bg-gray-100 px-2 py-1 rounded hover:bg-gray-200 transition">新增外部链接</button>
                         </div>
-                        
+
                         <div v-show="activeSections.photos" class="mt-4 space-y-6">
                             <!-- 直传控制台 -->
                             <div class="bg-blue-50/50 border border-blue-100 rounded-xl p-3 md:p-4">
                                 <h5 class="text-xs font-semibold text-apple-blue mb-3 flex items-center"><i class="ph-bold ph-cloud-arrow-up mr-1"></i> 本地原图直传 (自动入库 OBS)</h5>
-                                
+
                                 <div v-if="!uploadFile" @click="$refs.fileInput.click()" class="border-2 border-dashed border-blue-200 bg-white rounded-xl p-6 md:p-8 flex flex-col items-center justify-center cursor-pointer hover:bg-blue-50 transition">
                                     <i class="ph-duotone ph-upload-simple text-4xl text-blue-300 mb-2"></i>
                                     <p class="text-sm text-gray-600 font-medium text-center">点击上传高清原图</p>
@@ -93,12 +93,12 @@
                                     <button @click="familyData.photos.splice(idx,1)" class="text-gray-400 absolute right-2 top-2 p-1.5 hover:bg-red-50 hover:text-red-500 rounded transition z-20">
                                         <i class="ph ph-trash text-base"></i>
                                     </button>
-                                    
+
                                     <div class="w-16 h-16 md:w-20 md:h-20 shrink-0 rounded-lg overflow-hidden bg-gray-200 border border-gray-300 shadow-inner flex items-center justify-center relative mt-1">
                                         <img v-if="photo.url" :src="getThumbUrl(photo.url)" :data-orig="photo.url" class="w-full h-full object-cover relative z-10" @error="useOriginalPhoto" />
                                         <i v-else class="ph-duotone ph-image text-gray-400 text-2xl"></i>
                                     </div>
-                                    
+
                                     <div class="flex-1 flex flex-col justify-center space-y-2 min-w-0">
                                         <div class="flex flex-col md:flex-row gap-2 w-full mt-2 md:mt-0">
                                             <input v-model="photo.url" type="text" placeholder="图片URL" class="w-full md:flex-1 border rounded px-2 py-1 text-xs text-gray-500 bg-gray-100 min-w-0" readonly />
@@ -211,19 +211,19 @@
                                 <i class="ph ml-2 text-gray-400 transition-transform" :class="activeSections.reading ? 'ph-caret-up' : 'ph-caret-down'"></i>
                             </h4>
                         </div>
-                        
+
                         <div v-show="activeSections.reading" class="mt-4 space-y-4">
                             <p class="text-[10px] text-gray-500 leading-relaxed bg-indigo-50/50 p-2.5 rounded-lg border border-indigo-100 flex items-start">
                                 <i class="ph-fill ph-lightbulb text-indigo-400 mr-1.5 mt-0.5 text-base"></i>
                                 <span><b>使用姿势：</b>在微信读书 APP 中点击「导出 -> 复制到剪贴板」，然后将划线笔记粘贴在下方。<br />DeepSeek 将帮您生成深度笔记，并且<b>系统会自动联网抓取本书的高清封面</b>！</span>
                             </p>
-                            
+
                             <div class="space-y-3">
                                 <div>
-                                    <label class="text-[10px] text-gray-600 font-medium block mb-1">DeepSeek API Key</label>
+                                    <label class="text-[10px] text-gray-600 font-medium block mb-1">本次整理密钥（服务器已配置时可留空）</label>
                                     <input v-model="familyData.llmApiKey" type="password" placeholder="sk-..." class="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-1 focus:ring-indigo-400 outline-none" />
                                 </div>
-                                
+
                                 <div>
                                     <label class="text-[10px] text-gray-600 font-medium block mb-1 flex justify-between">
                                         <span>从微信读书复制的原始笔记文本</span>
@@ -231,8 +231,8 @@
                                     </label>
                                     <textarea v-model="rawWeReadNote" rows="6" placeholder="《被讨厌的勇气》&#10;岸见一郎 古贺史健&#10;10个笔记&#10;&#10;◆ 引言&#10;>> 哲人：不，这并非无情..." class="w-full border border-gray-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-400 outline-none resize-y"></textarea>
                                 </div>
-                                
-                                <button @click="generateMagicNote" :disabled="isGeneratingNote || !rawWeReadNote || !familyData.llmApiKey" class="w-full bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-medium py-2.5 rounded-lg hover:from-indigo-600 hover:to-purple-600 shadow-md transition disabled:from-gray-300 disabled:to-gray-400 flex justify-center items-center text-sm disabled:cursor-not-allowed">
+
+                                <button @click="generateMagicNote" :disabled="isGeneratingNote || !rawWeReadNote" class="w-full bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-medium py-2.5 rounded-lg hover:from-indigo-600 hover:to-purple-600 shadow-md transition disabled:from-gray-300 disabled:to-gray-400 flex justify-center items-center text-sm disabled:cursor-not-allowed">
                                     <i v-if="isGeneratingNote" class="ph ph-spinner animate-spin mr-2"></i>
                                     <i v-else class="ph-fill ph-magic-wand mr-2"></i>
                                     {{ isGeneratingNote ? 'DeepSeek 研读中并自动抓取封面...' : 'AI 一键生成精神岛屿卡片' }}
@@ -291,7 +291,7 @@
                             </div>
                         </div>
                     </div>
-                    
+
                     <!-- 心愿单与纪念日 -->
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                         <div class="flex justify-between items-center cursor-pointer select-none" @click="toggle('goals')">
@@ -326,7 +326,7 @@
                 </div>
 
                 <!-- ================= TAB 2: 资产与股市 ================= -->
-                <div v-if="configTab === 'assets'" class="space-y-6">
+                <div v-if="configTab === 'assets' && !isMasked" class="space-y-6">
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                         <div class="flex justify-between items-center cursor-pointer select-none" @click="toggle('stocks')">
                             <h4 class="text-sm font-semibold text-gray-800 flex items-center">
@@ -353,7 +353,7 @@
                             </div>
                         </div>
                     </div>
-                    
+
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                         <div class="flex justify-between items-center cursor-pointer select-none" @click="toggle('assets')">
                             <h4 class="text-sm font-semibold text-gray-800 flex items-center">
@@ -398,7 +398,7 @@
                 </div>
 
                 <!-- ================= TAB 3: 负债与转账 ================= -->
-                <div v-if="configTab === 'loans'" class="space-y-6">
+                <div v-if="configTab === 'loans' && !isMasked" class="space-y-6">
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                         <div class="flex justify-between items-center cursor-pointer select-none" @click="toggle('loans')">
                             <h4 class="text-sm font-semibold text-gray-800 flex items-center">
@@ -452,7 +452,7 @@
                             </div>
                         </div>
                     </div>
-                    
+
                      <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                         <div class="flex items-center gap-4 mb-4 border-b pb-4"><div class="w-1/2"><label class="text-xs text-gray-500">主发薪卡</label><input v-model="familyData.salaryBank" type="text" class="w-full border rounded px-2 py-1 text-xs" /></div><div class="w-1/2"><label class="text-xs text-gray-500">发薪日</label><input v-model.number="familyData.salaryDay" type="number" class="w-full border rounded px-2 py-1 text-xs" /></div></div>
                         <div class="flex justify-between items-center cursor-pointer select-none" @click="toggle('transfers')">
@@ -475,40 +475,17 @@
                     </div>
                 </div>
 
-                <div v-if="configTab === 'data'" class="space-y-6">
-                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                        <div class="flex items-start justify-between gap-4 mb-4">
-                            <div>
-                                <h4 class="text-sm font-semibold text-gray-800 flex items-center"><i class="ph ph-database mr-2 text-apple-blue"></i>数据备份与恢复</h4>
-                                <p class="text-xs text-gray-500 mt-1 leading-relaxed">导出会包含家庭配置和旅行历史详情。恢复会覆盖云端数据，建议只使用自己导出的备份文件。</p>
-                            </div>
-                            <span class="text-[10px] text-gray-400 bg-gray-50 border border-gray-100 rounded-full px-2 py-1">JSON</span>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <button @click="exportDataBackup" :disabled="isExportingBackup" class="w-full bg-gray-900 text-white rounded-2xl px-4 py-3 text-sm font-medium hover:bg-gray-700 disabled:bg-gray-400 flex items-center justify-center">
-                                <i class="ph mr-2" :class="isExportingBackup ? 'ph-spinner animate-spin' : 'ph-download-simple'"></i>{{ isExportingBackup ? '正在导出...' : '导出完整备份' }}
-                            </button>
-                            <button @click="backupFileInput?.click()" :disabled="isRestoringBackup" class="w-full bg-white border border-gray-200 text-gray-800 rounded-2xl px-4 py-3 text-sm font-medium hover:border-apple-blue hover:text-apple-blue disabled:text-gray-400 flex items-center justify-center">
-                                <i class="ph mr-2" :class="isRestoringBackup ? 'ph-spinner animate-spin' : 'ph-upload-simple'"></i>{{ isRestoringBackup ? '正在恢复...' : '从备份恢复' }}
-                            </button>
-                        </div>
-                        <div class="mt-3">
-                            <button @click="migrateJsonBinToSupabase" :disabled="isMigratingData" class="w-full bg-blue-50 border border-blue-100 text-apple-blue rounded-2xl px-4 py-3 text-sm font-medium hover:bg-blue-100 disabled:text-gray-400 disabled:bg-gray-50 flex items-center justify-center">
-                                <i class="ph mr-2" :class="isMigratingData ? 'ph-spinner animate-spin' : 'ph-arrows-clockwise'"></i>{{ isMigratingData ? '正在迁移...' : '从 JsonBin 迁移到 Supabase' }}
-                            </button>
-                        </div>
-                        <input ref="backupFileInput" type="file" accept="application/json,.json" class="hidden" @change="restoreDataBackup" />
-                        <p v-if="backupStatus" class="text-xs mt-3 text-gray-500">{{ backupStatus }}</p>
-                    </div>
-                </div>
+                <div v-if="isMasked && ['assets','loans'].includes(configTab)" class="text-center py-16"><p class="mb-5">请先解锁理财，再编辑资产与还款计划。</p><button class="family-primary" @click="requestWealthUnlock(); $emit('close')">验证理财密码</button></div>
+                <BackupPanel v-if="configTab === 'data'" />
             </div>
+            <p v-if="saveError" role="alert" class="px-6 py-2 text-sm text-red-700">{{saveError}}</p>
 
             <!-- 底部按钮 -->
             <div class="px-6 py-4 border-t border-gray-100 flex justify-between items-center bg-white shrink-0">
                 <button @click="logout" class="text-sm text-red-500 hover:text-red-700 transition-colors"><i class="ph ph-lock mr-1"></i>锁定家门</button>
                 <div class="space-x-3 flex items-center">
-                    <button @click="$emit('close')" class="px-4 py-2 text-sm text-gray-600">取消</button>
-                    <button @click="saveAndClose" class="px-6 py-2 text-sm bg-gray-800 text-white rounded-full hover:bg-gray-700 shadow-md transition-colors">保存刷新</button>
+                    <button @click="closePanel" class="px-4 py-2 text-sm text-gray-600">取消</button>
+                    <button @click="saveAndClose" :disabled="isSaving" class="px-6 py-2 text-sm bg-gray-800 text-white rounded-full hover:bg-gray-700 shadow-md transition-colors">保存修改</button>
                 </div>
             </div>
         </div>
@@ -516,7 +493,9 @@
 </template>
 
 <script setup>
-import { computed, ref, inject } from 'vue'
+import { computed, ref, inject, watch } from 'vue'
+import BackupPanel from '../features/backup/BackupPanel.vue'
+import {clone, changedKeys, wealthKeys} from '../features/family/model.js'
 import { getBookCoverSrc, searchBookCover, useGeneratedBookCover } from '../utils/bookCovers'
 import {
     getConsumerLoanPayment,
@@ -528,16 +507,23 @@ import {
 } from '../utils/loanTools'
 
 const emit = defineEmits(['close'])
-const familyData = inject('familyData')
-const saveConfig = inject('saveConfig')
+const props = defineProps({initialTab:{type:String,default:'life'}})
+const sourceData = inject('familyData')
+const baseData = clone(sourceData.value)
+const baseRevision = inject('familyRevision').value
+const familyData = ref(clone(baseData))
+const commitFamily = inject('commitFamily')
+const isMasked = inject('isMasked')
+let hadWealthAtOpen=!isMasked.value
+watch(isMasked,(locked)=>{if(!locked&&!hadWealthAtOpen){for(const key of wealthKeys){baseData[key]=clone(sourceData.value[key]);familyData.value[key]=clone(sourceData.value[key]);}hadWealthAtOpen=true;}})
+const requestWealthUnlock = inject('requestWealthUnlock')
+const saveError = ref('')
+const isSaving = ref(false)
+const closePanel=()=>{if(!isSaving.value)emit('close')}
+const saveConfig = async () => { showNotification?.('已加入编辑草稿，点击底部保存后生效') }
 const showNotification = inject('showNotification')
 
-const configTab = ref('life')
-const backupFileInput = ref(null)
-const isExportingBackup = ref(false)
-const isRestoringBackup = ref(false)
-const isMigratingData = ref(false)
-const backupStatus = ref('')
+const configTab = ref(props.initialTab)
 
 const formatPlainCurrency = (value) => new Intl.NumberFormat('zh-CN', {
     style: 'currency',
@@ -679,82 +665,6 @@ const syncLoanTransferTodos = () => {
     return created
 }
 
-const exportDataBackup = async () => {
-    isExportingBackup.value = true;
-    backupStatus.value = '';
-    try {
-        const res = await fetch('/api/data-backup', {
-            headers: { 'Authorization': sessionStorage.getItem('family_auth_token') || '' }
-        });
-        if (!res.ok) throw new Error(await res.text());
-        const data = await res.json();
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `senyue-family-backup-${new Date().toISOString().slice(0, 10)}.json`;
-        link.click();
-        URL.revokeObjectURL(url);
-        backupStatus.value = '备份已导出，请妥善保存。';
-        showNotification?.('完整备份已导出');
-    } catch (error) {
-        backupStatus.value = `导出失败：${error instanceof Error ? error.message : String(error)}`;
-    } finally {
-        isExportingBackup.value = false;
-    }
-}
-
-const restoreDataBackup = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    if (!window.confirm('恢复备份会覆盖当前云端数据，确定继续吗？')) return;
-
-    isRestoringBackup.value = true;
-    backupStatus.value = '';
-    try {
-        const backup = JSON.parse(await file.text());
-        const res = await fetch('/api/data-backup', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': sessionStorage.getItem('family_auth_token') || ''
-            },
-            body: JSON.stringify({ backup })
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error([data.error, data.detail].filter(Boolean).join(' ') || '恢复失败');
-        backupStatus.value = '恢复完成，页面将刷新读取云端数据。';
-        showNotification?.('备份恢复完成');
-        setTimeout(() => window.location.reload(), 800);
-    } catch (error) {
-        backupStatus.value = `恢复失败：${error instanceof Error ? error.message : String(error)}`;
-    } finally {
-        isRestoringBackup.value = false;
-    }
-}
-
-const migrateJsonBinToSupabase = async () => {
-    if (!window.confirm('迁移会把 JsonBin 旧数据写入 Supabase。请确认 Supabase 表和环境变量已配置，是否继续？')) return;
-    isMigratingData.value = true;
-    backupStatus.value = '';
-    try {
-        const res = await fetch('/api/data-migrate', {
-            method: 'POST',
-            headers: { 'Authorization': sessionStorage.getItem('family_auth_token') || '' }
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error([data.error, data.detail].filter(Boolean).join(' ') || '迁移失败');
-        backupStatus.value = '迁移完成，页面将刷新读取 Supabase 数据。';
-        showNotification?.('JsonBin 数据已迁移到 Supabase');
-        setTimeout(() => window.location.reload(), 800);
-    } catch (error) {
-        backupStatus.value = `迁移失败：${error instanceof Error ? error.message : String(error)}`;
-    } finally {
-        isMigratingData.value = false;
-    }
-}
-
 // 🌟 纯前端 AI 魔法生成引擎 🌟
 const rawWeReadNote = ref('')
 const isGeneratingNote = ref(false)
@@ -763,11 +673,11 @@ const clearRawNote = () => { rawWeReadNote.value = ''; }
 const generateMagicNote = async () => {
     const rawText = rawWeReadNote.value.trim()
     const apiKey = familyData.value.llmApiKey?.trim()
-    
-    if (!rawText || !apiKey) return;
-    
+
+    if (!rawText) return;
+
     isGeneratingNote.value = true;
-    
+
     const prompt = `
 你是一位严谨的读书编辑、知识管理顾问和批判性思维教练。下面是我从微信读书导出的原始笔记，包含书籍信息、划线、想法或章节标题。
 
@@ -809,23 +719,10 @@ ${rawText.substring(0, 12000)}
     `;
 
     try {
-        const response = await fetch("https://api.deepseek.com/chat/completions", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-                model: "deepseek-v4-pro",
-                messages: [
-                    {"role": "system", "content": "你是一个严谨的读书编辑，只返回可被 JSON.parse 解析的 JSON 对象。"},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature: 0.45,
-                reasoning_effort: "high",
-                thinking: { type: "enabled" },
-                response_format: { type: "json_object" } 
-            })
+        const response = await fetch('/api/book-summary', {
+            method:'POST',
+            headers:{'Content-Type':'application/json',Authorization:sessionStorage.getItem('family_auth_token')||''},
+            body:JSON.stringify({prompt,apiKey})
         });
 
         if (!response.ok) {
@@ -842,20 +739,20 @@ ${rawText.substring(0, 12000)}
         const finalCoverUrl = await searchBookCover(finalTitle, finalAuthor, parsedData.isbn, parsedData.coverStyle);
 
         if (!familyData.value.books) familyData.value.books = [];
-        
+
         familyData.value.books.unshift({
             bookId: Date.now().toString(),
             title: finalTitle,
             author: finalAuthor,
             isbn: parsedData.isbn || '',
             coverStyle: parsedData.coverStyle || 'general',
-            cover: finalCoverUrl, 
-            readPercentage: 100, 
+            cover: finalCoverUrl,
+            readPercentage: 100,
             aiNote: parsedData.markdownNote
         });
 
         showNotification('🎉 魔法生效！深度笔记已生成，且系统为您抓取了高清封面！');
-        rawWeReadNote.value = ''; 
+        rawWeReadNote.value = '';
 
         await saveConfig();
 
@@ -1108,11 +1005,18 @@ const logout = () => {
     window.location.reload();
 }
 const saveAndClose = async () => {
-    normalizeLoanPaymentsBeforeSave();
-    const createdTodos = syncLoanTransferTodos();
-    if (createdTodos) showNotification?.(`已生成 ${createdTodos} 条还款转账待办`);
-    await saveConfig();
-    emit('close');
+    isSaving.value=true; saveError.value='';
+    try {
+        if (!isMasked.value) normalizeLoanPaymentsBeforeSave();
+        const keys=changedKeys(baseData,familyData.value).filter(k=>k!=='llmApiKey');
+        await commitFamily(draft=>{
+            for(const key of keys) {
+                if(JSON.stringify(draft[key])!==JSON.stringify(baseData[key])) throw Error('这部分内容已有更新，草稿仍保留，请核对后再保存。');
+                draft[key]=clone(familyData.value[key]);
+            }
+        },{label:'高级编辑',snapshot:Object.assign(clone(sourceData.value),Object.fromEntries(keys.map(key=>[key,clone(baseData[key])]))),revision:baseRevision});
+        emit('close');
+    } catch(error) { saveError.value=error.message; }
+    finally { isSaving.value=false; }
 }
 </script>
-```

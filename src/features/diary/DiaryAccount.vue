@@ -8,11 +8,12 @@ import { pendingCopies } from "./pending.js";
 import PrivateDiary from "./Diary.vue";
 
 const emit = defineEmits(["show-demo"]);
+const personalPreview = import.meta.env.VITE_PERSONAL_PREVIEW === '1';
 const editor = ref(null),
   session = shallowRef(null),
   pending = shallowRef(null);
-const account = ref(""),
-  password = ref(""),
+const account = ref(personalPreview ? 'aosen' : ''),
+  password = ref(personalPreview ? 'preview-diary-2026' : ''),
   repeat = ref(""),
   legacySecret = ref("");
 const mode = ref("login"),
@@ -87,7 +88,7 @@ async function clearCopy(copy) {
 const oldStore = createVaultStorage();
 onMounted(async () => {
   try {
-    account.value = localStorage.getItem("diary-last-account") || "";
+    account.value = localStorage.getItem("diary-last-account") || (personalPreview ? 'aosen' : '');
   } catch {}
   try {
     legacy.value = await oldStore.readVault();
@@ -212,6 +213,7 @@ defineExpose({
         <div class="gate-copy">
           <span class="eyebrow">PRIVATE JOURNAL</span>
           <h1>我的日记</h1>
+          <p v-if="personalPreview" class="muted">已填好模拟账号 aosen 与口令 preview-diary-2026。点击“登录日记”即可体验加密同步；这里不包含真实日记。</p>
           <p>
             在手机上写下，在电脑上翻开。<br />两台设备使用同一个个人日记账号和口令。
           </p>

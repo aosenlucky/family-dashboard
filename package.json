@@ -8,11 +8,13 @@
     "build": "vite build",
     "build:edgeone": "vite build --mode edgeone",
     "preview": "vite preview",
-    "test": "node --test"
+    "test": "node --test",
+    "preview:personal": "node server/preview-launch.js"
   },
   "dependencies": {
     "@phosphor-icons/web": "^2.1.2",
     "esdk-obs-nodejs": "^3.26.2",
+    "fflate": "^0.8.3",
     "html-to-image": "^1.11.13",
     "jsonrepair": "^3.14.0",
     "leaflet": "^1.9.4",

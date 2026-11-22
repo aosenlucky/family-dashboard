@@ -1,5 +1,16 @@
-import { readMainRecord, writeMainRecord } from './_data-store.js'
+import { readMainSnapshot, writeMainRecord } from './_data-store.js'
+import { requireFamily, isWealthUnlocked, visibleMain } from './_family-security.js'
 import diarySync from '../server/diary-sync.js'
+import { hasPreviewStore } from '../server/preview-store.js'
+
+export function isQuietTime(settings = {}, now = new Date()) {
+  const minute = (value, fallback) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value || '') ? Number(value.slice(0, 2)) * 60 + Number(value.slice(3)) : fallback
+  const start = minute(settings.quietStart, 22 * 60), end = minute(settings.quietEnd, 8 * 60)
+  const clock = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now)
+  const current = minute(clock, 0)
+  if (start === end) return false
+  return start < end ? current >= start && current < end : current >= start || current < end
+}
 
 export default async function handler(req, res) {
   const { method, headers, body } = req
@@ -7,21 +18,22 @@ export default async function handler(req, res) {
     return diarySync(req, res)
   }
 
-  const pin = process.env.SYSTEM_PASSWORD
-  const demoPin = process.env.DEMO_PASSWORD
-  const authHeader = headers.authorization || ''
-  const isDemoMode = Boolean(demoPin && authHeader === demoPin && authHeader !== pin)
-
-  if (pin && authHeader !== pin && !isDemoMode) {
-    return res.status(401).json({ error: 'Unauthorized' })
-  }
+  res.setHeader('Cache-Control', 'private, no-store')
+  let mode
+  try { mode = requireFamily(req, { allowDemo: true }) } catch (error) { return res.status(error.status).json({ error: error.message }) }
+  const isDemoMode = mode === 'demo'
+  const wealthUnlocked = isWealthUnlocked(req, mode)
+  const result = ({ record, revision }, extra = {}) => ({ ...extra, record: visibleMain(record, wealthUnlocked), revision, mode, wealthUnlocked })
+  const failed = (error) => res.status(error.status || 500).json(error.status === 409
+    ? result(error, { error: error.message })
+    : { error: error.status ? error.message : '暂时无法连接存储，请稍后重试。' })
 
   if (method === 'GET') {
     try {
-      if (isDemoMode) return res.status(200).json({ mode: 'demo', record: buildDemoRecord() })
-      return res.status(200).json(await readMainRecord())
+      if (isDemoMode) return res.status(200).json(result({ record: buildDemoRecord(), revision: 0 }))
+      return res.status(200).json(result(await readMainSnapshot()))
     } catch (error) {
-      return res.status(500).json({ error: 'Failed to read data store', detail: getErrorMessage(error) })
+      return failed(error)
     }
   }
 
@@ -37,6 +49,10 @@ export default async function handler(req, res) {
       }
 
       if (body?.action === 'notify') {
+        if (hasPreviewStore()) return res.status(200).json({ success: true, skipped: true, reason: 'local-preview', message: '预览版不发送真实提醒。' })
+        const settings = (await readMainSnapshot()).record.notificationSettings || {}
+        if (!settings.enabled || isQuietTime(settings)) return res.status(200).json({ success: true, skipped: true, reason: settings.enabled ? 'quiet-hours' : 'disabled' })
+        if (typeof body.title !== 'string' || body.title.length > 100 || typeof body.content !== 'string' || body.content.length > 5000) return res.status(400).json({ error: '提醒内容格式不正确或过长。' })
         const result = await sendPushNotifications(body.title, body.content)
         const failed = result.results.filter((item) => !item.ok)
         console.log('[push-notify]', JSON.stringify({
@@ -51,10 +67,10 @@ export default async function handler(req, res) {
         })
       }
 
-      await writeMainRecord(body)
-      return res.status(200).json({ success: true })
+      const saved = await writeMainRecord(body?.record, body?.revision, { wealthUnlocked })
+      return res.status(200).json(result(saved, { success: true }))
     } catch (error) {
-      return res.status(500).json({ error: 'Failed to process request', detail: getErrorMessage(error) })
+      return failed(error)
     }
   }
 

@@ -5,7 +5,7 @@ export default async function handler(req, res) {
 
   try {
     const pin = process.env.SYSTEM_PASSWORD
-    if (pin && req.headers.authorization !== pin) {
+    if (!pin || req.headers.authorization !== pin) {
       return res.status(401).json({ error: 'Unauthorized' })
     }
 

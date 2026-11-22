@@ -1,19 +1,18 @@
 <template>
-    <div class="pt-28 pb-20">
+    <div class="pt-6 pb-8">
         <header class="px-4 text-center relative z-10 mb-8">
             <h1 class="text-3xl md:text-5xl font-semibold tracking-tight text-apple-text mb-4">记录爱与财富的生长</h1>
-            <div v-if="isMasked" class="absolute top-32 left-1/2 transform -translate-x-1/2 flex flex-col items-center z-50">
-                <i class="ph ph-lock-key text-4xl text-gray-400 mb-2 animate-bounce"></i>
-                <span class="text-xs text-gray-500 bg-white/80 px-4 py-1.5 rounded-full border border-gray-200 shadow-sm">点击右上角「显示金额」解密</span>
-            </div>
+            <div class="flex justify-center gap-4 mt-4"><button v-if="isMasked" class="family-primary" @click="requestWealthUnlock">验证后查看理财</button><template v-else><button class="family-primary" @click="openConfig('assets')">编辑理财</button><button @click="lockWealth">锁定金额</button></template></div>
+            <p v-if="isMasked" class="text-sm text-stone-500 mt-4">资产与账单已锁定，验证后读取。</p>
         </header>
 
-        <div :class="isMasked ? 'blur-md opacity-60 pointer-events-none select-none transition-all duration-500' : 'transition-all duration-500'">
+        <div v-if="!isMasked">
+            <PaymentsPanel />
             <section class="max-w-6xl mx-auto px-4 mb-12">
                 <div class="glass-card rounded-3xl p-6 md:p-8 flex flex-col items-center justify-center text-center shadow-lg border-2 border-white/80 relative overflow-hidden">
-                    <p class="text-sm text-gray-500 mb-2 font-medium flex items-center z-10"><i class="ph-fill ph-chart-line-up mr-2 text-rose-500"></i> 家庭实时净资产</p>
+                    <p class="text-sm text-gray-500 mb-2 font-medium flex items-center z-10"><i class="ph-fill ph-chart-line-up mr-2 text-rose-500"></i> 家庭净资产估算</p>
                     <p class="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight text-gray-800 z-10 mb-6 px-2 drop-shadow-sm">{{ formatCurrency(netWorth) }}</p>
-                    
+
                     <div class="flex flex-col sm:flex-row w-full max-w-2xl justify-between items-center text-sm bg-white/60 p-4 rounded-2xl z-10 border border-white shadow-sm gap-4 sm:gap-0">
                         <div class="text-center w-full sm:w-1/3"><p class="text-xs text-gray-500 mb-1">总资产</p><p class="font-semibold text-gray-800">{{ formatCurrency(totalAssets) }}</p></div>
                         <div class="hidden sm:block w-px h-8 bg-gray-300/50"></div>
@@ -29,7 +28,7 @@
                 <div class="glass-card rounded-3xl p-6 shadow-sm border border-white/60">
                     <div class="flex justify-between items-center mb-4">
                         <h3 class="text-lg font-semibold flex items-center text-gray-800"><i class="ph-fill ph-trend-up mr-2 text-rose-500"></i> 投资与股市雷达</h3>
-                        
+
                         <!-- 💡 修复：完美加回行情同步按钮 -->
                         <div class="flex items-center space-x-3">
                             <span class="text-[10px] text-gray-500 hidden sm:inline">美元汇率: {{ familyData.usdRate }}</span>
@@ -79,7 +78,7 @@
                 <div class="glass-card rounded-3xl p-6 relative overflow-hidden">
                     <div class="absolute top-0 right-0 w-24 h-24 bg-red-500/10 rounded-full blur-2xl transform translate-x-4 -translate-y-4"></div>
                     <h3 class="text-lg font-semibold mb-4 flex items-center text-gray-800"><i class="ph-fill ph-aperture mr-2 text-red-500"></i> HW 家族股权大盘</h3>
-                    
+
                     <div class="flex flex-wrap gap-x-4 gap-y-2 text-xs text-gray-600 mb-4 bg-white/50 p-3 rounded-xl border border-white shadow-sm">
                         <div class="w-full sm:w-auto"><span class="text-gray-400">每股价格:</span> <span class="font-medium text-gray-800">{{ isMasked ? '***' : familyData.equity.pricePerShare }} 元</span></div>
                         <div class="w-full sm:w-auto"><span class="text-gray-400">预测分红:</span> <span class="font-bold text-rose-500">{{ isMasked ? '***' : familyData.equity.dividendRate }} 元/股</span></div>
@@ -88,7 +87,7 @@
                         <div class="w-full sm:w-auto"><span class="text-gray-400">总股本:</span> <span class="font-medium text-gray-800">{{ formatCurrencyInt(totalEquityPrincipal) }}</span></div>
                         <div class="w-full sm:w-auto"><span class="text-gray-400">总股数:</span> <span class="font-medium text-gray-800">{{ isMasked ? '***' : formatCurrencyIntNoSymbol(totalEquityShares) }} 股</span></div>
                     </div>
-                    
+
                     <div class="space-y-2 max-h-[200px] overflow-y-auto modal-scroll pr-2">
                         <div v-for="member in familyData.equity.members" :key="member.name" class="flex justify-between items-center bg-white/40 px-3 py-2.5 rounded-xl text-sm border border-white/50 shadow-sm transition hover:shadow-md">
                             <div class="flex flex-col w-1/3"><span class="text-gray-800 font-medium text-sm">{{ member.name }}</span><span class="text-[10px] text-gray-500 mt-0.5">本金: {{ formatCurrencyInt(member.principal) }}</span></div>
@@ -112,7 +111,7 @@
                 <h2 class="text-xl font-semibold mb-6 flex items-center"><i class="ph ph-notebook mr-2 text-apple-subtext"></i> 贷款月供分解</h2>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div v-for="loan in processedLoans" :key="loan.id" class="glass-card rounded-2xl p-5 hover:shadow-lg transition-shadow relative overflow-hidden">
-                        <div v-if="loan.isAutoCalc" class="absolute -right-6 top-4 bg-blue-500/10 text-blue-600 text-[10px] py-0.5 px-8 transform rotate-45 flex items-center font-medium backdrop-blur-sm shadow-sm"><i class="ph-fill ph-magic-wand mr-1"></i> 精准引擎</div>
+                        <div v-if="loan.isAutoCalc" class="absolute -right-6 top-4 bg-blue-500/10 text-blue-600 text-[10px] py-0.5 px-8 transform rotate-45 flex items-center font-medium backdrop-blur-sm shadow-sm"><i class="ph-fill ph-magic-wand mr-1"></i> 计划估算</div>
                         <div class="flex items-center space-x-3 mb-4">
                             <div class="w-8 h-8 rounded-full flex items-center justify-center text-white shadow-sm" :class="loan.type === '房贷' ? 'bg-blue-500/90' : 'bg-orange-500/90'"><i :class="loan.type === '房贷' ? 'ph ph-house' : 'ph ph-credit-card'"></i></div>
                             <div><p class="text-sm font-semibold text-gray-800 flex items-center"><span class="text-[9px] border px-1.5 py-0.5 rounded mr-2" :class="getOwnerTagClass(loan.owner)">{{ loan.owner }}</span>{{ loan.bank }} <span class="text-[10px] text-gray-500 font-normal ml-1">({{ loan.type }})</span></p><p class="text-[10px] text-gray-500 mt-1">每月 {{ loan.day || '未定' }} 日 · 利率 {{ loan.rate }}%</p></div>
@@ -133,8 +132,8 @@
             <!-- 4. 拓扑图 -->
             <section id="flow" class="max-w-6xl mx-auto px-4 mb-20">
                 <div class="flex justify-between items-end mb-4">
-                    <h2 class="text-xl font-semibold flex items-center"><i class="ph ph-git-branch mr-2 text-apple-subtext"></i> 资金自动化航线</h2>
-                    <span class="text-[10px] bg-green-50 text-green-600 border border-green-200 px-2 py-1 rounded-full flex items-center"><i class="ph-fill ph-check-circle mr-1"></i> 100% 自动化覆盖</span>
+                    <h2 class="text-xl font-semibold flex items-center"><i class="ph ph-git-branch mr-2 text-apple-subtext"></i> 资金安排</h2>
+                    <span class="text-[10px] bg-green-50 text-green-600 border border-green-200 px-2 py-1 rounded-full flex items-center"><i class="ph-fill ph-check-circle mr-1"></i> 计划视图 · 请核对银行实际执行</span>
                 </div>
                 <div class="glass-card rounded-3xl p-6 md:p-10 overflow-x-auto border-white/60 flow-scroll relative shadow-inner">
                     <div class="min-w-[800px] flex flex-col items-center justify-start pb-4">
@@ -149,6 +148,8 @@
 <script setup>
 import { inject, computed } from 'vue'
 import FlowNode from '../components/FlowNode.vue'
+import PaymentsPanel from '../features/family/PaymentsPanel.vue'
+const requestWealthUnlock=inject('requestWealthUnlock'),lockWealth=inject('lockWealth'),openConfig=inject('openConfig')
 import { getConsumerLoanPayment, getMonthlyInterest, getPlannedPrincipal } from '../utils/loanTools'
 
 const familyData = inject('familyData')
@@ -178,7 +179,7 @@ const processedLoans = computed(() => {
         if (loan.isAutoCalc && loan.baseDate) {
             const [baseY, baseM] = loan.baseDate.split('-').map(Number);
             let elapsed = (currentYear - baseY) * 12 + (currentMonth - (baseM - 1));
-            if (currentDate < loan.day) elapsed -= 1; 
+            if (currentDate < loan.day) elapsed -= 1;
             if (elapsed < 0) elapsed = 0;
             let currentLeft = loan.baseLeft;
             let fixedMonthly = loan.baseMonthly || 0;
@@ -190,6 +191,9 @@ const processedLoans = computed(() => {
             pLoan.nextInterest = getMonthlyInterest(pLoan);
             pLoan.nextPrincipal = getPlannedPrincipal(pLoan);
             pLoan.monthly = getConsumerLoanPayment(pLoan);
+        } else {
+            pLoan.nextInterest=Math.max(0,Number(pLoan.left)||0)*r;
+            pLoan.nextPrincipal=Math.max(0,(Number(pLoan.monthly)||0)-pLoan.nextInterest);
         }
         return pLoan;
     });
@@ -215,8 +219,9 @@ const debtRatio = computed(() => totalAssets.value > 0 ? Math.round((totalDebt.v
 
 // 自动生成资金流转图树状结构
 const flowTree = computed(() => {
-    const buildTree = (bankName) => {
-        return { name: bankName, isRoot: bankName === familyData.value.salaryBank, loans: processedLoans.value.filter(l => l.bank === bankName), children: familyData.value.transfers.filter(t => t.from === bankName).map(t => ({ transfer: t, ...buildTree(t.to) })) };
+    const buildTree = (bankName,visited=new Set()) => {
+        const repeated=visited.has(bankName),next=new Set([...visited,bankName]);
+        return { name: bankName, isRoot: bankName === familyData.value.salaryBank && !repeated, loans: repeated?[]:processedLoans.value.filter(l => l.bank === bankName), children: repeated?[]:familyData.value.transfers.filter(t => t.from === bankName).map(t => ({ transfer: t, ...buildTree(t.to,next) })) };
     }
     return buildTree(familyData.value.salaryBank);
 })

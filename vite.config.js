@@ -1,5 +1,10 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import syncHandler from './api/sync.js'
+import wealthAuthHandler from './api/wealth-auth.js'
+import dataBackupHandler from './api/data-backup.js'
+import bookSummaryHandler from './api/book-summary.js'
+import {personalPreviewPlugin} from './server/personal-preview.js'
 import diarySync from './server/diary-sync.js'
 import travelPlanHandler from './api/travel-plan.js'
 import travelPlanStreamHandler from './api/travel-plan-stream.js'
@@ -61,6 +66,10 @@ function localApiPlugin() {
         })
       }
 
+      mountApi('/api/sync', syncHandler)
+      mountApi('/api/wealth-auth', wealthAuthHandler)
+      mountApi('/api/data-backup', dataBackupHandler)
+      mountApi('/api/book-summary', bookSummaryHandler)
       mountApi('/api/diary-sync', diarySync)
       mountApi('/api/travel-history', travelHistoryHandler)
       mountApi('/api/travel-plan-stream', travelPlanStreamHandler)
@@ -71,5 +80,6 @@ function localApiPlugin() {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [vue(), localApiPlugin()],
+  envDir: process.env.PERSONAL_PREVIEW_DIR ? false : undefined,
+  plugins: [vue(), personalPreviewPlugin(), localApiPlugin()],
 })

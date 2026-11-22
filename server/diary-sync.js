@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { getSupabaseConfig } from "../api/_data-store.js";
+import { hasPreviewStore, previewRecords } from './preview-store.js';
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const matches = (value, expected) =>
@@ -56,6 +57,7 @@ function cleanHeader(e) {
 // Each settings table already has a primary key and is restricted to the server.
 // Manifest replacement is a conditional PostgreSQL UPDATE, never a read-then-upsert.
 function records() {
+  if (hasPreviewStore()) return previewRecords;
   const { url, key, mainTable } = getSupabaseConfig();
   return async (query, method = "GET", body, prefer = "return=minimal") => {
     const response = await fetch(

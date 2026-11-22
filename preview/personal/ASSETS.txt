@@ -1,0 +1,7 @@
+本机验收示例照片
+
+home.jpg / lakeside.jpg / city.jpg / nesting.jpg
+来源：用户现有 family-cloudbase/web/public/demo 预览素材。
+仅复用已有演示图片，没有复制商业产品的业务代码、账号、环境变量或真实客户内容。
+图片随本机启动器复制到隔离媒体目录，不进入正式网站的公共目录。
+自用首页合照继续使用原家庭站已有 public/bg.jpg。

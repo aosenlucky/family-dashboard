@@ -1,0 +1,24 @@
+<script setup>
+import {ref,inject} from 'vue';
+import BackupPanel from '../backup/BackupPanel.vue';
+import {clone,sharedOnly} from './model.js';
+const emit=defineEmits(['close','advanced','logout']);
+const familyData=inject('familyData'),commit=inject('commitFamily'),upload=inject('uploadPhotoFile'),restore=inject('restoreTrash'),notify=inject('showNotification'),isMasked=inject('isMasked'),unlock=inject('requestWealthUnlock');
+const appearance=ref(clone(familyData.value.appearance||{})),notifications=ref(clone(familyData.value.notificationSettings||{enabled:false,quietStart:'22:00',quietEnd:'08:00'}));
+const tab=ref('appearance'),busy=ref(false),error=ref(''),backupBusy=ref(false);
+const revision=inject('familyRevision');let baseSnapshot=sharedOnly(familyData.value),baseRevision=revision.value;
+function close(){if(!busy.value&&!backupBusy.value)emit('close');}
+function restored(){appearance.value=clone(familyData.value.appearance||{});notifications.value=clone(familyData.value.notificationSettings||{});baseSnapshot=sharedOnly(familyData.value);baseRevision=revision.value;}
+async function save(){busy.value=true;error.value='';try{await commit(d=>{d.appearance=clone(appearance.value);d.notificationSettings=clone(notifications.value);},{label:'家庭设置',snapshot:{...clone(familyData.value),appearance:clone(baseSnapshot.appearance||{}),notificationSettings:clone(baseSnapshot.notificationSettings||{})},revision:baseRevision});notify('家庭设置已保存');emit('close');}catch(e){error.value=e.status===409?'设置草稿已保留。请关闭此窗口，在页面顶部核对另一份更新。':e.message;}finally{busy.value=false;}}
+async function cover(event){const file=event.target.files?.[0];if(!file)return;busy.value=true;try{const p=await upload(file);appearance.value.coverUrl=p.url;appearance.value.coverStyle='photo';}catch(e){error.value=e.message;}finally{busy.value=false;event.target.value='';}}
+async function recover(id){try{await restore(id);notify('记录已恢复');}catch(e){error.value=e.message;}}
+</script>
+<template>
+ <div class="family-modal" @click.self="close"><section class="family-dialog settings-dialog" v-modal-focus @keydown.esc.stop.prevent="close" role="dialog" aria-modal="true" aria-labelledby="settings-heading"><header><span class="eyebrow">MAKE YOURSELF AT HOME</span><h2 id="settings-heading">把家布置成喜欢的样子</h2><button class="dialog-close" aria-label="关闭家庭设置" @click="close">×</button></header><nav class="settings-tabs"><button v-for="t in [{id:'appearance',label:'外观与提醒'},{id:'trash',label:'回收站'},{id:'backup',label:'备份与恢复'}]" :key="t.id" :class="{active:tab===t.id}" :disabled="backupBusy" @click="tab=t.id">{{t.label}}</button></nav>
+ <div class="settings-scroll">
+ <div v-if="tab==='appearance'" class="settings-fields"><label>首页的一句话<input v-model="appearance.title" maxlength="40" placeholder="把平常日子，过成我们的故事。"></label><fieldset><legend>封面风格</legend><div class="cover-choices"><button :class="{selected:appearance.coverStyle!=='linen'}" @click="appearance.coverStyle='photo'">我们的合照</button><button :class="{selected:appearance.coverStyle==='linen'}" @click="appearance.coverStyle='linen'">暖白留白</button></div><label class="family-upload">换一张封面照片<input type="file" accept="image/jpeg,image/png,image/webp" :disabled="busy" @change="cover"></label><p>照片上传后，点击下方“保存设置”才会更换首页封面。</p></fieldset><fieldset><legend>提醒习惯</legend><label class="inline-check"><input v-model="notifications.enabled" type="checkbox">开启家务变更提醒</label><p>短时间内的变更合为一条。免打扰时段不发送；预览版不会发送真实消息。</p><div class="settings-two"><label>免打扰开始<input v-model="notifications.quietStart" type="time"></label><label>免打扰结束<input v-model="notifications.quietEnd" type="time"></label></div></fieldset><div class="settings-links"><button @click="$emit('advanced','life')">读书整理与高级编辑 →</button><button v-if="!isMasked" @click="$emit('advanced','assets')">编辑资产与还款计划 →</button><button v-else @click="unlock">解锁理财编辑 →</button></div></div>
+ <div v-if="tab==='trash'"><p class="muted">删除的待办、那天小事和照片记录留在这里。恢复不会覆盖同名记录。</p><div v-if="!familyData.trash?.length" class="settings-empty">这里空空的，所有回忆都安好。</div><article v-for="entry in familyData.trash" :key="entry.id" class="trash-row"><div><strong>{{entry.item.text||entry.item.desc||entry.item.title||entry.item.name||'一张照片'}}</strong><p>{{new Date(entry.deletedAt).toLocaleString('zh-CN')}} · {{({todos:'待办',moments:'那天小事',photos:'照片'})[entry.collection]||entry.collection}}</p></div><button @click="recover(entry.id)">恢复</button></article></div>
+ <BackupPanel v-if="tab==='backup'" @busy-change="backupBusy=$event" @restored="restored" />
+ </div><p v-if="error" class="form-error" role="alert">{{error}}</p><footer class="settings-footer"><button :disabled="backupBusy||busy" @click="$emit('logout')">锁定家门</button><div><button @click="close">取消</button><button v-if="tab==='appearance'" class="family-primary" :disabled="busy" @click="save">{{busy?'处理中…':'保存设置'}}</button></div></footer>
+ </section></div>
+</template>

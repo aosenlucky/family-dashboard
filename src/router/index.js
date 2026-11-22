@@ -10,7 +10,11 @@ const routes = [
   { path: '/gallery', component: () => import('../views/Gallery.vue') }
 ]
 
-export default createRouter({
+const positions = new Map();
+const router = createRouter({
   history: import.meta.env.VITE_ROUTER_MODE === 'hash' ? createWebHashHistory() : createWebHistory(),
-  routes
+  routes,
+  scrollBehavior(to,from,saved) { return saved || positions.get(to.fullPath) || {top:0}; }
 })
+router.beforeEach((to,from)=>{positions.set(from.fullPath,{top:window.scrollY});});
+export default router;

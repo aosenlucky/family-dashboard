@@ -5,7 +5,7 @@ const MAX_HISTORY_ITEMS = 60
 export default async function handler(req, res) {
   const pin = process.env.SYSTEM_PASSWORD
   const authHeader = req.headers.authorization || ''
-  if (pin && authHeader !== pin) {
+  if (!pin || authHeader !== pin) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
 
@@ -24,18 +24,18 @@ export default async function handler(req, res) {
       const item = req.body?.item
       if (!item?.plan) return res.status(400).json({ error: '缺少要保存的行程。' })
       const saved = await saveTravelItem(item, MAX_HISTORY_ITEMS)
-      return res.status(200).json({ success: true, history: saved.index, item: saved.summary })
+      return res.status(200).json({ success: true, history: saved.index, item: saved.summary, revision: saved.revision })
     }
 
     if (req.method === 'DELETE') {
-      const history = await deleteTravelItem(getRequestId(req))
-      return res.status(200).json({ success: true, history })
+      const result = await deleteTravelItem(getRequestId(req))
+      return res.status(200).json({ success: true, history: result.index, revision: result.revision })
     }
 
     return res.status(405).json({ error: 'Method Not Allowed' })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    return res.status(500).json({ error: '旅行历史同步失败。', detail: message })
+    return res.status(error.status || 500).json({ error: error.status ? message : '旅行历史同步失败。' })
   }
 }
 

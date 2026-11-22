@@ -1,3 +1,5 @@
 node_modules/
+.local/
+personal-preview*.log
 dist/
 vite-dev*.log

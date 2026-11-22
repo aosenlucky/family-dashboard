@@ -8,7 +8,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' })
 
   const pin = process.env.SYSTEM_PASSWORD
-  if (pin && req.headers.authorization !== pin) {
+  if (!pin || req.headers.authorization !== pin) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
 

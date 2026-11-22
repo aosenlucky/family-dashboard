@@ -1,11 +1,9 @@
 import { getStorageBackendName, hasSupabaseConfig, readJsonBinFullBackup, restoreFullBackup } from './_data-store.js'
+import { requireFamily, requireWealth, requireRevision } from './_family-security.js'
 
 export default async function handler(req, res) {
-  const pin = process.env.SYSTEM_PASSWORD
-  const authHeader = req.headers.authorization || ''
-  if (pin && authHeader !== pin) {
-    return res.status(401).json({ error: 'Unauthorized' })
-  }
+  try { requireFamily(req); requireWealth(req); requireRevision(req.body?.revision) }
+  catch (error) { return res.status(error.status || 500).json({ error: error.message }) }
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' })
 
@@ -18,7 +16,8 @@ export default async function handler(req, res) {
     }
 
     const backup = await readJsonBinFullBackup()
-    const result = await restoreFullBackup(backup)
+    if (req.body?.confirm !== true) return res.status(400).json({ error: '迁移需要明确确认。' })
+    const result = await restoreFullBackup(backup, req.body.revision)
     return res.status(200).json({
       success: true,
       from: 'jsonbin',
