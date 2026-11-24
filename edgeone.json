@@ -21,6 +21,7 @@
     }
   ],
   "redirects": [
+    { "source": "/life/coupons", "destination": "/#/life/coupons", "statusCode": 302 },
     { "source": "/diary", "destination": "/#/diary", "statusCode": 302 },
     { "source": "/life", "destination": "/#/life", "statusCode": 302 },
     { "source": "/travel", "destination": "/#/travel", "statusCode": 302 },

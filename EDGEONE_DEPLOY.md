@@ -14,7 +14,7 @@
 Install Command: npm ci --include=optional && npm install @rolldown/binding-linux-x64-gnu@1.0.3 --no-save
 Build Command: npm run build:edgeone
 Output Directory: dist
-Node Version: 22.11.0
+Node Version: 22.21.1
 ```
 
 这些配置也已经写入 `edgeone.json`。EdgeOne 构建时会使用 hash 路由，避免刷新 `/travel`、`/gallery` 等前端路由时 404。
