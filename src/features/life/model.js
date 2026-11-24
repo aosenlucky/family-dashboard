@@ -3,6 +3,7 @@ export const LIFE_MODULES = Object.freeze([
   { id: 'todos', collection: 'todos', title: '待办协作', icon: 'ph-check-square-offset', description: '一起分担，给日子留一点从容。' },
   { id: 'goals', collection: 'goals', title: '梦想金库', icon: 'ph-sparkle', description: '为心里的小期待，慢慢准备。' },
   { id: 'dates', collection: 'dates', title: '温馨日历', icon: 'ph-calendar-heart', description: '值得记住的日子，放在这里。' },
+  { id: 'coupons', collection: 'coupons', title: '我们的券册', icon: 'ph-ticket', description: '把期待收好，把日子安排好。' },
   { id: 'milestones', collection: 'milestones', title: '宝宝时光', icon: 'ph-baby', description: '收好每一次新的发现。' },
   { id: 'reading', collection: 'books', title: '我们的书架', icon: 'ph-books', description: '读过的故事，也成为我们的故事。' },
 ])

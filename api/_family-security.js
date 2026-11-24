@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
+import { validateCoupons, validateCouponTrash } from '../src/features/coupons/model.js'
 
 export const REVISION_FIELD = '_familyRevision'
 export const WEALTH_FIELDS = new Set(['salaryBank', 'salaryDay', 'usdRate', 'loans', 'transfers', 'assets', 'stocks', 'equity', 'paymentChecks', 'wealthSettings'])
@@ -62,6 +63,7 @@ export function redactSecrets(value) {
 }
 export function mergeMain(incoming, current, wealthUnlocked) {
   if (!incoming || Array.isArray(incoming) || typeof incoming !== 'object') fail(400, '记录格式不正确。')
+  try { validateCoupons(incoming.coupons); validateCouponTrash(incoming.trash) } catch (error) { fail(400, error.message) }
   if (!wealthUnlocked) {
     for (const field of WEALTH_FIELDS) {
       if (Object.hasOwn(incoming, field) && !isDeepStrictEqual(incoming[field], current[field])) fail(403, '理财尚未解锁，不能修改理财数据。')

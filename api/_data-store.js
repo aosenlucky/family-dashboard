@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { validateCoupons, validateCouponTrash } from '../src/features/coupons/model.js'
 import { hasPreviewStore, previewTransaction } from '../server/preview-store.js'
 import { REVISION_FIELD, mergeMain, visibleMain, redactSecrets, requireRevision, fail } from './_family-security.js'
 
@@ -253,8 +254,9 @@ export function validateBackup(backup) {
   if (![3, 4].includes(backup.version)) fail(400, '备份版本不受支持。')
   if (Buffer.byteLength(JSON.stringify(backup)) > 32 * 1024 * 1024) fail(413, '备份数据超过 32 MB。')
   const main = backup.main
+  try { validateCoupons(main.coupons); validateCouponTrash(main.trash) } catch (error) { fail(400, error.message) }
   const photos = Array.isArray(main.photos) ? main.photos.length : Array.isArray(main.gallery) ? main.gallery.length : 0
-  return { photos, moments: (main.moments || main.ourMoments || []).length || 0, todos: (main.todos || []).length || 0, travel: normalizeTravelState(backup.travel).index.length }
+  return { photos, coupons: (main.coupons || []).length, moments: (main.moments || main.ourMoments || []).length || 0, todos: (main.todos || []).length || 0, travel: normalizeTravelState(backup.travel).index.length }
 }
 function travelForRestore(travel) {
   const state = normalizeTravelState(travel)

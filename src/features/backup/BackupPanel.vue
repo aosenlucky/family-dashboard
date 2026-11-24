@@ -1,6 +1,7 @@
 <script setup>
 import { inject, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
-import { createArchive, inspectArchive, relinkMedia } from './archive.js';
+import { createArchive, inspectArchive, relinkMedia, isCouponMediaRef } from './archive.js';
+import { fetchCouponBackupMedia, uploadCouponBackupMedia } from './coupon-media.js';
 import { uploadBackupFile } from '../gallery/upload.js';
 
 const api=inject('familyApi'), wealthToken=inject('wealthToken'),revision=inject('familyRevision');
@@ -36,7 +37,7 @@ async function download(){
   if(busy.value)return;const job=++generation;busy.value=true;error.value='';progress.value='正在读取家庭记录';
   try{
     requireUnlocked();const backup=await api('/api/data-backup');stillActive(job);
-    const result=await createArchive(backup,{origin:location.origin,onProgress:state=>{stillActive(job);progress.value=state.message;}});stillActive(job);
+    const result=await createArchive(backup,{origin:location.origin,privateFetcher:key=>{stillActive(job);return fetchCouponBackupMedia(key);},onProgress:state=>{stillActive(job);progress.value=state.message;}});stillActive(job);
     const blob=new Blob([result.bytes],{type:'application/zip'}),url=URL.createObjectURL(blob),link=document.createElement('a');
     link.href=url;link.download=`家庭完整备份-${new Date().toISOString().slice(0,10)}.zip`;link.click();setTimeout(()=>URL.revokeObjectURL(url),30000);
     progress.value=`已准备 ${result.manifest.assets.length} 个媒体文件及家庭记录的完整备份。`;notify('完整备份已开始下载，请保管好这份文件。');
@@ -61,7 +62,10 @@ async function restore(){
     for(let index=0;index<manifest.assets.length;index++){
       stillActive(job);const asset=manifest.assets[index];progress.value=`恢复照片 ${index+1} / ${manifest.assets.length}`;
       if(mapping.has(asset.sourceUrl))continue;
-      const url=await uploadBackupFile(new File([files[asset.path]],asset.path.split('/').at(-1),{type:asset.mime}));stillActive(job);mapping.set(asset.sourceUrl,url);
+      const replacement=isCouponMediaRef(asset.sourceUrl)
+        ? await uploadCouponBackupMedia(files[asset.path],asset.mime,api)
+        : await uploadBackupFile(new File([files[asset.path]],asset.path.split('/').at(-1),{type:asset.mime}));
+      stillActive(job);mapping.set(asset.sourceUrl,replacement);
     }
     stillActive(job);requireReady();progress.value='照片已准备好，正在保存恢复点并恢复家庭记录';
     const result=await api('/api/data-backup',{method:'POST',body:JSON.stringify({action:'restore',backup:relinkMedia(backup,mapping),revision:preview.value.revision,confirm:true})});
@@ -86,7 +90,7 @@ async function rollback(){
       <p class="backup-limit">单次打包最多 256 MB、单张照片 40 MB。任何照片无法下载时会停止，并说明原因；不会生成缺照片的“完整备份”。</p>
       <p v-if="progress" class="backup-progress" role="status"><i :class="busy?'ph ph-spinner':'ph ph-check-circle'"></i>{{ progress }}</p>
       <p v-if="error" class="backup-error" role="alert">{{ error }}</p>
-      <article v-if="inspected && preview" class="backup-preview"><span>备份检查通过</span><h4>{{ selectedName }}</h4><p>备份时间：{{ dateText(preview.exportedAt) }}</p><dl><div><dt>相册照片</dt><dd>{{ preview.counts?.photos || 0 }} 张</dd></div><div><dt>那天小事</dt><dd>{{ preview.counts?.moments || 0 }} 条</dd></div><div><dt>待办记录</dt><dd>{{ preview.counts?.todos || 0 }} 条</dd></div><div><dt>实际媒体文件</dt><dd>{{ inspected.manifest.assets.length }} 个 · {{ sizeText(inspected.bytes) }}</dd></div></dl><p>当前家庭版本 {{ preview.revision }}。恢复会替换共享记录与理财内容；私人日记保持独立。</p><label class="backup-confirm"><input v-model="confirmed" type="checkbox" :disabled="busy">我已核对，恢复这份备份，并保留当前版本的恢复点</label><div class="backup-preview-actions"><button :disabled="busy" @click="refreshPreview">重新预览当前版本</button><button :disabled="busy || !confirmed" class="family-primary" @click="restore">{{ busy?'处理中…':'确认恢复' }}</button></div></article>
+      <article v-if="inspected && preview" class="backup-preview"><span>备份检查通过</span><h4>{{ selectedName }}</h4><p>备份时间：{{ dateText(preview.exportedAt) }}</p><dl><div><dt>相册照片</dt><dd>{{ preview.counts?.photos || 0 }} 张</dd></div><div><dt>那天小事</dt><dd>{{ preview.counts?.moments || 0 }} 条</dd></div><div><dt>待办记录</dt><dd>{{ preview.counts?.todos || 0 }} 条</dd></div><div><dt>券册记录</dt><dd>{{ preview.counts?.coupons || 0 }} 张</dd></div><div><dt>实际媒体文件</dt><dd>{{ inspected.manifest.assets.length }} 个 · {{ sizeText(inspected.bytes) }}</dd></div></dl><p>当前家庭版本 {{ preview.revision }}。恢复会替换共享记录与理财内容；私人日记保持独立。</p><label class="backup-confirm"><input v-model="confirmed" type="checkbox" :disabled="busy">我已核对，恢复这份备份，并保留当前版本的恢复点</label><div class="backup-preview-actions"><button :disabled="busy" @click="refreshPreview">重新预览当前版本</button><button :disabled="busy || !confirmed" class="family-primary" @click="restore">{{ busy?'处理中…':'确认恢复' }}</button></div></article>
       <article v-if="lastPoint" class="backup-rollback"><h4>上一次操作前的版本</h4><p>保存于 {{ dateText(lastPoint.createdAt) }}，可以找回当时的共享记录与照片引用。</p><label class="backup-confirm"><input v-model="rollbackConfirm" type="checkbox" :disabled="busy">将当前共享内容恢复到这个时间点</label><button :disabled="busy || !rollbackConfirm" @click="rollback">回到这个恢复点</button></article>
     </template>
   </section>

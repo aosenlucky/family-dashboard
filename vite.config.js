@@ -4,6 +4,10 @@ import syncHandler from './api/sync.js'
 import wealthAuthHandler from './api/wealth-auth.js'
 import dataBackupHandler from './api/data-backup.js'
 import bookSummaryHandler from './api/book-summary.js'
+import couponMediaHandler from './api/coupon-media.js'
+import couponRecognizeHandler from './api/coupon-recognize.js'
+import couponRemindersHandler from './api/coupon-reminders.js'
+import couponReminderRunHandler from './api/coupon-reminder-run.js'
 import {personalPreviewPlugin} from './server/personal-preview.js'
 import diarySync from './server/diary-sync.js'
 import travelPlanHandler from './api/travel-plan.js'
@@ -17,8 +21,15 @@ function localApiPlugin() {
       const mountApi = (path, handler) => {
         server.middlewares.use(path, async (req, res) => {
           let rawBody = ''
-          req.on('data', (chunk) => { rawBody += chunk })
+          let bodyBytes = 0, oversized = false
+          req.on('data', (chunk) => {
+            bodyBytes += chunk.length
+            if (bodyBytes > (path === '/api/coupon-media' ? 6 : 32) * 1024 * 1024) {
+              if (!oversized) { oversized = true; res.statusCode = 413; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ error: '上传内容过大。' })) }
+            } else if (!oversized) rawBody += chunk
+          })
           req.on('end', async () => {
+            if (oversized) return
             let ended = false
             try {
               const mockReq = {
@@ -37,10 +48,12 @@ function localApiPlugin() {
                   res.flushHeaders?.()
                 },
                 write(payload) {
+                  res.statusCode = this.statusCode
                   res.write(payload)
                 },
                 end(payload) {
                   ended = true
+                  res.statusCode = this.statusCode
                   res.end(payload)
                 },
                 status(code) {
@@ -58,7 +71,7 @@ function localApiPlugin() {
               if (!ended && !res.writableEnded) res.end()
             } catch (error) {
               if (res.writableEnded) return
-              res.statusCode = 500
+              res.statusCode = error instanceof SyntaxError ? 400 : error.status || 500
               res.setHeader('Content-Type', 'application/json; charset=utf-8')
               res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }))
             }
@@ -70,6 +83,10 @@ function localApiPlugin() {
       mountApi('/api/wealth-auth', wealthAuthHandler)
       mountApi('/api/data-backup', dataBackupHandler)
       mountApi('/api/book-summary', bookSummaryHandler)
+      mountApi('/api/coupon-media', couponMediaHandler)
+      mountApi('/api/coupon-recognize', couponRecognizeHandler)
+      mountApi('/api/coupon-reminders', couponRemindersHandler)
+      mountApi('/api/coupon-reminder-run', couponReminderRunHandler)
       mountApi('/api/diary-sync', diarySync)
       mountApi('/api/travel-history', travelHistoryHandler)
       mountApi('/api/travel-plan-stream', travelPlanStreamHandler)

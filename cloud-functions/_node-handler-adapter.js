@@ -66,7 +66,12 @@ function createBufferedResponse() {
       }
     },
     toResponse() {
-      return new Response(chunks.join(''), { status: statusCode, headers })
+      const encoder = new TextEncoder()
+      const parts = chunks.map(chunk => typeof chunk === 'string' ? encoder.encode(chunk) : chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk))
+      const bytes = new Uint8Array(parts.reduce((sum, part) => sum + part.byteLength, 0))
+      let offset = 0
+      for (const part of parts) { bytes.set(part, offset); offset += part.byteLength }
+      return new Response([204, 205, 304].includes(statusCode) ? null : bytes, { status: statusCode, headers })
     },
     get ended() {
       return ended

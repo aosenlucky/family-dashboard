@@ -1,4 +1,5 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
+import { validateCoupons, validateCouponTrash } from '../coupons/model.js';
 
 export const MAX_ARCHIVE_BYTES = 256 * 1024 * 1024;
 export const MAX_MEDIA_BYTES = 40 * 1024 * 1024;
@@ -6,6 +7,14 @@ const MAX_FILES = 3000;
 const mediaKeys = new Set(['thumbnailUrl','photoUrl','imageUrl','cover','coverUrl','backgroundUrl','avatarUrl']);
 const mediaArrays = new Set(['photos','images']);
 const privateKeys = /^(diar(y|ies|yEntries)|privateDiaries|llmApiKey|wealthPassword|password|accessToken|refreshToken|secretKey|secretId)$/i;
+export const couponMediaRef = key => 'coupon-private:' + encodeURIComponent(key);
+export const isCouponMediaRef = ref => typeof ref === 'string' && ref.startsWith('coupon-private:');
+export function couponMediaKey(ref) {
+  if (!isCouponMediaRef(ref)) throw Error('无效券附件引用。');
+  let key; try { key = decodeURIComponent(ref.slice(15)); } catch { throw Error('无效券附件引用。'); }
+  if (!/^coupon\/[a-f0-9]{64}\.(jpg|png|webp|gif)$/.test(key)) throw Error('无效券附件路径。');
+  return key;
+}
 export async function sha256(bytes) {
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(v=>v.toString(16).padStart(2,'0')).join('');
 }
@@ -16,14 +25,16 @@ export function sanitizeBackup(backup) {
 // Only media fields are collected: ordinary links, API endpoints, notes, and
 // private diaries are not requested over the network.
 export function collectMedia(backup) {
+  validateCoupons(backup.main?.coupons); validateCouponTrash(backup.main?.trash);
   const found = new Set();
   function visit(value, key='', ancestors=[], parent={}) {
     if(privateKeys.test(key))return;
     if(typeof value==='string') {
+      if(key === 'objectKey' && ancestors.includes('coupons')) { found.add(couponMediaRef(value)); return; }
       const media = mediaKeys.has(key) || mediaArrays.has(key) || key==='url' && (ancestors.some(k=>mediaArrays.has(k)) || parent.thumbnailUrl || parent.filename || parent.desc!==undefined);
       if(media && /^([a-z][a-z\d+.-]*:|\/)/i.test(value))found.add(value);
     } else if(Array.isArray(value))value.forEach(item=>visit(item,key,ancestors,parent));
-    else if(value && typeof value==='object')for(const [nextKey,v] of Object.entries(value))visit(v,nextKey,[...ancestors,key,...(value.collection==='photos'?['photos']:[])],value);
+    else if(value && typeof value==='object')for(const [nextKey,v] of Object.entries(value))visit(v,nextKey,[...ancestors,key,...(['photos','coupons'].includes(value.collection)?[value.collection]:[])],value);
   }
   visit(backup.main,'main');visit(backup.travel,'travel');
   return [...found];
@@ -53,7 +64,7 @@ async function readBounded(response) {
   catch(error){await reader.cancel().catch(()=>{});throw error;}
   const bytes=new Uint8Array(total);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}return bytes;
 }
-export async function createArchive(backup, {origin, fetcher=fetch, onProgress=()=>{}}={}) {
+export async function createArchive(backup, {origin, fetcher=fetch, privateFetcher, onProgress=()=>{}}={}) {
   const clean=sanitizeBackup(backup), urls=collectMedia(clean);
   if(urls.length+2>MAX_FILES)throw Error('照片数量超过单包上限，未生成不完整备份。');
   const files={},assets=[];let total=0;
@@ -62,8 +73,14 @@ export async function createArchive(backup, {origin, fetcher=fetch, onProgress=(
   for(let index=0;index<urls.length;index++){
     const sourceUrl=urls[index];onProgress({current:index,total:urls.length,message:'下载媒体 '+(index+1)+' / '+urls.length});
     try{
-      const url=allowedMediaUrl(sourceUrl,{origin,mediaOrigins:clean.mediaOrigins});
-      const response=await fetcher(url,{credentials:'omit',redirect:'error',cache:'no-store',signal:AbortSignal.timeout(60000)});
+      let response;
+      if(isCouponMediaRef(sourceUrl)) {
+        if(!privateFetcher)throw Error('私有券附件需要家庭授权，不能跳过。');
+        response=await privateFetcher(couponMediaKey(sourceUrl));
+      } else {
+        const url=allowedMediaUrl(sourceUrl,{origin,mediaOrigins:clean.mediaOrigins});
+        response=await fetcher(url,{credentials:'omit',redirect:'error',cache:'no-store',signal:AbortSignal.timeout(60000)});
+      }
       if(!response.ok)throw Error('下载失败（'+response.status+'）');
       const bytes=await readBounded(response),mime=mediaType(bytes,response.headers.get('content-type'));
       total+=bytes.byteLength;if(total>MAX_ARCHIVE_BYTES)throw Error('完整照片超过本次浏览器打包上限 256 MB');
@@ -107,6 +124,12 @@ export async function inspectArchive(input) {
   return {backup:clean,manifest,files,bytes:total};
 }
 export function relinkMedia(backup, mapping) {
-  const replace=value=>typeof value==='string'?(mapping.get(value)||value):Array.isArray(value)?value.map(replace):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([k,v])=>[k,replace(v)])):value;
+  const replace=value=>{
+    if(value && typeof value==='object' && !Array.isArray(value) && typeof value.objectKey === 'string') {
+      const replacement=mapping.get(couponMediaRef(value.objectKey));
+      if(replacement && typeof replacement==='object')return {...value,...replacement};
+    }
+    return typeof value==='string'?(mapping.get(value)||value):Array.isArray(value)?value.map(replace):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([k,v])=>[k,replace(v)])):value;
+  };
   return replace(backup);
 }
