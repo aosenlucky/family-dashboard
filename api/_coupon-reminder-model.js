@@ -22,6 +22,9 @@ export function daysBefore(date, count) {
   if (!validDate(date)) return ''
   return new Date(Date.parse(`${date}T00:00:00Z`) - count * 86400000).toISOString().slice(0, 10)
 }
+// The former calendar-month milestone is the same one-time notice as the new
+// exact 30-day milestone. Keep this alias when consulting the durable ledger.
+export const reminderMilestone = value => value === 'month' ? 'thirty-days' : value
 export function activeReminderDeadline(coupon) {
   if (!coupon || !['unused', 'booked'].includes(coupon.status) || coupon.deadlineConfirmed !== true || coupon.reminder?.enabled !== true) return null
   const dates = []
@@ -34,7 +37,8 @@ export function reminderCandidates(coupons, now = new Date(), recipients = ['aos
   for (const coupon of Array.isArray(coupons) ? coupons : []) {
     const deadline = activeReminderDeadline(coupon)
     if (!deadline || !coupon.id || deadline.date < today) continue
-    const milestones = [{ name: 'month', date: monthBefore(deadline.date) }]
+    const milestones = []
+    if (coupon.reminder?.thirtyDays !== false) milestones.push({ name: 'thirty-days', date: daysBefore(deadline.date, 30) })
     if (coupon.reminder?.sevenDays) milestones.push({ name: 'seven-days', date: daysBefore(deadline.date, 7) })
     const crossed = milestones.filter(m => m.date <= today)
     if (!crossed.length) continue

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { readMainSnapshot } from './_data-store.js'
 import { hasPreviewStore } from '../server/preview-store.js'
 import { reminderTransaction } from './_coupon-reminder-store.js'
-import { reminderCandidates, canSendAt, localDay, REMINDER_STATUSES } from './_coupon-reminder-model.js'
+import { reminderCandidates, reminderMilestone, canSendAt, localDay, REMINDER_STATUSES } from './_coupon-reminder-model.js'
 import { reminderRecipients, publicRecipients, notificationText, sendReminder, queryReminder } from './_coupon-reminder-push.js'
 
 const terminal = new Set(['accepted', 'sent', 'unknown', 'simulated'])
@@ -46,6 +46,11 @@ export async function runCouponReminders({ now = new Date(), simulate = false, n
       batch.status = 'unknown'; batch.reason = '上次发送未完成确认，请核对后再安排提醒。'; batch.updatedAt = timestamp
       for (const key of batch.eventKeys) if (state.events[key]?.batchId === batch.id) Object.assign(state.events[key], { status: 'unknown', reason: batch.reason, updatedAt: timestamp })
     }
+    // Upgrade existing event history before discarding any batch that still
+    // holds its only destination identity. Never retain plaintext push tokens.
+    for (const event of Object.values(state.events)) if (!event.destination && state.batches[event.batchId]?.destination) {
+      event.destination = state.batches[event.batchId].destination
+    }
     // Old run attempts are disposable; the event ledger is deliberately retained.
     for (const [id, batch] of Object.entries(state.batches)) if (batch.createdAt < new Date(now.getTime() - 90 * 86400000).toISOString() && !['claimed', 'accepted'].includes(batch.status)) delete state.batches[id]
   })
@@ -83,6 +88,17 @@ export async function runCouponReminders({ now = new Date(), simulate = false, n
       if (prior.some(b => terminal.has(b.status) || b.status === 'claimed')) continue
       const memberIds = members.map(r => r.id)
       const events = eligible.filter(e => memberIds.includes(e.recipient)).filter(e => {
+        // A sent milestone belongs to the coupon, not a particular edition of
+        // its date or reminder switch. Legacy month events count as 30 days.
+        // Store a destination on each event so pruning old batches never loses
+        // deduplication for two members who share one notification channel.
+        const alreadySubmitted = Object.values(state.events).some(old => {
+          if (old.couponId !== e.couponId || reminderMilestone(old.milestone) !== reminderMilestone(e.milestone)
+            || (!terminal.has(old.status) && old.status !== 'claimed')) return false
+          const oldDestination = old.destination || state.batches[old.batchId]?.destination
+          return old.recipient === e.recipient || oldDestination === dest || (!oldDestination && memberIds.includes(old.recipient))
+        })
+        if (alreadySubmitted) return false
         const old = state.events[e.key]
         if (!old) return true
         return ['failed', 'cancelled'].includes(old.status) && (old.attempts || 0) < 3 && (!old.nextAttemptAt || old.nextAttemptAt <= timestamp)
@@ -90,7 +106,7 @@ export async function runCouponReminders({ now = new Date(), simulate = false, n
       if (!events.length) continue
       const batch = { id: randomUUID(), recipient: members[0].id, destination: dest, day, status: 'claimed', createdAt: timestamp, updatedAt: timestamp, leaseUntil: new Date(now.getTime() + 5 * 60000).toISOString(), eventKeys: events.map(e => e.key) }
       state.batches[batch.id] = batch
-      for (const event of events) state.events[event.key] = { ...event, status: 'claimed', batchId: batch.id, attempts: (state.events[event.key]?.attempts || 0) + 1, updatedAt: timestamp }
+      for (const event of events) state.events[event.key] = { ...event, destination: dest, status: 'claimed', batchId: batch.id, attempts: (state.events[event.key]?.attempts || 0) + 1, updatedAt: timestamp }
       batches.push({ ...batch, events }); attemptsToday++
     }
     return batches

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { randomUUID } from 'node:crypto'
-import { monthBefore, localDay, reminderCandidates, canSendAt, cronSignature, verifyCronRequest } from '../api/_coupon-reminder-model.js'
+import { createHash, randomUUID } from 'node:crypto'
+import { monthBefore, daysBefore, localDay, reminderCandidates, canSendAt, cronSignature, verifyCronRequest } from '../api/_coupon-reminder-model.js'
 import { blankReminderState, reminderTransaction } from '../api/_coupon-reminder-store.js'
 import { runCouponReminders } from '../api/_coupon-reminders.js'
 import { sendReminder, queryReminder, notificationText, reminderRecipients } from '../api/_coupon-reminder-push.js'
@@ -28,6 +28,22 @@ test('natural month reminders clamp month ends and leap dates; local day uses Sh
   assert.equal(monthBefore('2027-01-31'), '2026-12-31')
   assert.equal(monthBefore('2026-02-30'), '')
   assert.equal(localDay(new Date('2026-11-23T20:00:00Z')), '2026-11-24')
+})
+test('30-day reminders use exactly 30 days, not the former calendar month', () => {
+  assert.equal(daysBefore('2026-03-31', 30), '2026-03-01')
+  assert.equal(daysBefore('2024-03-31', 30), '2024-03-01')
+  const c = coupon({ expiresOn: '2026-03-31' })
+  assert.equal(reminderCandidates([c], new Date('2026-02-28T09:00:00+08:00')).length, 0)
+  const event = reminderCandidates([c], new Date('2026-03-01T09:00:00+08:00'))[0]
+  assert.equal(event.dueOn, '2026-03-01'); assert.equal(event.milestone, 'thirty-days')
+})
+test('each coupon can disable push or select only the seven-day milestone', () => {
+  const reminder = { enabled: true, thirtyDays: false, sevenDays: true, recipients: ['aosen'] }
+  assert.equal(reminderCandidates([coupon({ reminder })], now).length, 0)
+  const atSeven = new Date('2026-12-17T09:00:00+08:00')
+  assert.equal(reminderCandidates([coupon({ reminder })], atSeven)[0].milestone, 'seven-days')
+  assert.equal(reminderCandidates([coupon({ reminder: { ...reminder, enabled: false } })], atSeven).length, 0)
+  assert.equal(reminderCandidates([coupon({ reminder: { ...reminder, sevenDays: false } })], atSeven).length, 0)
 })
 test('unknown dates, wish, used, refunds and expired coupons cannot produce reminders', () => {
   for (const value of [coupon({ expiresOn: '' }), coupon({ deadlineConfirmed: false }), coupon({ status: 'wish' }), coupon({ status: 'used' }), coupon({ status: 'refunded' }), coupon({ expiresOn: '2026-11-23' })]) assert.equal(reminderCandidates([value], now).length, 0)
@@ -74,16 +90,39 @@ test('definite failures retry at most three times; timeout stays unknown without
   for (let i = 0; i < 3; i++) await runCouponReminders({ ...g, recipients, now: new Date(now.getTime() + i * 86400000), send: async () => { sends++; return { status: 'unknown' } } })
   assert.equal(sends, 1)
 })
-test('date changes create a new reminder version, restoring old data does not repeat a sent one', async () => {
+test('date edits and restoring old data do not repeat a submitted coupon milestone', async () => {
   const coupons = [coupon()], f = fixture(coupons); let sends = 0
   const args = { ...f, recipients, send: async () => { sends++; return { status: 'accepted', provider: 'serverchan' } } }
   await runCouponReminders({ ...args, now })
   coupons[0].expiresOn = '2026-12-25'
   await runCouponReminders({ ...args, now: new Date('2026-11-25T09:00:00+08:00') })
-  assert.equal(sends, 2)
+  assert.equal(sends, 1)
   coupons[0].expiresOn = '2026-12-24'
   await runCouponReminders({ ...args, now: new Date('2026-11-26T09:00:00+08:00') })
+  assert.equal(sends, 1)
+})
+test('both selected milestones send once each across daily checks and reminder switches', async () => {
+  const coupons = [coupon({ reminder: { enabled: true, thirtyDays: true, sevenDays: true, recipients: ['aosen'] } })]
+  const f = fixture(coupons); let sends = 0
+  const args = { ...f, recipients, send: async () => { sends++; return { status: 'accepted', provider: 'serverchan' } } }
+  await runCouponReminders({ ...args, now })
+  coupons[0].reminder.enabled = false
+  await runCouponReminders({ ...args, now: new Date('2026-11-25T09:00:00+08:00') })
+  coupons[0].reminder.enabled = true
+  for (let i = 2; i <= 30; i++) await runCouponReminders({ ...args, now: new Date(now.getTime() + i * 86400000) })
   assert.equal(sends, 2)
+  assert.deepEqual(Object.values(f.state.events).map(e => e.milestone).sort(), ['seven-days', 'thirty-days'])
+  coupons[0].reminder.sevenDays = false
+  await runCouponReminders({ ...args, now: new Date('2026-12-24T10:00:00+08:00') })
+  assert.equal(sends, 2)
+})
+test('legacy month events remain deduplicated even with a different deadline and no saved batch', async () => {
+  for (const status of ['accepted', 'sent', 'unknown']) {
+    const f = fixture([coupon({ expiresOn: '2026-12-25' })]); let sends = 0
+    f.state.events.legacy = { key: 'legacy', couponId: 'one', milestone: 'month', recipient: 'aosen', deadline: '2026-12-24', status, attempts: 1 }
+    await runCouponReminders({ ...f, recipients, now: new Date('2026-11-25T09:00:00+08:00'), send: async () => { sends++; return { status: 'accepted' } } })
+    assert.equal(sends, 0, status)
+  }
 })
 test('coupon consumed between claim and send cancels message', async () => {
   const f = fixture(); let reads = 0, sends = 0
@@ -94,6 +133,29 @@ test('shared destination receives one digest even when both family members are s
   const f = fixture([coupon({ reminder: { enabled: true, recipients: ['aosen', 'xiaoyue'] } })]); let sends = 0
   await runCouponReminders({ ...f, now, recipients: [...recipients, { id: 'xiaoyue', token: recipients[0].token }], send: async (_, message) => { sends++; assert.match(message.title, /1 张/); return { status: 'accepted' } } })
   assert.equal(sends, 1); assert.equal(Object.keys(f.state.events).length, 2)
+})
+test('adding another recipient on the same channel later does not resend after batch pruning', async () => {
+  const coupons = [coupon()], f = fixture(coupons); let sends = 0
+  const shared = [...recipients, { id: 'xiaoyue', token: recipients[0].token }]
+  const args = { ...f, recipients: shared, send: async () => { sends++; return { status: 'accepted', provider: 'serverchan' } } }
+  await runCouponReminders({ ...args, now })
+  f.state.batches = {}
+  coupons[0].reminder.recipients = ['xiaoyue']
+  await runCouponReminders({ ...args, now: new Date('2026-11-25T09:00:00+08:00') })
+  assert.equal(sends, 1)
+  const oldEvent = Object.values(f.state.events)[0]
+  assert.equal(typeof oldEvent.destination, 'string')
+  assert.equal(oldEvent.destination.length, 64)
+})
+test('legacy destination is retained before pruning even if the channel moved to the other member', async () => {
+  const f = fixture([coupon({ reminder: { enabled: true, recipients: ['xiaoyue'] } })]); let sends = 0
+  const destination = createHash('sha256').update(recipients[0].token).digest('hex')
+  f.state.events.legacy = { key: 'legacy', couponId: 'one', milestone: 'month', recipient: 'aosen', batchId: 'old-batch', status: 'sent', attempts: 1 }
+  f.state.batches['old-batch'] = { id: 'old-batch', day: '2026-08-01', createdAt: '2026-08-01T01:00:00Z', status: 'sent', destination, eventKeys: ['legacy'] }
+  await runCouponReminders({ ...f, now, recipients: [{ id: 'xiaoyue', token: recipients[0].token }], send: async () => { sends++; return { status: 'accepted' } } })
+  assert.equal(sends, 0)
+  assert.equal(f.state.batches['old-batch'], undefined)
+  assert.equal(f.state.events.legacy.destination, destination)
 })
 test('daily global batch budget and abandoned lease both prevent further sends', async () => {
   const f = fixture(); let sends = 0
@@ -123,6 +185,7 @@ test('provider accepted response is not delivered; malformed success and network
 test('message includes only minimal coupon fields and a fixed family link, no codes or prices', () => {
   const c = coupon({ notes: 'secret nuclear-code', paidPrice: '9999', attachments: [{ objectKey: 'private-image' }] })
   const message = notificationText(reminderCandidates([c], now), [c])
+  assert.match(message.title, /^拾光小笺/)
   assert.match(message.content, /使用截止 2026-12-24/)
   assert.doesNotMatch(message.content, /secret|9999|private-image/)
   const legacy = reminderRecipients({ PUSHPLUS_TOKEN: 'some-token' })

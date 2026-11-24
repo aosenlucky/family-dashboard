@@ -20,7 +20,7 @@ watch(pending,()=>{confirmDiscard.value=false;});
 function discardChanges(){if(!confirmDiscard.value){confirmDiscard.value=true;return;}state.discardPending();confirmDiscard.value=false;}
 const isDemoMode=computed(()=>mode.value==='demo');
 const unresolvedKeys=computed(()=>conflict.value?mergeChanges(conflict.value.base,conflict.value.draft,conflict.value.latest).conflicts:[]);
-const labels={habits:'习惯花园',todos:'待办',goals:'梦想金库',dates:'温馨日历',photos:'画廊',moments:'那天小事',lifeLayout:'生活布局',appearance:'外观',books:'阅读',milestones:'成长',trash:'回收站',paymentChecks:'理财核对',coupons:'我们的券册'};
+const labels={habits:'习惯花园',todos:'待办',goals:'梦想金库',dates:'温馨日历',photos:'画廊',moments:'那天小事',lifeLayout:'生活布局',appearance:'外观',books:'阅读',milestones:'成长',trash:'回收站',paymentChecks:'理财核对',coupons:'拾光小笺'};
 function showNotification(msg){toast.value=String(msg).replace(/<[^>]*>/g,'');toastAction.value=null;clearTimeout(toastTimer);toastTimer=setTimeout(()=>toast.value='',6500);}
 function setCurrentMember(name){currentMember.value=name;localStorage.setItem('family-record-author',name);}
 function requestWealthUnlock(){showWealthAuth.value=true;wealthInputPin.value=preview?'local-wealth-preview':'';wealthErrorMsg.value='';}
@@ -45,7 +45,7 @@ for(const [key,value] of Object.entries({familyData,familyRevision,wealthToken,i
 const lockWealth=state.lockWealth;provide('lockWealth',lockWealth);
 provide('canRestoreFamily',computed(()=>!pending.value&&!conflict.value&&!isSyncing.value));
 watch(isMasked,(locked)=>{if(locked)showConfig.value=false;});
-watch(()=>route.path,()=>{document.title=`${(route.path==='/life/coupons'?'我们的券册':sections.find(s=>s.path===route.path)?.label)||'生活'} · Aosen & 小悦`;});
+watch(()=>route.path,()=>{document.title=`${(route.path==='/life/coupons'?'拾光小笺':sections.find(s=>s.path===route.path)?.label)||'生活'} · Aosen & 小悦`;});
 onMounted(async()=>{if(preview&&!sessionStorage.getItem('family_auth_token'))sessionStorage.setItem('family_auth_token','local-family-preview');if(sessionStorage.getItem('family_auth_token')){try{await reloadFamily();auth.value.isLoggedIn=true;if(sessionStorage.getItem('family-shared-pending'))showNotification('有一份上次未保存的共享草稿，可在保存状态中恢复。');}catch(e){auth.value.errorMsg=e.message;}}});
 </script>
 

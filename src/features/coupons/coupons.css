@@ -16,3 +16,34 @@
 @media(min-width:1100px){.coupon-page-heading{margin-top:0;margin-bottom:18px}}
 
 .coupon-simulation{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin-top:14px}.coupon-simulation label{font-size:12px;color:#847159}.coupon-simulation input{display:block;border:1px solid #d7cbb9;border-radius:8px;background:#fffdf7;font-size:14px;padding:8px;min-height:44px;margin:6px 0 4px}
+
+/* Native date/select controls and long merchant names must fit small screens. */
+.coupon-page-heading>div,.coupon-upload-intro>div,.coupon-reminder-options,.coupon-reminder-schedule,.coupon-detail-grid>div{min-width:0}
+.coupon-page-heading>.coupon-primary,.coupon-upload-intro>i,.coupon-icon{flex-shrink:0}
+.coupon-page-heading>div{flex:1}
+.coupon-page-heading .eyebrow,.coupon-notice>span,.coupon-detail-grid dd,.coupon-detail-copy p,.coupon-check,.coupon-help{overflow-wrap:anywhere}
+.coupon-form-grid,.coupon-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.coupon-dialog :is(input,select,textarea){min-width:0}
+.coupon-reminder-schedule{display:block;font-size:13px;color:#786047;margin:10px 0 14px}
+.coupon-reminder-schedule select{max-width:100%}
+.coupon-tabs{max-width:100%}
+.coupon-tabs button{flex:1;min-width:0}
+.coupon-overview{flex-wrap:wrap;row-gap:8px}
+.coupon-reminder-panel>summary{flex-wrap:wrap;padding:8px 0}
+.coupon-arrange label{flex-basis:150px;min-width:0}
+@media(max-width:440px){
+  .coupon-page-heading{align-items:flex-start;flex-wrap:wrap}
+  .coupon-page-heading>div{flex-basis:100%}
+  .coupon-page-heading>.coupon-primary{margin-top:2px}
+  .coupon-page-heading h1{font-size:30px}
+  .coupon-page-heading .eyebrow{max-width:none}
+  .coupon-page-heading h1 span{font-size:12px}
+  .coupon-form-grid{grid-template-columns:minmax(0,1fr)}
+  .coupon-tabs{width:100%;gap:3px}
+  .coupon-tabs button{padding:8px 12px}
+  .coupon-dialog-heading{gap:10px}
+  .coupon-dialog-heading h2{font-size:20px}
+  .coupon-detail .ticket-body{grid-template-columns:minmax(0,1fr) 76px}
+  .coupon-detail .ticket-main{padding:12px}
+  .coupon-detail-grid{gap:18px 12px}
+}

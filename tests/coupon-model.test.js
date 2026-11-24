@@ -34,6 +34,18 @@ test('server rejects duplicate IDs, impossible dates and plans beyond expiry', (
   assert.throws(()=>validateCoupons([coupon({plannedOn:'2026-12-10',expiresOn:'2026-12-09'})]),/计划使用/);
   validateCoupons([coupon()]);
 });
+test('per-coupon reminder choices survive normalization and legacy data still validates', () => {
+  assert.deepEqual(coupon().reminder, { enabled:true, thirtyDays:true, sevenDays:false, recipients:['aosen','xiaoyue'] });
+  const sevenOnly = coupon({reminder:{enabled:true,thirtyDays:false,sevenDays:true,recipients:['aosen']}});
+  assert.equal(sevenOnly.reminder.thirtyDays,false); assert.equal(sevenOnly.reminder.sevenDays,true);
+  validateCoupons([sevenOnly]);
+  const disabled = coupon({reminder:{enabled:false,thirtyDays:false,sevenDays:false,recipients:[]}});
+  assert.equal(disabled.reminder.enabled,false); validateCoupons([disabled]);
+  const legacy = coupon(); delete legacy.reminder.thirtyDays; validateCoupons([legacy]);
+  assert.equal(normalizeCoupon(legacy).reminder.thirtyDays,true);
+  assert.throws(()=>validateCoupons([{...sevenOnly,reminder:{...sevenOnly.reminder,thirtyDays:'yes'}}]),/提醒设置/);
+  assert.throws(()=>validateCoupons([{...sevenOnly,reminder:{...sevenOnly.reminder,sevenDays:false}}]),/30 天或 7 天/);
+});
 test('coupons participate in existing independent record merging and overlapping edits conflict', () => {
   const base=blankFamily(),local=structuredClone(base),remote=structuredClone(base);
   local.coupons=[coupon()];remote.coupons=[coupon({id:'two'})];

@@ -42,7 +42,7 @@ export function normalizeCoupon(input = {}) {
       id: text(a?.id, 100), objectKey: text(a?.objectKey, 300), filename: text(a?.filename, 200),
       contentType: text(a?.contentType, 60), bytes: Number.isSafeInteger(a?.bytes) && a.bytes >= 0 ? a.bytes : 0
     })).filter(a => a.objectKey) : [],
-    reminder: { enabled: reminder.enabled !== false, sevenDays: reminder.sevenDays === true,
+    reminder: { enabled: reminder.enabled !== false, thirtyDays: reminder.thirtyDays !== false, sevenDays: reminder.sevenDays === true,
       recipients: Array.isArray(reminder.recipients) ? [...new Set(reminder.recipients.filter(id => ['aosen', 'xiaoyue'].includes(id)))] : ['aosen', 'xiaoyue'] },
     createdAt: text(source.createdAt, 40), updatedAt: text(source.updatedAt, 40), usedAt: text(source.usedAt, 40)
   };
@@ -99,7 +99,9 @@ export function validateCoupons(coupons) {
     }
     const reminder = coupon.reminder;
     if (!reminder || typeof reminder !== 'object' || typeof reminder.enabled !== 'boolean' || typeof reminder.sevenDays !== 'boolean'
+      || (reminder.thirtyDays !== undefined && typeof reminder.thirtyDays !== 'boolean')
       || !Array.isArray(reminder.recipients) || reminder.recipients.length > 2 || reminder.recipients.some(id => !['aosen','xiaoyue'].includes(id))) throw Error('券提醒设置不完整，请重新选择接收人。');
+    if (reminder.enabled && reminder.thirtyDays === false && !reminder.sevenDays) throw Error('请选择提前 30 天或 7 天提醒，或关闭推送提醒。');
     for (const field of ['title','merchant','location','summary','rules','notes','advertisedPrice','paidPrice']) {
       if (coupon[field] !== undefined && typeof coupon[field] !== 'string') throw Error('券文本字段格式不正确。');
     }

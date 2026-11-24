@@ -2163,3 +2163,21 @@
 }
 
 .diary-surface .account-recovery input[type="checkbox"] { width: 18px; min-height: 18px; height:18px; padding:0; }
+
+.diary-surface :is(.page-top,.section-title,.paper-date,.paper-actions,.paper-foot)>div,
+.diary-surface .month-field,
+.diary-surface .gate-form,
+.diary-surface .dialog-content { min-width: 0; }
+.diary-surface .month-field input { min-width: 0; max-width: 100%; }
+.diary-surface .page-top h1,
+.diary-surface .section-title h2,
+.diary-surface .settings-status p { overflow-wrap: anywhere; }
+@media (max-width: 440px) {
+  .diary-surface .search-field { min-width: 0; }
+  .diary-surface .paper-actions,
+  .diary-surface .paper-foot,
+  .diary-surface .ai-options { flex-wrap: wrap; }
+  .diary-surface .section-title { align-items: flex-start; flex-wrap: wrap; }
+  .diary-surface .month-field { flex-basis: 100%; }
+  .diary-surface .period-picker { flex-wrap: wrap; row-gap: 8px; }
+}

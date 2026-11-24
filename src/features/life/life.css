@@ -217,3 +217,18 @@
   .life-page .photo-view { padding:10px; }
 }
 @media(prefers-reduced-motion:reduce) { .life-page * { transition:none!important; } }
+
+.life-page :is(.life-heading,.section-heading,.item-heading,.habit-bottom,.goal-numbers)>div{min-width:0}
+.life-page :is(.item-heading h3,.habit-reward,.date-copy strong,.book-open strong,.book-open small,.layout-row label){overflow-wrap:anywhere}
+.life-page .date-icon{flex-shrink:0}
+.life-page .form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.life-page .form-grid>label{min-width:0}
+.life-page .goal-numbers{flex-wrap:wrap;gap:6px}
+.life-page .button-row{flex-wrap:wrap}
+@media(max-width:440px){
+  .life-page .form-grid{grid-template-columns:minmax(0,1fr)}
+  .life-page .habit-bottom{align-items:flex-start;flex-wrap:wrap;gap:8px}
+  .life-page .habit-reward{max-width:none;flex:1 1 130px}
+  .life-page .layout-row{flex-wrap:wrap}
+  .life-page .layout-row>div{margin-left:auto}
+}

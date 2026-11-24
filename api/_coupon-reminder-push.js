@@ -21,7 +21,7 @@ export function notificationText(events, coupons, siteUrl = process.env.COUPON_S
     const name = String(coupon?.merchant || coupon?.title || '收藏的券').replace(/[\r\n<>\[\]()`*_~]/g, ' ').slice(0, 70)
     return `· ${name}：${e.kind === 'booking' ? '预约截止' : '使用截止'} ${e.deadline}`
   })
-  return { title: `我们的券册 · ${events.length} 张券可以安排了`, content: `一起看看哪个日子合适。\n${lines.join('\n')}\n${link ? `查看套餐与使用规则：${link}` : '请打开家庭网站查看套餐与使用规则。'}` }
+  return { title: `拾光小笺 · ${events.length} 张券可以安排了`, content: `一起看看哪个日子合适。\n${lines.join('\n')}\n${link ? `查看套餐与使用规则：${link}` : '请打开家庭网站查看套餐与使用规则。'}` }
 }
 export async function sendReminder(recipient, notification, { fetcher = fetch } = {}) {
   const token = recipient.token, provider = token?.startsWith('SCT') ? 'serverchan' : 'pushplus'

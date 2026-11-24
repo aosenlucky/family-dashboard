@@ -7,3 +7,35 @@ body{background:var(--family-bg);color:var(--family-ink);font-family:Inter,"Ping
 .family-cover.photo{color:#514637;background:#e9e2d5}.family-cover.photo:before{left:48%;background-position:50% 67%}.family-cover.photo:after{background:linear-gradient(90deg,#e9e2d5 0%,#e9e2d5 44%,#e9e2d560 64%,transparent 85%)}.family-cover h1{max-width:490px;font-size:31px}.cover-signature{color:#f8f5eb;text-shadow:0 1px 5px #0008}@media(max-width:700px){.family-cover h1{font-size:26px;max-width:230px}.family-cover.photo:before{left:40%;background-position:45% 67%}.family-cover.photo:after{background:linear-gradient(90deg,#e9e2d5 0%,#e9e2d5ed 30%,#e9e2d550 65%,transparent)}.family-cover p{max-width:185px}.family-cover .cover-signature{display:none}}
 
 @media(max-width:700px){.family-header{backdrop-filter:none;background:#faf8f3}.family-app{padding-bottom:70px}}
+
+/* Let content shrink within its layout instead of widening the mobile viewport. */
+.family-app,.family-brand,.family-brand b,.family-status>span,.settings-fields fieldset,.trash-row>div{min-width:0}
+.family-brand>span,.family-settings{flex-shrink:0}
+.family-brand b{white-space:normal;overflow-wrap:anywhere}
+.family-status>span,.family-toast>span,.trash-row>div{overflow-wrap:anywhere}
+.family-login{min-height:100svh;grid-template-columns:minmax(0,1fr)}
+.family-dialog{min-width:0}
+.settings-two,.conflict-values{grid-template-columns:repeat(2,minmax(0,1fr))}
+.settings-tabs,.settings-footer,.settings-footer>div{flex-wrap:wrap}
+.settings-two>label,.cover-choices>button{min-width:0}
+.family-upload input{max-width:100%}
+@media(min-width:801px) and (max-width:1000px){
+  .family-header{grid-template-columns:auto minmax(0,1fr) auto;gap:16px}
+  .family-header nav{justify-content:center}
+  .family-header nav a{min-width:64px;gap:5px;font-size:13px}
+}
+@media(max-width:800px){
+  .family-header{height:64px;grid-template-columns:minmax(0,1fr) auto;gap:12px;padding:0 max(18px,env(safe-area-inset-right)) 0 max(18px,env(safe-area-inset-left));backdrop-filter:none;background:#faf8f3}
+  .family-header nav{position:fixed;bottom:0;left:0;right:0;z-index:65;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;background:#fffdf8f5;border-top:1px solid var(--family-line);padding:6px max(8px,env(safe-area-inset-right)) max(6px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left));backdrop-filter:blur(16px)}
+  .family-header nav a{min-width:0;min-height:54px;flex-direction:column;gap:1px;border-radius:13px;font-size:11px}
+  .family-header nav a i{font-size:21px}
+  .family-app{padding-bottom:calc(70px + env(safe-area-inset-bottom))}
+  .family-toast{bottom:calc(85px + env(safe-area-inset-bottom));width:max-content;font-size:12px}
+  /* Prevent iOS focus zoom without disabling the user's pinch-to-zoom. */
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),select,textarea{font-size:16px!important}
+}
+@media(max-width:520px){
+  .settings-two{grid-template-columns:minmax(0,1fr);gap:8px}
+  .family-status>span:last-of-type{flex-wrap:wrap}
+  .family-toast{gap:10px;flex-wrap:wrap}
+}
