@@ -4,6 +4,7 @@ export const LIFE_MODULES = Object.freeze([
   { id: 'goals', collection: 'goals', title: '梦想金库', icon: 'ph-sparkle', description: '为心里的小期待，慢慢准备。' },
   { id: 'dates', collection: 'dates', title: '温馨日历', icon: 'ph-calendar-heart', description: '值得记住的日子，放在这里。' },
   { id: 'coupons', collection: 'coupons', title: '拾光小笺', icon: 'ph-ticket', description: '把想去的地方，留给相聚的日子。' },
+  { id: 'food', collection: 'foodPlaces', title: '寻味清单', icon: 'ph-fork-knife', description: '收藏过的心动，下一顿就去尝尝。' },
   { id: 'milestones', collection: 'milestones', title: '宝宝时光', icon: 'ph-baby', description: '收好每一次新的发现。' },
   { id: 'reading', collection: 'books', title: '我们的书架', icon: 'ph-books', description: '读过的故事，也成为我们的故事。' },
 ])

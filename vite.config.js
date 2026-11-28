@@ -6,6 +6,7 @@ import dataBackupHandler from './api/data-backup.js'
 import bookSummaryHandler from './api/book-summary.js'
 import couponMediaHandler from './api/coupon-media.js'
 import couponRecognizeHandler from './api/coupon-recognize.js'
+import foodRecognizeHandler from './api/food-recognize.js'
 import couponRemindersHandler from './api/coupon-reminders.js'
 import couponReminderRunHandler from './api/coupon-reminder-run.js'
 import {personalPreviewPlugin} from './server/personal-preview.js'
@@ -85,6 +86,7 @@ function localApiPlugin() {
       mountApi('/api/book-summary', bookSummaryHandler)
       mountApi('/api/coupon-media', couponMediaHandler)
       mountApi('/api/coupon-recognize', couponRecognizeHandler)
+      mountApi('/api/food-recognize', foodRecognizeHandler)
       mountApi('/api/coupon-reminders', couponRemindersHandler)
       mountApi('/api/coupon-reminder-run', couponReminderRunHandler)
       mountApi('/api/diary-sync', diarySync)

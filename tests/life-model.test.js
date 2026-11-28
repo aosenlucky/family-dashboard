@@ -1,12 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { bookNote, ensureLifeIds, normalizeLifeLayout, nextTodoDate, toggleTodoInDraft, nextAnniversary, localDayKey, parseDayKey } from '../src/features/life/model.js'
+import { LIFE_MODULES, bookNote, ensureLifeIds, normalizeLifeLayout, nextTodoDate, toggleTodoInDraft, nextAnniversary, localDayKey, parseDayKey } from '../src/features/life/model.js'
 
 test('layout preserves saved order and hidden modules without touching their records', () => {
   const data = { goals: [{ name: '海边旅行', target: 6000, current: 20 }], lifeLayout: [{ id: 'goals', visible: false }, { id: 'todos', visible: true }, { id: 'goals' }, { id: 'unknown' }] }
   const before = JSON.stringify(data.goals)
   const layout = normalizeLifeLayout(data.lifeLayout)
-  assert.equal(layout.length, 7)
+  assert.equal(layout.length, LIFE_MODULES.length)
   assert.deepEqual(layout.slice(0, 2), [{ id: 'goals', visible: false }, { id: 'todos', visible: true }])
   layout.reverse()
   assert.equal(JSON.stringify(data.goals), before)

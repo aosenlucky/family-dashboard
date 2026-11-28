@@ -177,6 +177,13 @@
       </section>
 
       <section class="min-w-0 travel-output-panel">
+        <section class="travel-food-card" aria-labelledby="travel-food-heading">
+          <div class="travel-food-head"><div><p>ALONG THE WAY</p><h2 id="travel-food-heading">把收藏的味道带上路</h2></div><i class="ph ph-fork-knife" aria-hidden="true"></i></div>
+          <div class="travel-food-toolbar"><label for="travel-food-city">看看哪座城</label><select id="travel-food-city" v-model="foodCityOverride"><option value="">{{ foodDestination ? `随目的地 · ${foodDestination}` : '选择城市' }}</option><option v-for="city in savedFoodCities" :key="city" :value="city">{{ city }}</option></select></div>
+          <div v-if="destinationFood.length" class="travel-food-list"><RouterLink v-for="food in destinationFood.slice(0, 3)" :key="food.id" :to="{ path: '/life/food', query: { food: food.id, city: selectedFoodCity } }"><span><strong>{{ food.title }}</strong><small>{{ food.kind === 'guide' ? '收藏的攻略' : food.kind === 'dish' ? '想尝的味道' : food.dishes || food.area || '想去的店铺' }}</small></span><i class="ph ph-arrow-up-right" aria-hidden="true"></i></RouterLink></div>
+          <p v-else class="travel-food-empty">{{ selectedFoodCity ? `还没有「${selectedFoodCity}」的待尝收藏。也可以选一座收藏过的城市，先把想吃的找出来。` : '选一座城，找找以前收藏过的小店和美食攻略。' }}</p>
+          <RouterLink :to="{ path: '/life/food', query: selectedFoodCity ? { city: selectedFoodCity } : {} }" class="travel-food-link">{{ destinationFood.length ? `查看${selectedFoodCity}的 ${destinationFood.length} 份收藏` : '打开寻味清单' }} <i class="ph ph-arrow-right" aria-hidden="true"></i></RouterLink>
+        </section>
         <div v-if="!plan" class="empty-travel-card rounded-3xl" :style="{ backgroundImage: `url(${dailyScenery.image})` }">
           <div class="empty-travel-scrim"></div>
           <div class="empty-travel-content">
@@ -407,9 +414,11 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref, inject } from 'vue'
+import { computed, nextTick, onMounted, ref, inject, watch } from 'vue'
 import { toPng } from 'html-to-image'
+import { foodCities, filterFoods, normalizeCity } from '../features/food/model.js'
 const reloadFamily=inject('reloadFamily'),notifyFamily=inject('showNotification',()=>{});
+const familyData = inject('familyData', ref({ foodPlaces: [] }))
 async function alignSharedVersion(){try{await reloadFamily?.();}catch{notifyFamily('旅行修改已完成；家庭版本暂未刷新，下次保存前请重试同步。');}}
 
 const variantOptions = [
@@ -478,6 +487,13 @@ const resultTop = ref(null)
 const travelHistory = ref([])
 const isViewingSavedPlan = ref(false)
 const currentHistoryId = ref('')
+
+const foodCityOverride = ref('')
+const foodDestination = computed(() => normalizeCity(plan.value?.meta?.destination || form.value.destination))
+const savedFoodCities = computed(() => foodCities(familyData.value.foodPlaces || []))
+const selectedFoodCity = computed(() => foodCityOverride.value || foodDestination.value)
+const destinationFood = computed(() => selectedFoodCity.value ? filterFoods(familyData.value.foodPlaces || [], { city: selectedFoodCity.value, status: 'want' }) : [])
+watch(foodDestination, () => { foodCityOverride.value = '' })
 
 const tripDates = computed(() => enumerateDates(form.value.startDate, form.value.endDate))
 const hotelStays = computed(() => buildHotelStays(tripDates.value, form.value.hotelArea, dailyHotels.value, useDailyHotels.value))
@@ -1134,6 +1150,24 @@ function fatigueLabel(value) {
 </script>
 
 <style scoped>
+.travel-food-card { min-width:0;padding:22px;margin-bottom:20px;border:1px solid var(--family-border,#e5ddd2);border-radius:22px;background:var(--family-surface,#fffdf9);color:var(--family-ink,#403932); }
+.travel-food-head { display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:16px; }
+.travel-food-head p { font-size:10px;letter-spacing:.17em;color:var(--family-accent,#9b7357);margin:0 0 6px; }
+.travel-food-head h2 { font-size:18px;font-weight:600;line-height:1.5;margin:0; }
+.travel-food-head>i { flex-shrink:0;font-size:25px;color:var(--family-accent,#9b7357); }
+.travel-food-toolbar { display:flex;align-items:center;gap:12px;margin-bottom:12px; }
+.travel-food-toolbar label { flex-shrink:0;font-size:13px;color:var(--family-muted,#877c70); }
+.travel-food-toolbar select { width:100%;min-width:0;min-height:44px;max-width:300px;border:1px solid var(--family-border,#e5ddd2);border-radius:11px;padding:8px 10px;background:var(--family-surface,#fffdf9);color:var(--family-ink,#403932);font-size:16px; }
+.travel-food-list { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px; }
+.travel-food-list a { min-width:0;display:flex;align-items:center;gap:9px;justify-content:space-between;border-radius:12px;padding:12px;background:var(--family-soft,#f6f2eb);color:inherit;text-decoration:none;min-height:60px; }
+.travel-food-list a>span { min-width:0;display:grid;gap:6px; }
+.travel-food-list strong { font-size:13px;line-height:1.6;font-weight:500;overflow-wrap:anywhere; }
+.travel-food-list small { font-size:12px;color:var(--family-muted,#877c70);overflow:hidden;white-space:nowrap;text-overflow:ellipsis; }
+.travel-food-list i { flex-shrink:0;color:var(--family-accent,#9b7357); }
+.travel-food-card :is(a,select):focus-visible { outline:2px solid var(--family-accent,#9b7357);outline-offset:3px; }
+.travel-food-link { display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px;margin:10px 0 -8px;font-size:13px;color:var(--family-accent,#9b7357);text-decoration:none; }
+.travel-food-empty { font-size:13px;line-height:1.8;color:var(--family-muted,#877c70);margin:12px 0; }
+@media(max-width:600px) { .travel-food-card { padding:20px 17px; }.travel-food-list { grid-template-columns:1fr; }.travel-food-list strong { font-size:14px; }.travel-food-list a { min-height:66px; } }
 .travel-form-panel { height:fit-content; }
 .travel-output-panel { min-height:760px; display:flex; flex-direction:column; }
 .travel-output-panel > .space-y-5 { width:100%; }

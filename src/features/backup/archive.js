@@ -1,5 +1,6 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { validateCoupons, validateCouponTrash } from '../coupons/model.js';
+import { validateFoods, validateFoodTrash } from '../food/model.js';
 
 export const MAX_ARCHIVE_BYTES = 256 * 1024 * 1024;
 export const MAX_MEDIA_BYTES = 40 * 1024 * 1024;
@@ -26,15 +27,16 @@ export function sanitizeBackup(backup) {
 // private diaries are not requested over the network.
 export function collectMedia(backup) {
   validateCoupons(backup.main?.coupons); validateCouponTrash(backup.main?.trash);
+  validateFoods(backup.main?.foodPlaces); validateFoodTrash(backup.main?.trash);
   const found = new Set();
   function visit(value, key='', ancestors=[], parent={}) {
     if(privateKeys.test(key))return;
     if(typeof value==='string') {
-      if(key === 'objectKey' && ancestors.includes('coupons')) { found.add(couponMediaRef(value)); return; }
+      if(key === 'objectKey' && ancestors.some(name => name === 'coupons' || name === 'foodPlaces')) { found.add(couponMediaRef(value)); return; }
       const media = mediaKeys.has(key) || mediaArrays.has(key) || key==='url' && (ancestors.some(k=>mediaArrays.has(k)) || parent.thumbnailUrl || parent.filename || parent.desc!==undefined);
       if(media && /^([a-z][a-z\d+.-]*:|\/)/i.test(value))found.add(value);
     } else if(Array.isArray(value))value.forEach(item=>visit(item,key,ancestors,parent));
-    else if(value && typeof value==='object')for(const [nextKey,v] of Object.entries(value))visit(v,nextKey,[...ancestors,key,...(['photos','coupons'].includes(value.collection)?[value.collection]:[])],value);
+    else if(value && typeof value==='object')for(const [nextKey,v] of Object.entries(value))visit(v,nextKey,[...ancestors,key,...(['photos','coupons','foodPlaces'].includes(value.collection)?[value.collection]:[])],value);
   }
   visit(backup.main,'main');visit(backup.travel,'travel');
   return [...found];

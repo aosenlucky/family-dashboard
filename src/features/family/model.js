@@ -1,7 +1,7 @@
 export const clone = (value) => JSON.parse(JSON.stringify(value));
 export const wealthKeys = ['salaryBank','salaryDay','usdRate','loans','transfers','assets','stocks','equity','paymentChecks','wealthSettings'];
 export function blankFamily() {
-  return { salaryBank:'',salaryDay:15,usdRate:7,loans:[],transfers:[],assets:[],stocks:[],equity:{pricePerShare:1,dividendRate:0,members:[]},paymentChecks:{},wealthSettings:{},photoTypes:['日常记录','自然风景','人物写真'],photos:[],goals:[],dates:[],todos:[],milestones:[],habits:[],books:[],moments:[],coupons:[],trash:[],lifeLayout:[],appearance:{},notificationSettings:{enabled:false,quietStart:'22:00',quietEnd:'08:00'},llmApiKey:'' };
+  return { salaryBank:'',salaryDay:15,usdRate:7,loans:[],transfers:[],assets:[],stocks:[],equity:{pricePerShare:1,dividendRate:0,members:[]},paymentChecks:{},wealthSettings:{},photoTypes:['日常记录','自然风景','人物写真'],photos:[],goals:[],dates:[],todos:[],milestones:[],habits:[],books:[],moments:[],coupons:[],foodPlaces:[],trash:[],lifeLayout:[],appearance:{},notificationSettings:{enabled:false,quietStart:'22:00',quietEnd:'08:00'},llmApiKey:'' };
 }
 export function sharedOnly(data) {
   const result=clone(data);
